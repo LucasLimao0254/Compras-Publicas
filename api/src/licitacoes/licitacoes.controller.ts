@@ -17,4 +17,9 @@ export class LicitacoesController {
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: LicitacaoDto) { return this.service.create(u.tenantId, dto); }
   @Patch(':id') update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: LicitacaoDto) { return this.service.update(u.tenantId, id, dto); }
   @Delete(':id') remove(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.remove(u.tenantId, id); }
+
+  @Get(':id/derivados')
+  derivados(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.service.derivados(u.tenantId, id);
+  }
 }

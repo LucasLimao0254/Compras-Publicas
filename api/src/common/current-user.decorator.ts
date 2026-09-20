@@ -5,6 +5,7 @@ export interface AuthUser {
   tenantId: string;
   tipoUsuario: 'ADMIN' | 'PADRAO';
   permissoes: string[];
+  ehAdminPlataforma: boolean;
 }
 
 export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext): AuthUser => {

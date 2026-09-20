@@ -1,0 +1,2143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="_ds/nocturne-38b99a3a-2155-4dac-b41f-16007c8615e5/styles.css">
+<script src="_ds/nocturne-38b99a3a-2155-4dac-b41f-16007c8615e5/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<style>
+  html, body { margin: 0; padding: 0; background: var(--color-bg); }
+  * { box-sizing: border-box; }
+  input, select, textarea, button { font-family: inherit; }
+  a { color: var(--color-accent); text-decoration: none; }
+  a:hover { color: var(--color-accent-400); }
+  select.input { appearance: none; background-image: none; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 8px; font-size: 13.5px; color: color-mix(in srgb, var(--color-text) 62%, transparent); cursor: pointer; }
+  .nav-item:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-text); }
+  .nav-item[data-on="1"] { color: var(--color-accent-200); background: color-mix(in srgb, var(--color-accent) 14%, transparent); box-shadow: inset 2px 0 0 var(--color-accent); }
+  .tabbtn { padding: 8px 2px; font-size: 13.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); cursor: pointer; border-bottom: 2px solid transparent; background: none; border-top: 0; border-left: 0; border-right: 0; }
+  .tabbtn:hover { color: var(--color-text); }
+  .tabbtn[data-on="1"] { color: var(--color-text); border-bottom-color: var(--color-accent); }
+  .num { font-variant-numeric: tabular-nums; }
+  [data-dens="confortavel"] .table td { padding-top: 13px; padding-bottom: 13px; }
+  [data-dens="confortavel"] .table th { padding-bottom: 10px; }
+</style>
+</helmet>
+
+<div data-dens="{{ densidade }}" style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:15px">
+
+<sc-if value="{{ telaLogin }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height:100vh;display:grid;grid-template-columns:1fr 1fr;align-items:stretch">
+    <div style="display:flex;flex-direction:column;justify-content:center;padding:0 clamp(40px,8vw,120px)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:56px">
+        <i class="ph-fill ph-scales" style="font-size:22px;color:var(--color-accent)"></i>
+        <span style="font-family:var(--font-heading);font-weight:500;font-size:17px;letter-spacing:-0.01em">Compras Públicas</span>
+      </div>
+      <h1 style="font-size:40px;margin:0 0 12px;letter-spacing:-0.02em">Entre com sua<br>conta do município</h1>
+      <p style="font-size:14px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:0 0 40px;max-width:38ch">Contratos, atas, ordens de compra e saldo em um só lugar. Acesso por município.</p>
+
+      <form onSubmit="{{ entrar }}" style="display:flex;flex-direction:column;gap:14px;max-width:340px">
+        <div class="field">
+          <label>Código do município</label>
+          <input class="input num" value="1">
+        </div>
+        <div class="field">
+          <label>E-mail</label>
+          <input class="input" type="email" value="admin@demo.gov.br">
+        </div>
+        <div class="field">
+          <label>Senha</label>
+          <input class="input" type="password" value="demo123">
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Entrar<i class="ph ph-arrow-right"></i></button>
+        <div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 42%,transparent);margin-top:4px">Demonstração — código 1, admin@demo.gov.br / demo123</div>
+      </form>
+    </div>
+    <div style="background:linear-gradient(150deg,var(--color-section) 0%,var(--color-bg) 72%);position:relative;overflow:hidden">
+      <div style="position:absolute;inset:0;background:radial-gradient(520px 400px at 78% 22%,color-mix(in srgb,var(--color-section-glow) 70%,transparent),transparent 70%)"></div>
+      <div style="position:absolute;left:56px;right:56px;bottom:56px">
+        <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent-300);margin-bottom:14px">Lei 14.133/2021</div>
+        <div style="font-size:20px;line-height:1.4;max-width:32ch;color:var(--color-neutral-200)">Saldo derivado a cada leitura. Nenhuma ordem é emitida acima do que o contrato ainda comporta.</div>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ telaApp }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;min-height:100vh">
+
+  <aside style="width:238px;flex-shrink:0;display:flex;flex-direction:column;background:var(--color-bg);box-shadow:inset -1px 0 0 var(--color-divider)">
+    <div style="padding:18px 16px 16px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:16px">
+        <i class="ph-fill ph-scales" style="font-size:18px;color:var(--color-accent)"></i>
+        <span style="font-family:var(--font-heading);font-weight:500;font-size:14.5px">Compras Públicas</span>
+      </div>
+      <div style="padding:9px 11px;border-radius:8px;background:var(--color-surface);box-shadow:var(--shadow-sm)">
+        <div style="font-size:12.5px;line-height:1.3">Prefeitura Municipal de Muriaé</div>
+        <div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent);margin-top:2px">MG · código 1</div>
+      </div>
+    </div>
+
+    <nav style="flex:1;padding:0 10px;display:flex;flex-direction:column;gap:18px">
+      <sc-for list="{{ grupos }}" as="g" hint-placeholder-count="2">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="padding:0 12px 6px;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 38%,transparent)">{{ g.grupo }}</div>
+          <sc-for list="{{ g.itens }}" as="item" hint-placeholder-count="4">
+            <div class="nav-item" data-on="{{ item.on }}" onClick="{{ item.ir }}">
+              <i class="{{ item.icone }}" style="font-size:16px"></i>
+              <span>{{ item.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </nav>
+
+    <div style="padding:14px 16px;box-shadow:inset 0 1px 0 var(--color-divider);display:flex;align-items:center;gap:10px">
+      <div style="width:28px;height:28px;flex:none;border-radius:50%;background:var(--color-accent-800);color:var(--color-accent-100);display:grid;place-items:center;font-size:11px">AD</div>
+      <div style="min-width:0;flex:1">
+        <div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Administrador Demo</div>
+        <div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 42%,transparent)">Administrador</div>
+      </div>
+      <i class="ph ph-sign-out" onClick="{{ sair }}" style="font-size:16px;cursor:pointer;color:color-mix(in srgb,var(--color-text) 50%,transparent)"></i>
+    </div>
+  </aside>
+
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+
+    <sc-if value="{{ ehDashboard }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 40px 56px;max-width:1240px">
+      <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">Exercício 2026</div>
+      <h2 style="font-size:30px;margin:0 0 22px">Visão geral</h2>
+
+      <div style="border-radius:14px;padding:26px 28px;margin-bottom:20px;background:linear-gradient(105deg,var(--color-section) 0%,color-mix(in srgb,var(--color-section) 40%,var(--color-bg)) 100%);position:relative;overflow:hidden">
+        <div style="position:absolute;inset:0;background:radial-gradient(420px 260px at 88% 0%,color-mix(in srgb,var(--color-section-glow) 60%,transparent),transparent 70%)"></div>
+        <div style="position:relative;display:flex;align-items:flex-end;gap:48px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent-300);margin-bottom:10px">Saldo disponível</div>
+            <div class="num" style="font-size:38px;font-family:var(--font-heading);font-weight:500;letter-spacing:-0.02em;line-height:1">R$ 1.170.585,00</div>
+            <div style="font-size:13px;color:var(--color-neutral-300);margin-top:8px">39,2% do contratado, em 5 contratos vigentes</div>
+          </div>
+          <div style="flex:1;min-width:240px;max-width:420px">
+            <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--color-neutral-300);margin-bottom:7px">
+              <span>Utilizado R$ 1.819.755,00</span><span class="num">60,8%</span>
+            </div>
+            <div style="height:6px;border-radius:3px;background:color-mix(in srgb,var(--color-neutral-100) 14%,transparent);overflow:hidden">
+              <div style="width:60.8%;height:6px;border-radius:3px;background:var(--color-accent-300);box-shadow:0 0 12px color-mix(in srgb,var(--color-accent) 60%,transparent)"></div>
+            </div>
+            <div style="font-size:11.5px;color:var(--color-neutral-400);margin-top:7px">Total contratado R$ 2.994.550,00</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:26px">
+        <div class="card elev-sm"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 52%,transparent)">Contratos vigentes</div><div class="num" style="font-size:26px;font-family:var(--font-heading);font-weight:500">5</div></div>
+        <div class="card elev-sm"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 52%,transparent)">Ordens emitidas</div><div class="num" style="font-size:26px;font-family:var(--font-heading);font-weight:500">47</div></div>
+        <div class="card elev-sm"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 52%,transparent)">Vencendo em 30 dias</div><div class="num" style="font-size:26px;font-family:var(--font-heading);font-weight:500">1</div></div>
+        <div class="card elev-sm"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 52%,transparent)">Aditivos no exercício</div><div class="num" style="font-size:26px;font-family:var(--font-heading);font-weight:500">3</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:22px">
+        <div>
+          <h4 style="font-size:15px;margin:0 0 16px">Situação dos contratos</h4>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{ situacoes }}" as="sit" hint-placeholder-count="3">
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px">
+                  <span>{{ sit.nome }}</span><span class="num" style="color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ sit.valor }}</span>
+                </div>
+                <div style="height:4px;border-radius:2px;background:color-mix(in srgb,var(--color-text) 8%,transparent)">
+                  <div style="{{ sit.barra }}"></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+            <h4 style="font-size:15px;margin:0">{{ tituloFornecedores }}</h4>
+            <div style="display:flex;gap:6px">
+              <sc-for list="{{ filtrosForn }}" as="ff" hint-placeholder-count="3">
+                <div onClick="{{ ff.aplicar }}" style="{{ ff.estilo }}">{{ ff.label }}</div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:13px">
+            <sc-for list="{{ topFornecedores }}" as="f" hint-placeholder-count="5">
+              <div>
+                <div style="display:flex;justify-content:space-between;gap:16px;font-size:12.5px;margin-bottom:6px">
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.nome }}</span>
+                  <span class="num" style="flex:none;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ f.valorFmt }}</span>
+                </div>
+                <div style="height:4px;border-radius:2px;background:color-mix(in srgb,var(--color-text) 8%,transparent)">
+                  <div style="{{ f.barra }}"></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ ehContratos }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:28px 40px 56px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:22px">
+        <div>
+          <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">Compras</div>
+          <h2 style="font-size:30px;margin:0">Contratos</h2>
+          <p style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:8px 0 0">7 registros · saldo recalculado a cada leitura</p>
+        </div>
+        <button class="btn btn-primary" onClick="{{ toggleFormContrato }}"><i class="{{ iconeFormContrato }}"></i>{{ rotuloFormContrato }}</button>
+      </div>
+
+      <sc-if value="{{ mostrarFormContrato }}" hint-placeholder-val="{{ false }}">
+      <div style="border-radius:14px;background:var(--color-surface);box-shadow:var(--shadow-md);padding:22px 24px;margin-bottom:26px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:20px">
+          <div>
+            <h4 style="font-size:16px;margin:0 0 4px">Novo contrato</h4>
+            <p style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 50%,transparent);margin:0">Vinculado a uma licitação já cadastrada. Os itens definem o valor total e o saldo.</p>
+          </div>
+          <button class="btn btn-secondary" style="flex:none"><i class="ph ph-upload-simple"></i>Upload de PDF</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:18px">
+          <div class="field"><label>Número do contrato/ano</label><input class="input" placeholder="030/2026"></div>
+          <div class="field"><label>Número do processo</label><input class="input" placeholder="PA-045/2026"></div>
+          <div class="field"><label>Licitação</label>
+            <select class="input">
+              <option value="">Selecione</option>
+              <sc-for list="{{ licitacoes }}" as="l" hint-placeholder-count="6"><option>{{ l.opcao }}</option></sc-for>
+            </select>
+          </div>
+          <div class="field"><label>Órgão gerenciador</label>
+            <select class="input">
+              <option value="">Selecione</option>
+              <sc-for list="{{ secretarias }}" as="s" hint-placeholder-count="5"><option>{{ s.titulo }}</option></sc-for>
+            </select>
+          </div>
+          <div class="field"><label>Fornecedor</label>
+            <select class="input">
+              <option value="">Selecione</option>
+              <sc-for list="{{ fornecedores }}" as="f" hint-placeholder-count="6"><option>{{ f.opcao }}</option></sc-for>
+            </select>
+          </div>
+          <div class="field"><label>Forma de faturamento</label>
+            <select class="input">
+              <option>Sob demanda</option><option>Mensal</option><option>Por medição</option><option>Por etapa</option><option>Por entrega</option><option>Parcela única</option><option>Pagamento antecipado</option>
+            </select>
+          </div>
+          <div class="field"><label>Vigência inicial</label><input class="input" type="date" value="2026-09-01"></div>
+          <div class="field"><label>Vigência final</label><input class="input" type="date" value="2027-08-31"></div>
+          <div class="field"><label>Valor estimado</label><input class="input num" placeholder="0,00"></div>
+        </div>
+
+        <div style="margin-bottom:18px">
+          <div style="font-size:12px;color:color-mix(in srgb,var(--color-text) 70%,transparent);margin-bottom:8px">Forma de controle de saldo</div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+            <sc-for list="{{ modosForm }}" as="m" hint-placeholder-count="3">
+              <div onClick="{{ m.escolher }}" style="{{ m.estilo }}">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+                  <i class="{{ m.icone }}" style="font-size:15px"></i>
+                  <span style="font-size:13px;font-family:var(--font-heading);font-weight:500">{{ m.nome }}</span>
+                </div>
+                <div style="font-size:11.5px;line-height:1.45;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ m.descricao }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:18px"><label>Objeto</label><textarea class="input" style="min-height:64px" placeholder="Descrição do objeto contratado"></textarea></div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:13px;font-family:var(--font-heading);font-weight:500">Itens do contrato</div>
+          <button class="btn btn-ghost" onClick="{{ addItemLinha }}"><i class="ph ph-plus"></i>adicionar item</button>
+        </div>
+        <table class="table" style="margin-bottom:18px">
+          <thead><tr><th style="width:44%">Descrição</th><th style="width:14%">Unidade</th><th style="width:14%">Quantidade</th><th style="width:18%">Valor unitário</th><th></th></tr></thead>
+          <tbody>
+            <sc-for list="{{ linhasItem }}" as="li" hint-placeholder-count="1">
+              <tr>
+                <td><input class="input" placeholder="Descrição do item"></td>
+                <td><input class="input" placeholder="Un."></td>
+                <td><input class="input num" placeholder="0"></td>
+                <td><input class="input num" placeholder="0,00"></td>
+                <td style="width:36px"><i class="ph ph-trash" onClick="{{ li.remover }}" style="font-size:15px;cursor:pointer;color:color-mix(in srgb,var(--color-text) 45%,transparent)"></i></td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn btn-primary">Salvar contrato</button>
+          <button class="btn btn-secondary" onClick="{{ toggleFormContrato }}">Descartar</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+        <sc-for list="{{ filtros }}" as="fl" hint-placeholder-count="4">
+          <div onClick="{{ fl.aplicar }}" style="{{ fl.estilo }}">{{ fl.label }}</div>
+        </sc-for>
+        <div style="flex:1"></div>
+        <div style="position:relative;width:236px">
+          <i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:10px;font-size:15px;color:color-mix(in srgb,var(--color-text) 40%,transparent)"></i>
+          <input class="input" placeholder="Nº, objeto ou fornecedor" style="padding-left:32px" value="{{ busca }}" onChange="{{ mudarBusca }}">
+        </div>
+      </div>
+
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:96px"><span style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" onClick="{{ colNumero.clicar }}">Contrato<i class="ph {{ colNumero.icone }}" style="{{ colNumero.estiloIcone }}"></i></span></th>
+            <th><span style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" onClick="{{ colFornecedor.clicar }}">Fornecedor / objeto<i class="ph {{ colFornecedor.icone }}" style="{{ colFornecedor.estiloIcone }}"></i></span></th>
+            <th style="width:150px"><span style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" onClick="{{ colOrgao.clicar }}">Órgão<i class="ph {{ colOrgao.icone }}" style="{{ colOrgao.estiloIcone }}"></i></span></th>
+            <th style="width:220px"><span style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" onClick="{{ colSaldo.clicar }}">Saldo<i class="ph {{ colSaldo.icone }}" style="{{ colSaldo.estiloIcone }}"></i></span></th>
+            <th style="width:112px"><span style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" onClick="{{ colSituacao.clicar }}">Situação<i class="ph {{ colSituacao.icone }}" style="{{ colSituacao.estiloIcone }}"></i></span></th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ contratosFiltrados }}" as="c" hint-placeholder-count="7">
+            <tr style="cursor:pointer" onClick="{{ c.abrir }}">
+              <td style="vertical-align:top;padding-top:12px;padding-bottom:12px">
+                <div class="num" style="font-family:var(--font-heading);font-weight:500">{{ c.numero }}</div>
+                <div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 42%,transparent);margin-top:2px">{{ c.modoCurto }}</div>
+              </td>
+              <td style="vertical-align:top;padding-top:12px;padding-bottom:12px">
+                <div style="font-size:13.5px">{{ c.fornecedor }}</div>
+                <div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 48%,transparent);margin-top:2px;max-width:46ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.objeto }}</div>
+              </td>
+              <td style="vertical-align:top;padding-top:12px;padding-bottom:12px;font-size:12px;color:color-mix(in srgb,var(--color-text) 58%,transparent)">{{ c.orgaoCurto }}</td>
+              <td style="vertical-align:top;padding-top:12px;padding-bottom:12px">
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px">
+                  <span class="num">R$ {{ c.saldoFmt }}</span>
+                  <span class="num" style="color:color-mix(in srgb,var(--color-text) 45%,transparent)">de {{ c.valorTotalFmt }}</span>
+                </div>
+                <sc-if value="{{ comBarra }}" hint-placeholder-val="{{ true }}">
+                  <div style="height:4px;border-radius:2px;background:color-mix(in srgb,var(--color-text) 9%,transparent)">
+                    <div style="{{ c.barra }}"></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ semBarra }}" hint-placeholder-val="{{ false }}">
+                  <div class="num" style="font-size:11.5px;color:var(--color-accent-300)">{{ c.percSaldo }} livre</div>
+                </sc-if>
+              </td>
+              <td style="vertical-align:top;padding-top:12px;padding-bottom:12px"><span class="{{ c.tagClasse }}">{{ c.situacaoLabel }}</span></td>
+              <td style="vertical-align:top;padding-top:8px;padding-bottom:8px;text-align:right">
+                <div style="width:32px;height:32px;border-radius:8px;background:color-mix(in srgb,var(--color-accent) 12%,transparent);display:flex;align-items:center;justify-content:center;margin-left:auto">
+                  <i class="ph ph-arrow-right" style="font-size:16px;color:var(--color-accent)"></i>
+                </div>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ ehAtas }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 40px 56px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:22px">
+        <div>
+          <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">Compras</div>
+          <h2 style="font-size:30px;margin:0">Atas &amp; Credenciamentos</h2>
+          <p style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:8px 0 0">2 atas de registro de preços · 1 credenciamento vigente</p>
+        </div>
+        <button class="btn btn-primary" onClick="{{ toggleFormAta }}"><i class="{{ iconeFormAta }}"></i>{{ rotuloFormAta }}</button>
+      </div>
+
+      <sc-if value="{{ mostrarFormAta }}" hint-placeholder-val="{{ false }}">
+      <div style="border-radius:14px;background:var(--color-surface);box-shadow:var(--shadow-md);padding:20px 22px;margin-bottom:26px">
+        <h4 style="font-size:15px;margin:0 0 16px">Nova ata de registro de preços</h4>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px">
+          <div class="field"><label>Número da ata/ano</label><input class="input" placeholder="016/2026"></div>
+          <div class="field"><label>Licitação de origem</label>
+            <select class="input">
+              <option value="">Selecione</option>
+              <sc-for list="{{ licitacoes }}" as="l" hint-placeholder-count="6"><option>{{ l.opcao }}</option></sc-for>
+            </select>
+          </div>
+          <div class="field"><label>Vigência inicial</label><input class="input" type="date"></div>
+          <div class="field"><label>Vigência final</label><input class="input" type="date"></div>
+        </div>
+        <div class="field" style="margin-bottom:16px"><label>Objeto</label><textarea class="input" style="min-height:60px"></textarea></div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-primary">Salvar ata</button>
+          <button class="btn btn-secondary" onClick="{{ toggleFormAta }}">Cancelar</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+        <sc-for list="{{ filtrosTipoAta }}" as="fl" hint-placeholder-count="2">
+          <div onClick="{{ fl.aplicar }}" style="{{ fl.estilo }}">{{ fl.label }}</div>
+        </sc-for>
+        <div style="flex:1"></div>
+        <div style="position:relative;width:236px">
+          <i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:10px;font-size:15px;color:color-mix(in srgb,var(--color-text) 40%,transparent)"></i>
+          <input class="input" placeholder="Nº, objeto ou processo" style="padding-left:32px" value="{{ buscaAta }}" onChange="{{ mudarBuscaAta }}">
+        </div>
+      </div>
+
+      <sc-if value="{{ ehListaAtas }}" hint-placeholder-val="{{ true }}">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:96px"><span style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" onClick="{{ colAtaNumero.clicar }}">Ata<i class="ph {{ colAtaNumero.icone }}" style="{{ colAtaNumero.estiloIcone }}"></i></span></th>
+            <th><span style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" onClick="{{ colAtaObjeto.clicar }}">Objeto<i class="ph {{ colAtaObjeto.icone }}" style="{{ colAtaObjeto.estiloIcone }}"></i></span></th>
+            <th style="width:130px"><span style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" onClick="{{ colAtaProcesso.clicar }}">Processo<i class="ph {{ colAtaProcesso.icone }}" style="{{ colAtaProcesso.estiloIcone }}"></i></span></th>
+            <th style="width:170px">Vigência</th>
+            <th style="width:220px">Saldo</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ atasFiltradas }}" as="a" hint-placeholder-count="2">
+            <tr style="cursor:pointer" onClick="{{ a.abrir }}">
+              <td class="num" style="vertical-align:top;padding-top:12px;padding-bottom:12px;font-family:var(--font-heading);font-weight:500">{{ a.numero }}</td>
+              <td style="vertical-align:top;padding-top:12px;padding-bottom:12px;font-size:13.5px;color:color-mix(in srgb,var(--color-text) 70%,transparent);min-width:280px;max-width:46ch;white-space:normal;line-height:1.4">{{ a.objeto }}</td>
+              <td class="num" style="vertical-align:top;padding-top:12px;padding-bottom:12px;font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ a.processo }}</td>
+              <td class="num" style="vertical-align:top;padding-top:12px;padding-bottom:12px;font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ a.vigenciaFmt }}</td>
+              <td style="vertical-align:top;padding-top:12px;padding-bottom:12px">
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px">
+                  <span class="num">R$ {{ a.saldoFmt }}</span>
+                  <span class="num" style="color:color-mix(in srgb,var(--color-text) 45%,transparent)">de {{ a.valorFmt }}</span>
+                </div>
+                <div style="height:4px;border-radius:2px;background:color-mix(in srgb,var(--color-text) 9%,transparent)">
+                  <div style="{{ a.barra }}"></div>
+                </div>
+              </td>
+              <td style="vertical-align:top;padding-top:8px;padding-bottom:8px;text-align:right">
+                <div style="width:32px;height:32px;border-radius:8px;background:color-mix(in srgb,var(--color-accent) 12%,transparent);display:flex;align-items:center;justify-content:center;margin-left:auto">
+                  <i class="ph ph-arrow-right" style="font-size:16px;color:var(--color-accent)"></i>
+                </div>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+      </sc-if>
+
+      <sc-if value="{{ ehListaCredenciamento }}" hint-placeholder-val="{{ false }}">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:96px">Credenciamento</th>
+            <th>Objeto</th>
+            <th style="width:130px">Processo</th>
+            <th style="width:170px">Vigência</th>
+            <th style="width:220px">Detentores</th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ credenciamentosFiltrados }}" as="c" hint-placeholder-count="1">
+            <tr>
+              <td class="num" style="font-family:var(--font-heading);font-weight:500">{{ c.numero }}</td>
+              <td style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 70%,transparent);min-width:280px;max-width:46ch;white-space:normal;line-height:1.4">{{ c.objeto }}</td>
+              <td class="num" style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ c.processo }}</td>
+              <td class="num" style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ c.vigenciaFmt }}</td>
+              <td style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ c.detentoresFmt }} · sem valor único de saldo</td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ ehAtaDetalhe }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 40px 56px">
+      <div onClick="{{ voltarAtas }}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--color-accent);cursor:pointer;margin-bottom:16px"><i class="ph ph-arrow-left" style="font-size:14px"></i>Atas &amp; Credenciamentos</div>
+
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:32px;flex-wrap:wrap;margin-bottom:24px">
+        <div style="display:flex;gap:24px;align-items:center">
+          <div style="position:relative;width:100px;height:100px;flex:none">
+            <svg width="100" height="100" viewBox="0 0 100 100" style="transform:rotate(-90deg)">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="color-mix(in srgb,var(--color-text) 9%,transparent)" stroke-width="9"></circle>
+              <circle cx="50" cy="50" r="42" fill="none" stroke="var(--color-accent)" stroke-width="9" stroke-linecap="round" stroke-dasharray="{{ ataDet.donutDash }}" stroke-dashoffset="{{ ataDet.donutOffset }}"></circle>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-size:20px;font-weight:500">{{ ataDet.percLabel }}</div>
+          </div>
+          <div>
+            <h2 style="font-size:26px;margin:0 0 4px;font-family:var(--font-heading)">Ata {{ ataDet.numero }}</h2>
+            <p style="font-size:13px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:0 0 10px;max-width:52ch">{{ ataDet.objeto }}</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <span class="tag tag-neutral">{{ ataDet.modo }}</span>
+              <span class="tag tag-outline">{{ ataDet.casasDecimais }}</span>
+              <span class="tag tag-outline">{{ ataDet.vigencia }}</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:12px">
+          <div style="text-align:right">
+            <div class="num" style="font-size:26px;font-family:var(--font-heading);font-weight:500">R$ {{ ataDet.saldoFmt }}</div>
+            <div class="num" style="font-size:12px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">de R$ {{ ataDet.valorFmt }} · processo {{ ataDet.processo }}</div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-secondary" onClick="{{ verContratosAta }}"><i class="ph ph-file-text"></i>Ver contratos</button>
+            <button class="btn btn-primary" onClick="{{ abrirRemanejar }}"><i class="ph ph-arrows-left-right"></i>Remanejar saldo</button>
+          </div>
+        </div>
+      </div>
+
+      <h3 style="font-size:14px;font-family:var(--font-heading);font-weight:500;margin:28px 0 12px">Órgãos participantes</h3>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ orgaosAta }}" as="o" hint-placeholder-count="2">
+          <div style="border-radius:12px;background:var(--color-surface);box-shadow:var(--shadow-sm)">
+            <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer" onClick="{{ o.toggle }}">
+              <i class="ph {{ o.icone }}" style="font-size:15px;color:color-mix(in srgb,var(--color-text) 45%,transparent)"></i>
+              <div style="flex:1;font-size:13.5px">{{ o.nome }}</div>
+              <span class="{{ o.tagClasse }}">{{ o.papel }}</span>
+              <div style="text-align:right;min-width:150px">
+                <div class="num" style="font-size:12.5px">R$ {{ o.saldoFmt }} <span style="color:color-mix(in srgb,var(--color-text) 45%,transparent)">de {{ o.valorFmt }}</span></div>
+              </div>
+            </div>
+            <sc-if value="{{ o.aberto }}" hint-placeholder-val="{{ false }}">
+            <table class="table" style="margin:0 18px 16px;width:calc(100% - 36px)">
+              <thead><tr><th>Item</th><th style="width:100px;text-align:right">Contratado</th><th style="width:120px;text-align:right">Valor unit.</th><th style="width:160px">Saldo</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ o.itens }}" as="it" hint-placeholder-count="2">
+                  <tr>
+                    <td style="font-size:13px">{{ it.descricao }}</td>
+                    <td class="num" style="text-align:right">{{ it.qtdFmt }}</td>
+                    <td class="num" style="text-align:right">R$ {{ it.valorUnitFmt }}</td>
+                    <td>
+                      <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:4px">
+                        <span class="num">{{ it.saldoFmt }} disp.</span>
+                      </div>
+                      <div style="height:4px;border-radius:2px;background:color-mix(in srgb,var(--color-text) 9%,transparent)">
+                        <div style="{{ it.barra }}"></div>
+                      </div>
+                    </td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <sc-if value="{{ mostrarRemanejar }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:color-mix(in srgb,black 55%,transparent);display:flex;align-items:center;justify-content:center;z-index:50" onClick="{{ fecharRemanejar }}">
+      <div style="width:480px;border-radius:14px;background:var(--color-surface);box-shadow:var(--shadow-lg);padding:24px" onClick="{{ pararPropagacao }}">
+        <h4 style="font-size:16px;margin:0 0 4px">Remanejar saldo entre órgãos</h4>
+        <p style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:0 0 18px">Ata {{ ataDet.numero }}</p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+          <div class="field"><label>Órgão de origem</label>
+            <select class="input" value="{{ remanejarOrigem }}" onChange="{{ mudarRemanejarOrigem }}">
+              <sc-for list="{{ remanejarOrigens }}" as="o" hint-placeholder-count="2"><option value="{{ o.id }}">{{ o.nome }}</option></sc-for>
+            </select>
+          </div>
+          <div class="field"><label>Órgão de destino</label>
+            <select class="input" value="{{ remanejarDestino }}" onChange="{{ mudarRemanejarDestino }}">
+              <sc-for list="{{ remanejarOrigens }}" as="o" hint-placeholder-count="2"><option value="{{ o.id }}">{{ o.nome }}</option></sc-for>
+            </select>
+          </div>
+        </div>
+
+        <div style="border-radius:10px;background:color-mix(in srgb,var(--color-accent) 10%,transparent);padding:12px 14px;font-size:12px;line-height:1.5;color:color-mix(in srgb,var(--color-text) 75%,transparent);margin-bottom:16px">
+          <i class="ph ph-info" style="color:var(--color-accent);margin-right:6px"></i>
+          Só é possível remanejar itens com o mesmo número, preço unitário e unidade no órgão de destino, dentro do saldo disponível do órgão de origem.
+        </div>
+
+        <sc-if value="{{ itemElegivelRemanejo }}" hint-placeholder-val="{{ false }}">
+        <div class="field" style="margin-bottom:8px"><label>Item elegível</label>
+          <div style="font-size:13px;padding:10px 12px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--color-divider)">{{ itemElegivelRemanejo.descricao }} · saldo disponível: {{ itemElegivelRemanejo.saldoFmt }} · R$ {{ itemElegivelRemanejo.unidFmt }}/un.</div>
+        </div>
+        <div class="field" style="margin-bottom:18px"><label>Quantidade a transferir</label><input class="input num" type="number" min="0" placeholder="0"></div>
+        </sc-if>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-primary">Confirmar remanejamento</button>
+          <button class="btn btn-secondary" onClick="{{ fecharRemanejar }}">Cancelar</button>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ ehDetalhe }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 40px 56px">
+      <div onClick="{{ voltarContratos }}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--color-accent);cursor:pointer;margin-bottom:16px"><i class="ph ph-arrow-left" style="font-size:14px"></i>Contratos</div>
+
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:32px;flex-wrap:wrap;margin-bottom:24px">
+        <div style="max-width:60ch">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+            <h2 class="num" style="font-size:30px;margin:0">Contrato {{ det.numero }}</h2>
+            <span class="{{ det.tagClasse }}">{{ det.situacaoLabel }}</span>
+          </div>
+          <p style="font-size:14px;color:color-mix(in srgb,var(--color-text) 62%,transparent);margin:0 0 10px">{{ det.objeto }}</p>
+          <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:color-mix(in srgb,var(--color-text) 48%,transparent)">
+            <span><i class="ph ph-storefront" style="font-size:13px;vertical-align:-2px"></i> {{ det.fornecedor }}</span>
+            <span><i class="ph ph-buildings" style="font-size:13px;vertical-align:-2px"></i> {{ det.orgao }}</span>
+            <span><i class="ph ph-calendar-blank" style="font-size:13px;vertical-align:-2px"></i> {{ det.vigencia }}</span>
+            <span><i class="ph ph-gavel" style="font-size:13px;vertical-align:-2px"></i> {{ det.licitacao }}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onClick="{{ irMinutas }}"><i class="ph ph-file-text"></i>Gerar minuta</button>
+          <button class="btn btn-primary" onClick="{{ novaOrdemDoContrato }}"><i class="ph ph-plus"></i>Nova ordem</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(0,1fr));gap:14px;margin-bottom:8px">
+        <div class="card elev-sm" style="gap:10px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <span style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 52%,transparent)">Saldo disponível</span>
+            <span class="num" style="font-size:12px;color:var(--color-accent-300)">{{ det.percSaldo }}</span>
+          </div>
+          <div class="num" style="font-size:26px;font-family:var(--font-heading);font-weight:500">R$ {{ det.saldoFmt }}</div>
+          <div style="height:5px;border-radius:3px;background:color-mix(in srgb,var(--color-text) 9%,transparent)">
+            <div style="{{ det.barra }}"></div>
+          </div>
+          <div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">Utilizado R$ {{ det.utilizadoFmt }} de R$ {{ det.valorTotalFmt }}</div>
+        </div>
+        <div class="card elev-sm"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 52%,transparent)">Valor total</div><div class="num" style="font-size:20px;font-family:var(--font-heading);font-weight:500">R$ {{ det.valorTotalFmt }}</div><div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">{{ det.notaAditivo }}</div></div>
+        <div class="card elev-sm"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 52%,transparent)">Ordens emitidas</div><div class="num" style="font-size:20px;font-family:var(--font-heading);font-weight:500">{{ det.qtdOrdens }}</div><div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">última em {{ det.ultimaOrdem }}</div></div>
+        <div class="card elev-sm"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 52%,transparent)">Aditivos</div><div class="num" style="font-size:20px;font-family:var(--font-heading);font-weight:500">{{ det.qtdAditivos }}</div><div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">{{ det.notaAcrescimo }}</div></div>
+      </div>
+
+      <div style="display:flex;gap:22px;margin:24px 0 4px;box-shadow:inset 0 -1px 0 var(--color-divider)">
+        <sc-for list="{{ abas }}" as="ab" hint-placeholder-count="4">
+          <button class="tabbtn" data-on="{{ ab.on }}" onClick="{{ ab.ir }}">{{ ab.label }}</button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ abaItens }}" hint-placeholder-val="{{ true }}">
+      <div style="padding-top:18px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:14px">
+          <div>
+            <div style="font-size:12px;color:color-mix(in srgb,var(--color-text) 70%,transparent);margin-bottom:7px">Forma de controle de saldo</div>
+            <div class="seg">
+              <sc-for list="{{ modosDetalhe }}" as="m" hint-placeholder-count="3">
+                <label class="seg-opt"><input type="radio" name="modo" checked="{{ m.on }}" onChange="{{ m.escolher }}">{{ m.nome }}</label>
+              </sc-for>
+            </div>
+          </div>
+          <div style="max-width:44ch;font-size:11.5px;line-height:1.5;color:color-mix(in srgb,var(--color-text) 48%,transparent);padding-top:22px">{{ det.explicacaoModo }}</div>
+        </div>
+
+        <sc-if value="{{ modoGlobal }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:8px;background:color-mix(in srgb,var(--color-accent) 12%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--color-accent) 34%,transparent);margin-bottom:14px">
+            <i class="ph ph-info" style="font-size:16px;color:var(--color-accent-300);margin-top:1px"></i>
+            <div style="font-size:12.5px;line-height:1.5">Saldo controlado pelo valor global do contrato. As quantidades por item são referenciais — uma ordem só é bloqueada quando ultrapassa o saldo financeiro.</div>
+          </div>
+        </sc-if>
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:40px">#</th>
+              <th>Descrição</th>
+              <th style="width:96px">Unidade</th>
+              <sc-if value="{{ colQtd }}" hint-placeholder-val="{{ true }}"><th style="width:110px;text-align:right">Contratada</th></sc-if>
+              <sc-if value="{{ colValor }}" hint-placeholder-val="{{ true }}"><th style="width:110px;text-align:right">Valor unit.</th></sc-if>
+              <sc-if value="{{ colQtd }}" hint-placeholder-val="{{ true }}"><th style="width:100px;text-align:right">Utilizado</th></sc-if>
+              <sc-if value="{{ colQtd }}" hint-placeholder-val="{{ true }}"><th style="width:100px;text-align:right">Disponível</th></sc-if>
+              <sc-if value="{{ colSaldoValor }}" hint-placeholder-val="{{ true }}"><th style="width:130px;text-align:right">Saldo R$</th></sc-if>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{ detItens }}" as="it" hint-placeholder-count="3">
+              <tr>
+                <td class="num" style="color:color-mix(in srgb,var(--color-text) 42%,transparent)">{{ it.numero }}</td>
+                <td>{{ it.descricao }}</td>
+                <td style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ it.unidade }}</td>
+                <sc-if value="{{ colQtd }}" hint-placeholder-val="{{ true }}"><td class="num" style="text-align:right">{{ it.quantidade }}</td></sc-if>
+                <sc-if value="{{ colValor }}" hint-placeholder-val="{{ true }}"><td class="num" style="text-align:right">{{ it.valorUnitario }}</td></sc-if>
+                <sc-if value="{{ colQtd }}" hint-placeholder-val="{{ true }}"><td class="num" style="text-align:right;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ it.utilizada }}</td></sc-if>
+                <sc-if value="{{ colQtd }}" hint-placeholder-val="{{ true }}"><td class="num" style="text-align:right">{{ it.disponivel }}</td></sc-if>
+                <sc-if value="{{ colSaldoValor }}" hint-placeholder-val="{{ true }}"><td class="num" style="text-align:right;color:var(--color-accent-300)">{{ it.saldoValor }}</td></sc-if>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ abaOrdens }}" hint-placeholder-val="{{ false }}">
+      <div style="padding-top:18px">
+        <table class="table">
+          <thead><tr><th style="width:120px">Ordem</th><th style="width:130px">Data</th><th>Itens</th><th style="width:150px;text-align:right">Valor</th><th style="width:110px">Status</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ detOrdens }}" as="o" hint-placeholder-count="4">
+              <tr>
+                <td class="num" style="font-family:var(--font-heading);font-weight:500">{{ o.numero }}</td>
+                <td class="num" style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 58%,transparent)">{{ o.data }}</td>
+                <td style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 70%,transparent)">{{ o.itens }}</td>
+                <td class="num" style="text-align:right">R$ {{ o.valor }}</td>
+                <td><span class="{{ o.tagClasse }}">{{ o.status }}</span></td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ abaAditivos }}" hint-placeholder-val="{{ false }}">
+      <div style="padding-top:18px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:16px">
+          <p style="font-size:13px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:0;max-width:62ch">Cada aditivo altera prazo, valor ou quantidade e é aplicado ao saldo a partir da data de assinatura. Os limites do art. 125 da Lei 14.133/2021 são verificados no acréscimo.</p>
+          <button class="btn btn-primary" onClick="{{ toggleFormAditivo }}"><i class="{{ iconeFormAditivo }}"></i>{{ rotuloFormAditivo }}</button>
+        </div>
+
+        <sc-if value="{{ mostrarFormAditivo }}" hint-placeholder-val="{{ false }}">
+        <div style="border-radius:14px;background:var(--color-surface);box-shadow:var(--shadow-md);padding:20px 22px;margin-bottom:22px">
+          <h4 style="font-size:15px;margin:0 0 16px">Novo termo aditivo</h4>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px">
+            <div class="field"><label>Tipo</label>
+              <select class="input" value="{{ aditivoTipo }}" onChange="{{ mudarAditivoTipo }}">
+                <option value="VALOR">Acréscimo de valor</option>
+                <option value="PRAZO">Prorrogação de prazo</option>
+                <option value="QUANTIDADE">Acréscimo de quantidade</option>
+                <option value="SUPRESSAO">Supressão</option>
+              </select>
+            </div>
+            <div class="field"><label>Número / ano</label><input class="input" value="{{ aditivoNumero }}"></div>
+            <div class="field"><label>Data de assinatura</label><input class="input" type="date" value="2026-09-03"></div>
+          </div>
+
+          <sc-if value="{{ aditivoEhValor }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px">
+            <div class="field"><label>Percentual sobre o valor original</label><input class="input num" value="{{ aditivoPerc }}" onChange="{{ mudarAditivoPerc }}"></div>
+            <div class="field"><label>Valor do acréscimo</label><input class="input num" value="{{ aditivoValorFmt }}" disabled="{{ true }}"></div>
+            <div class="field"><label>Novo valor total</label><input class="input num" value="{{ aditivoNovoTotalFmt }}" disabled="{{ true }}"></div>
+          </div>
+          <div style="{{ aditivoAlertaEstilo }}">
+            <i class="{{ aditivoAlertaIcone }}" style="font-size:16px;margin-top:1px"></i>
+            <div style="font-size:12.5px;line-height:1.5">{{ aditivoAlerta }}</div>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ aditivoEhPrazo }}" hint-placeholder-val="{{ false }}">
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px">
+            <div class="field"><label>Dias de prorrogação</label><input class="input num" value="120"></div>
+            <div class="field"><label>Nova vigência final</label><input class="input" value="{{ det.novaVigencia }}" disabled="{{ true }}"></div>
+            <div class="field"><label>Fundamento</label><input class="input" value="Art. 107, Lei 14.133/2021"></div>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ aditivoEhQuantidade }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-bottom:16px">
+            <div style="font-size:12px;color:color-mix(in srgb,var(--color-text) 70%,transparent);margin-bottom:6px">Quantidades a acrescer</div>
+            <table class="table">
+              <thead><tr><th>Item</th><th style="width:120px;text-align:right">Contratada</th><th style="width:140px">Acréscimo</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ detItens }}" as="it" hint-placeholder-count="3">
+                  <tr>
+                    <td style="font-size:13px">{{ it.descricao }}</td>
+                    <td class="num" style="text-align:right">{{ it.quantidade }}</td>
+                    <td><input class="input num" placeholder="0"></td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+          </sc-if>
+
+          <div class="field" style="margin-bottom:16px"><label>Justificativa</label><textarea class="input" style="min-height:60px" placeholder="Motivação técnica e legal do aditamento"></textarea></div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-primary" onClick="{{ salvarAditivo }}">Registrar aditivo</button>
+            <button class="btn btn-secondary" onClick="{{ toggleFormAditivo }}">Cancelar</button>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ temAditivos }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <sc-for list="{{ detAditivos }}" as="a" hint-placeholder-count="2">
+            <div style="display:flex;gap:18px;padding:16px 0;box-shadow:inset 0 -1px 0 color-mix(in srgb,var(--color-text) 8%,transparent)">
+              <div style="width:34px;flex:none;display:flex;flex-direction:column;align-items:center;gap:6px">
+                <i class="{{ a.icone }}" style="font-size:17px;color:var(--color-accent)"></i>
+                <div style="width:1px;flex:1;background:color-mix(in srgb,var(--color-text) 12%,transparent)"></div>
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+                  <span class="num" style="font-family:var(--font-heading);font-weight:500;font-size:14px">{{ a.numero }}</span>
+                  <span class="tag tag-neutral">{{ a.tipoLabel }}</span>
+                  <span class="num" style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 42%,transparent)">assinado em {{ a.data }}</span>
+                </div>
+                <div style="font-size:13.5px;margin-bottom:4px">{{ a.efeito }}</div>
+                <div style="font-size:12px;color:color-mix(in srgb,var(--color-text) 50%,transparent)">{{ a.justificativa }}</div>
+              </div>
+              <div style="flex:none;text-align:right">
+                <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent);margin-bottom:3px">{{ a.rotuloValor }}</div>
+                <div class="num" style="font-size:15px;color:var(--color-accent-300)">{{ a.valor }}</div>
+                <div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 40%,transparent);margin-top:3px">{{ a.fundamento }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        </sc-if>
+        <sc-if value="{{ semAditivos }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:44px 0;text-align:center;font-size:13px;color:color-mix(in srgb,var(--color-text) 40%,transparent)">Nenhum aditivo registrado neste contrato.</div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ abaMinutas }}" hint-placeholder-val="{{ false }}">
+      <div style="padding-top:18px;display:grid;grid-template-columns:300px minmax(0,1fr);gap:28px;align-items:start">
+        <div>
+          <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent);margin-bottom:12px">Modelos</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{ modelosMinuta }}" as="m" hint-placeholder-count="4">
+              <div onClick="{{ m.escolher }}" style="{{ m.estilo }}">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <i class="{{ m.icone }}" style="font-size:16px"></i>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13px">{{ m.nome }}</div>
+                    <div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 42%,transparent);margin-top:1px">{{ m.campos }} campos de mesclagem</div>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <button class="btn btn-primary btn-block" onClick="{{ gerarMinuta }}" style="margin-top:16px"><i class="ph ph-file-arrow-down"></i>Gerar documento</button>
+          <div style="font-size:11.5px;line-height:1.5;color:color-mix(in srgb,var(--color-text) 42%,transparent);margin-top:12px">Os campos são preenchidos com os dados do contrato, do fornecedor e do órgão gerenciador.</div>
+        </div>
+
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent)">Pré-visualização</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary"><i class="ph ph-printer"></i>Imprimir</button>
+              <button class="btn btn-secondary"><i class="ph ph-download-simple"></i>Baixar .docx</button>
+            </div>
+          </div>
+          <div style="border-radius:14px;background:var(--color-surface);box-shadow:var(--shadow-md);padding:40px 48px;max-width:780px">
+            <div style="text-align:center;margin-bottom:32px">
+              <div style="font-size:12.5px;letter-spacing:0.06em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 70%,transparent)">Prefeitura Municipal de Muriaé</div>
+              <div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 45%,transparent);margin-top:3px">Estado de Minas Gerais · Secretaria de Administração</div>
+            </div>
+            <h4 style="text-align:center;font-size:16px;margin:0 0 28px;letter-spacing:0.02em">{{ minutaTitulo }}</h4>
+            <div style="font-size:13.5px;line-height:1.85;color:color-mix(in srgb,var(--color-text) 82%,transparent)">
+              <sc-for list="{{ minutaParagrafos }}" as="p" hint-placeholder-count="4">
+                <p style="margin:0 0 16px;text-align:justify;text-wrap:pretty">{{ p.texto }}</p>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:48px;margin-top:48px;font-size:12px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">
+              <div style="flex:1;padding-top:8px;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--color-text) 22%,transparent);text-align:center">Contratante</div>
+              <div style="flex:1;padding-top:8px;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--color-text) 22%,transparent);text-align:center">Contratada</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ ehOrdens }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 40px 56px">
+      <sc-if value="{{ semWizard }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <sc-if value="{{ semSubPagina }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:18px">
+          <div>
+            <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">Compras</div>
+            <h2 style="font-size:30px;margin:0">Painel de ordens</h2>
+            <p style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:8px 0 0">47 ordens no exercício</p>
+          </div>
+          <button class="btn btn-primary" onClick="{{ abrirWizard }}"><i class="ph ph-plus"></i>Nova ordem</button>
+        </div>
+
+        <div style="display:flex;gap:22px;margin:6px 0 20px;box-shadow:inset 0 -1px 0 var(--color-divider)">
+          <sc-for list="{{ abasOrdensStatus }}" as="ab" hint-placeholder-count="5">
+            <button class="tabbtn" data-on="{{ ab.on }}" onClick="{{ ab.ir }}">{{ ab.label }}</button>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ modoOrdensContratos }}" hint-placeholder-val="{{ true }}">
+        <table class="table">
+          <thead><tr><th style="width:110px">Contrato</th><th>Fornecedor</th><th style="width:150px">Órgão</th><th style="width:100px;text-align:right">Ordens</th><th style="width:150px;text-align:right">Valor total</th><th style="width:120px">Última ordem</th><th style="width:40px"></th></tr></thead>
+          <tbody>
+            <sc-for list="{{ resumoContratosOrdens }}" as="rc" hint-placeholder-count="6">
+              <tr style="cursor:pointer" onClick="{{ rc.abrir }}">
+                <td class="num" style="font-family:var(--font-heading);font-weight:500">{{ rc.numero }}</td>
+                <td style="font-size:13px;color:color-mix(in srgb,var(--color-text) 70%,transparent)">{{ rc.fornecedor }}</td>
+                <td style="font-size:12px;color:color-mix(in srgb,var(--color-text) 58%,transparent)">{{ rc.orgaoCurto }}</td>
+                <td class="num" style="text-align:right">{{ rc.qtd }}</td>
+                <td class="num" style="text-align:right">R$ {{ rc.totalFmt }}</td>
+                <td class="num" style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ rc.ultimaFmt }}</td>
+                <td style="text-align:right">
+                  <div style="width:32px;height:32px;border-radius:8px;background:color-mix(in srgb,var(--color-accent) 12%,transparent);display:flex;align-items:center;justify-content:center;margin-left:auto">
+                    <i class="ph ph-arrow-right" style="font-size:16px;color:var(--color-accent)"></i>
+                  </div>
+                </td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+        </sc-if>
+
+        <sc-if value="{{ modoOrdensBuscar }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="position:relative;width:260px">
+              <i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:10px;font-size:15px;color:color-mix(in srgb,var(--color-text) 40%,transparent)"></i>
+              <input class="input" placeholder="Buscar por itens" style="padding-left:32px" value="{{ buscaOrdens }}" onChange="{{ mudarBuscaOrdens }}">
+            </div>
+            <button class="btn btn-secondary" onClick="{{ toggleFiltrosOrdens }}"><i class="ph {{ iconeFiltrosOrdens }}"></i>Filtros</button>
+          </div>
+          <sc-if value="{{ mostrarFiltrosOrdens }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius:12px;background:var(--color-surface);box-shadow:var(--shadow-sm);padding:16px 18px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px">
+            <div class="field"><label>Fornecedor</label><select class="input"><option value="">Todos</option></select></div>
+            <div class="field"><label>Órgão</label><select class="input"><option value="">Todos</option></select></div>
+            <div class="field"><label>Data inicial</label><input class="input" type="date"></div>
+            <div class="field"><label>Data final</label><input class="input" type="date"></div>
+            <div class="field"><label>Valor mínimo</label><input class="input num" placeholder="0,00"></div>
+          </div>
+          </sc-if>
+        </div>
+
+        <div style="overflow-x:auto">
+        <table class="table" style="min-width:920px">
+          <thead><tr><th style="width:110px">Ordem</th><th style="width:130px">Contrato/ARP</th><th>Fornecedor</th><th style="width:110px">Data</th><th style="width:130px;text-align:right">Valor</th><th style="width:110px">Status</th><th style="width:150px">Assinaturas</th><th style="width:80px"></th><th style="width:36px"></th></tr></thead>
+          <tbody>
+            <sc-for list="{{ ordensFlat }}" as="o" hint-placeholder-count="5">
+              <tr>
+                <td class="num" style="font-family:var(--font-heading);font-weight:500">{{ o.numero }}</td>
+                <td>
+                  <div class="num" style="font-size:12.5px;margin-bottom:3px">{{ o.contratoArpLabel }}</div>
+                  <span class="{{ o.contratoArpTag }}" style="font-size:10px">{{ o.contratoArpTexto }}</span>
+                </td>
+                <td style="font-size:13px;color:color-mix(in srgb,var(--color-text) 70%,transparent)">{{ o.fornecedor }}</td>
+                <td class="num" style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ o.data }}</td>
+                <td class="num" style="text-align:right">R$ {{ o.valorFmt }}</td>
+                <td><span class="{{ o.statusTag }}">{{ o.statusLabel }}</span></td>
+                <td><span class="{{ o.assinaturaTag }}" style="font-size:11px">{{ o.assinaturaLabel }}</span></td>
+                <td>
+                  <sc-if value="{{ o.podeImprimir }}" hint-placeholder-val="{{ false }}">
+                  <button class="btn btn-ghost" style="font-size:11.5px;padding:5px 8px"><i class="ph ph-printer"></i>Imprimir</button>
+                  </sc-if>
+                </td>
+                <td style="position:relative;text-align:right">
+                  <i class="ph ph-dots-three-vertical" style="font-size:18px;cursor:pointer;color:color-mix(in srgb,var(--color-text) 55%,transparent)" onClick="{{ o.toggleMenu }}"></i>
+                  <sc-if value="{{ o.menuAberto }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;right:0;top:26px;z-index:10;background:var(--color-surface);box-shadow:var(--shadow-md);border-radius:8px;padding:6px;min-width:160px">
+                    <div onClick="{{ o.abrirHistorico }}" style="padding:8px 10px;border-radius:6px;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:8px"><i class="ph ph-clock-counter-clockwise"></i>Ver histórico</div>
+                  </div>
+                  </sc-if>
+                </td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+        </div>
+        </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ comSubPagina }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ voltarPainelOrdens }}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--color-accent);cursor:pointer;margin-bottom:16px"><i class="ph ph-arrow-left" style="font-size:14px"></i>Painel de ordens</div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:22px">
+          <div>
+            <h2 style="font-size:26px;margin:0">Ordens do contrato {{ contratoOrdensNumero }}</h2>
+            <p style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:8px 0 0">{{ contratoOrdensFornecedor }}</p>
+          </div>
+          <button class="btn btn-primary" onClick="{{ novaOrdemDesteContrato }}"><i class="ph ph-plus"></i>Nova ordem</button>
+        </div>
+        <table class="table">
+          <thead><tr><th style="width:120px">Ordem</th><th style="width:130px">Data</th><th>Itens</th><th style="width:150px;text-align:right">Valor</th><th style="width:110px">Status</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ ordensDoContrato }}" as="o" hint-placeholder-count="4">
+              <tr>
+                <td class="num" style="font-family:var(--font-heading);font-weight:500">{{ o.numero }}</td>
+                <td class="num" style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 58%,transparent)">{{ o.data }}</td>
+                <td style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 70%,transparent)">{{ o.itens }}</td>
+                <td class="num" style="text-align:right">R$ {{ o.valorFmt }}</td>
+                <td><span class="{{ o.tagClasse }}">{{ o.status }}</span></td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ historicoAbertoItem }}" hint-placeholder-val="{{ false }}">
+      <div style="position:fixed;inset:0;background:color-mix(in srgb,black 55%,transparent);display:flex;align-items:center;justify-content:center;z-index:50" onClick="{{ fecharHistorico }}">
+        <div style="width:460px;border-radius:14px;background:var(--color-surface);box-shadow:var(--shadow-lg);padding:24px" onClick="{{ pararPropagacao2 }}">
+          <h4 style="font-size:16px;margin:0 0 4px">Histórico da ordem {{ historicoAbertoItem.numero }}</h4>
+          <p style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:0 0 18px">Eventos em ordem cronológica</p>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <sc-for list="{{ historicoAbertoItem.eventos }}" as="ev" hint-placeholder-count="3">
+              <div style="display:flex;gap:12px">
+                <div style="width:8px;height:8px;border-radius:50%;background:var(--color-accent);margin-top:6px;flex:none"></div>
+                <div style="flex:1">
+                  <div style="font-size:13px;margin-bottom:2px">{{ ev.evento }}</div>
+                  <div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 50%,transparent)">{{ ev.autor }} · {{ ev.data }}</div>
+                  <a href="#" style="font-size:11.5px">Mostrar dados</a>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:20px"><button class="btn btn-secondary" onClick="{{ fecharHistorico }}">Fechar</button></div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ comWizard }}" hint-placeholder-val="{{ false }}">
+      <div style="max-width:1000px">
+        <div onClick="{{ fecharWizard }}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--color-accent);cursor:pointer;margin-bottom:16px"><i class="ph ph-arrow-left" style="font-size:14px"></i>Painel de ordens</div>
+        <h2 style="font-size:28px;margin:0 0 6px">Nova ordem de compra</h2>
+        <p style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 52%,transparent);margin:0 0 26px">A ordem inteira é gravada em uma única transação — ou tudo, ou nada.</p>
+
+        <div style="display:flex;gap:0;margin-bottom:28px">
+          <sc-for list="{{ passos }}" as="p" hint-placeholder-count="2">
+            <div style="{{ p.estilo }}">
+              <div style="{{ p.bolinha }}">{{ p.n }}</div>
+              <div>
+                <div style="font-size:13px;font-family:var(--font-heading);font-weight:500">{{ p.titulo }}</div>
+                <div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 42%,transparent)">{{ p.sub }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ passo1 }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:22px">
+            <sc-for list="{{ opcoesContrato }}" as="c" hint-placeholder-count="5">
+              <div onClick="{{ c.escolher }}" style="{{ c.estilo }}">
+                <div style="flex:none;width:74px">
+                  <div class="num" style="font-family:var(--font-heading);font-weight:500;font-size:14px">{{ c.numero }}</div>
+                  <div style="font-size:10.5px;color:color-mix(in srgb,var(--color-text) 40%,transparent);margin-top:2px">{{ c.modoCurto }}</div>
+                </div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13.5px">{{ c.fornecedor }}</div>
+                  <div style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 45%,transparent);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.objeto }}</div>
+                </div>
+                <div style="flex:none;width:180px">
+                  <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:5px">
+                    <span class="num">R$ {{ c.saldoFmt }}</span>
+                    <span style="color:color-mix(in srgb,var(--color-text) 42%,transparent)">livre</span>
+                  </div>
+                  <div style="height:4px;border-radius:2px;background:color-mix(in srgb,var(--color-text) 9%,transparent)">
+                    <div style="{{ c.barra }}"></div>
+                  </div>
+                </div>
+                <i class="{{ c.check }}" style="font-size:18px;flex:none;color:var(--color-accent)"></i>
+              </div>
+            </sc-for>
+          </div>
+          <button class="btn btn-primary" onClick="{{ irPasso2 }}" disabled="{{ semContrato }}">Selecionar itens<i class="ph ph-arrow-right"></i></button>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ passo2 }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:12px">
+            <div style="font-size:13px;color:color-mix(in srgb,var(--color-text) 60%,transparent)">Contrato <span class="num" style="color:var(--color-text)">{{ wizContrato }}</span> · {{ wizFornecedor }}</div>
+            <div style="font-size:12px;color:color-mix(in srgb,var(--color-text) 48%,transparent)">Saldo do contrato R$ <span class="num">{{ wizSaldo }}</span></div>
+          </div>
+
+          <table class="table">
+            <thead><tr><th>Item</th><th style="width:96px">Unidade</th><th style="width:110px;text-align:right">Disponível</th><th style="width:110px;text-align:right">Valor unit.</th><th style="width:118px">Qtd. a pedir</th><th style="width:130px;text-align:right">Subtotal</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ itensWizard }}" as="it" hint-placeholder-count="3">
+                <tr>
+                  <td style="font-size:13.5px">{{ it.descricao }}</td>
+                  <td style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ it.unidade }}</td>
+                  <td class="num" style="text-align:right">{{ it.disponivel }}</td>
+                  <td class="num" style="text-align:right;color:color-mix(in srgb,var(--color-text) 70%,transparent)">{{ it.valorUnitario }}</td>
+                  <td><input class="input num" type="number" min="0" value="{{ it.qtd }}" onChange="{{ it.mudar }}" style="text-align:right"></td>
+                  <td class="num" style="text-align:right">{{ it.subtotal }}</td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+
+          <sc-if value="{{ erroOrdem }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:10px;align-items:flex-start;padding:11px 14px;border-radius:8px;background:color-mix(in srgb,var(--color-accent) 14%,transparent);box-shadow:inset 0 0 0 1px var(--color-accent);margin-top:16px">
+              <i class="ph ph-warning-circle" style="font-size:16px;color:var(--color-accent-300);margin-top:1px"></i>
+              <div style="font-size:12.5px;line-height:1.5">{{ erroOrdem }}</div>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:22px;padding-top:18px;box-shadow:inset 0 1px 0 var(--color-divider)">
+            <div style="display:flex;gap:32px">
+              <div>
+                <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent)">Itens</div>
+                <div class="num" style="font-size:18px;font-family:var(--font-heading);font-weight:500">{{ itensSelecionados }}</div>
+              </div>
+              <div>
+                <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent)">Total da ordem</div>
+                <div class="num" style="font-size:18px;font-family:var(--font-heading);font-weight:500">R$ {{ totalWizard }}</div>
+              </div>
+              <div>
+                <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent)">Saldo após emitir</div>
+                <div class="num" style="font-size:18px;font-family:var(--font-heading);font-weight:500;color:var(--color-accent-300)">R$ {{ saldoDepois }}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary" onClick="{{ voltarPasso1 }}">Voltar</button>
+              <button class="btn btn-primary" onClick="{{ emitir }}">Emitir ordem</button>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ passo3 }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:36px 0;max-width:520px">
+          <i class="ph-fill ph-check-circle" style="font-size:34px;color:var(--color-accent)"></i>
+          <h3 style="font-size:22px;margin:16px 0 8px">Ordem <span class="num">{{ numeroEmitida }}</span> emitida</h3>
+          <p style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 58%,transparent);margin:0 0 22px">R$ <span class="num">{{ totalEmitida }}</span> baixados do saldo do contrato <span class="num">{{ wizContrato }}</span>. O saldo por item já reflete esta ordem.</p>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onClick="{{ fecharWizard }}">Ver painel de ordens</button>
+            <button class="btn btn-secondary" onClick="{{ abrirWizard }}">Emitir outra</button>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ ehLicitacoes }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 40px 56px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:22px">
+        <div>
+          <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">Compras</div>
+          <h2 style="font-size:30px;margin:0">Licitações</h2>
+          <p style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:8px 0 0">6 processos · exercício 2026</p>
+        </div>
+        <button class="btn btn-primary" onClick="{{ toggleFormLicitacao }}"><i class="{{ iconeFormLicitacao }}"></i>{{ rotuloFormLicitacao }}</button>
+      </div>
+
+      <sc-if value="{{ mostrarFormLicitacao }}" hint-placeholder-val="{{ false }}">
+      <div style="border-radius:14px;background:var(--color-surface);box-shadow:var(--shadow-md);padding:20px 22px;margin-bottom:26px">
+        <h4 style="font-size:15px;margin:0 0 16px">Nova licitação</h4>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px">
+          <div class="field"><label>Número</label><input class="input" placeholder="018/2026"></div>
+          <div class="field"><label>Número do processo</label><input class="input" placeholder="PA-042/2026"></div>
+          <div class="field"><label>Modalidade</label>
+            <select class="input">
+              <option>Pregão eletrônico</option><option>Pregão presencial</option><option>Concorrência pública</option><option>Dispensa</option><option>Inexigibilidade</option><option>Carta convite</option><option>Chamamento público</option><option>Leilão</option><option>Concurso</option><option>Adesão a ata</option><option>RDC presencial</option><option>Diálogo competitivo</option>
+            </select>
+          </div>
+        </div>
+        <label class="radio" style="margin-bottom:14px"><input type="checkbox"><span class="dot"></span>Sistema de Registro de Preços (SRP)</label>
+        <div class="field" style="margin-bottom:16px"><label>Objeto</label><textarea class="input" style="min-height:60px"></textarea></div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-primary">Salvar licitação</button>
+          <button class="btn btn-secondary" onClick="{{ toggleFormLicitacao }}">Cancelar</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <table class="table">
+        <thead><tr><th style="width:100px">Número</th><th style="width:200px">Modalidade</th><th style="width:130px">Processo</th><th>Objeto</th><th style="width:110px">Contratos</th></tr></thead>
+        <tbody>
+          <sc-for list="{{ licitacoes }}" as="l" hint-placeholder-count="6">
+            <tr>
+              <td class="num" style="font-family:var(--font-heading);font-weight:500">{{ l.numero }}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                  <span style="font-size:12.5px">{{ l.modalidade }}</span>
+                  <sc-if value="{{ l.srpBool }}" hint-placeholder-val="{{ false }}"><span class="tag tag-outline">SRP</span></sc-if>
+                </div>
+              </td>
+              <td class="num" style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 58%,transparent)">{{ l.processo }}</td>
+              <td style="font-size:13px;color:color-mix(in srgb,var(--color-text) 72%,transparent)">{{ l.objeto }}</td>
+              <td class="num" style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 58%,transparent)">{{ l.contratos }}</td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ ehFornecedores }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 40px 56px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:22px">
+        <div>
+          <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">Compras</div>
+          <h2 style="font-size:30px;margin:0">Fornecedores</h2>
+          <p style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:8px 0 0">6 cadastrados</p>
+        </div>
+        <button class="btn btn-primary" onClick="{{ toggleFormFornecedor }}"><i class="{{ iconeFormFornecedor }}"></i>{{ rotuloFormFornecedor }}</button>
+      </div>
+
+      <sc-if value="{{ mostrarFormFornecedor }}" hint-placeholder-val="{{ false }}">
+      <div style="border-radius:14px;background:var(--color-surface);box-shadow:var(--shadow-md);padding:20px 22px;margin-bottom:26px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div class="field" style="width:220px"><label>CNPJ / CPF</label><input class="input num" placeholder="00.000.000/0000-00"></div>
+        <div class="field" style="flex:1;min-width:280px"><label>Razão social</label><input class="input" placeholder="Razão social do fornecedor"></div>
+        <button class="btn btn-primary">Salvar</button>
+        <button class="btn btn-secondary" onClick="{{ toggleFormFornecedor }}">Cancelar</button>
+      </div>
+      </sc-if>
+
+      <table class="table">
+        <thead><tr><th style="width:200px">CNPJ / CPF</th><th>Razão social</th><th style="width:110px;text-align:right">Contratos</th><th style="width:170px;text-align:right">Valor contratado</th></tr></thead>
+        <tbody>
+          <sc-for list="{{ fornecedores }}" as="f" hint-placeholder-count="6">
+            <tr>
+              <td class="num" style="font-size:13px;color:color-mix(in srgb,var(--color-text) 70%,transparent)">{{ f.cnpj }}</td>
+              <td>{{ f.razaoSocial }}</td>
+              <td class="num" style="text-align:right">{{ f.contratos }}</td>
+              <td class="num" style="text-align:right">R$ {{ f.valorFmt }}</td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ ehSecretarias }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 40px 56px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:22px">
+        <div>
+          <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">Administrativo</div>
+          <h2 style="font-size:30px;margin:0">Secretarias e responsáveis</h2>
+          <p style="font-size:13.5px;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin:8px 0 0">5 unidades · código PNCP por unidade compradora</p>
+        </div>
+        <button class="btn btn-primary" onClick="{{ toggleFormSecretaria }}"><i class="{{ iconeFormSecretaria }}"></i>{{ rotuloFormSecretaria }}</button>
+      </div>
+
+      <sc-if value="{{ mostrarFormSecretaria }}" hint-placeholder-val="{{ false }}">
+      <div style="border-radius:14px;background:var(--color-surface);box-shadow:var(--shadow-md);padding:20px 22px;margin-bottom:26px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div class="field" style="flex:1;min-width:280px"><label>Título</label><input class="input" placeholder="Secretaria Municipal de ..."></div>
+        <div class="field" style="width:200px"><label>Código unidade PNCP</label><input class="input num" placeholder="000000"></div>
+        <button class="btn btn-primary">Salvar</button>
+        <button class="btn btn-secondary" onClick="{{ toggleFormSecretaria }}">Cancelar</button>
+      </div>
+      </sc-if>
+
+      <table class="table">
+        <thead><tr><th>Unidade</th><th style="width:170px">Responsável</th><th style="width:160px">Código PNCP</th><th style="width:110px;text-align:right">Contratos</th></tr></thead>
+        <tbody>
+          <sc-for list="{{ secretarias }}" as="s" hint-placeholder-count="5">
+            <tr>
+              <td>{{ s.titulo }}</td>
+              <td style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 65%,transparent)">{{ s.responsavel }}</td>
+              <td><span class="{{ s.pncpClasse }}">{{ s.pncp }}</span></td>
+              <td class="num" style="text-align:right">{{ s.contratos }}</td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+    </sc-if>
+
+  </main>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:940},&quot;densidade&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compacta&quot;,&quot;confortavel&quot;],&quot;default&quot;:&quot;confortavel&quot;,&quot;tsType&quot;:&quot;'compacta' | 'confortavel'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;mostrarSaldoEmBarra&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+const FORNECEDORES = [
+  { id: 'f1', cnpj: '08.472.115/0001-63', razaoSocial: 'Nova Era Comércio de Materiais Ltda', contratos: 2, valor: 117150 },
+  { id: 'f2', cnpj: '14.902.336/0001-08', razaoSocial: 'Distribuidora Sul Mineira de Alimentos Ltda', contratos: 1, valor: 486300 },
+  { id: 'f3', cnpj: '27.118.450/0001-72', razaoSocial: 'Farmatec Distribuidora de Medicamentos Ltda', contratos: 1, valor: 312800 },
+  { id: 'f4', cnpj: '04.556.782/0001-19', razaoSocial: 'Construtora Vale do Peixe Eireli', contratos: 1, valor: 1248900 },
+  { id: 'f5', cnpj: '31.204.667/0001-45', razaoSocial: 'TecnoInfo Soluções em Informática Ltda', contratos: 1, valor: 189400 },
+  { id: 'f6', cnpj: '19.883.021/0001-90', razaoSocial: 'Auto Posto Bandeirantes Ltda', contratos: 1, valor: 640000 },
+];
+
+const SECRETARIAS = [
+  { id: 's1', titulo: 'Secretaria Municipal de Saúde', responsavel: 'Cláudia R. Faria', pncp: '000123', contratos: 2, curto: 'Saúde' },
+  { id: 's2', titulo: 'Secretaria Municipal de Educação', responsavel: 'Wagner T. Pinho', pncp: '000124', contratos: 1, curto: 'Educação' },
+  { id: 's3', titulo: 'Secretaria Municipal de Obras e Serviços Urbanos', responsavel: 'Élcio Batista', pncp: null, contratos: 2, curto: 'Obras' },
+  { id: 's4', titulo: 'Secretaria Municipal de Assistência Social', responsavel: 'Marli S. Bastos', pncp: '000126', contratos: 1, curto: 'Assist. Social' },
+  { id: 's5', titulo: 'Gabinete do Prefeito', responsavel: 'Renata Vilela', pncp: null, contratos: 1, curto: 'Gabinete' },
+];
+
+const LICITACOES = [
+  { id: 'l1', numero: '001/2026', processo: 'PA-001/2026', modalidade: 'Pregão eletrônico', srp: true, contratos: 1, objeto: 'Registro de preços para aquisição de material de escritório', vigenciaAta: '15/02/2026 – 14/02/2027' },
+  { id: 'l2', numero: '004/2026', processo: 'PA-011/2026', modalidade: 'Pregão eletrônico', srp: true, contratos: 1, objeto: 'Registro de preços para gêneros alimentícios da merenda escolar', vigenciaAta: '02/04/2026 – 01/04/2027' },
+  { id: 'l3', numero: '007/2026', processo: 'PA-019/2026', modalidade: 'Dispensa', srp: false, contratos: 0, objeto: 'Manutenção predial em unidades básicas de saúde' },
+  { id: 'l4', numero: '009/2026', processo: 'PA-024/2026', modalidade: 'Concorrência pública', srp: false, contratos: 1, objeto: 'Pavimentação asfáltica no Bairro São Cristóvão' },
+  { id: 'l5', numero: '012/2026', processo: 'PA-031/2026', modalidade: 'Inexigibilidade', srp: false, contratos: 1, objeto: 'Aquisição de medicamentos junto a fornecedor exclusivo' },
+  { id: 'l6', numero: '015/2026', processo: 'PA-038/2026', modalidade: 'Adesão a ata', srp: false, contratos: 1, objeto: 'Adesão a ata para aquisição de computadores e periféricos' },
+];
+
+const ATAS_DATA = [
+  { id: 'ata1', numero: '001/2026', processo: 'PA-001/2026', objeto: 'Registro de preços para aquisição de material de escritório',
+    vigencia: '15/02/2026 – 14/02/2027', modo: 'Quantidade × valor', casasDecimais: 2,
+    orgaos: [
+      { id: 's2', nome: 'Secretaria Municipal de Educação', papel: 'Gerenciador', valor: 62000, saldo: 38400,
+        itens: [
+          { descricao: 'Papel A4 75g (resma)', qtd: 800, valorUnit: 22.50, saldo: 320 },
+          { descricao: 'Caneta esferográfica azul (cx 50)', qtd: 120, valorUnit: 68.00, saldo: 54 },
+        ] },
+      { id: 's1', nome: 'Secretaria Municipal de Saúde', papel: 'Participante', valor: 24500, saldo: 9800,
+        itens: [
+          { descricao: 'Papel A4 75g (resma)', qtd: 300, valorUnit: 22.50, saldo: 96 },
+          { descricao: 'Pasta suspensa kraft (un.)', qtd: 500, valorUnit: 3.90, saldo: 210 },
+        ] },
+    ] },
+  { id: 'ata2', numero: '004/2026', processo: 'PA-011/2026', objeto: 'Registro de preços para gêneros alimentícios da merenda escolar',
+    vigencia: '02/04/2026 – 01/04/2027', modo: 'Quantidade × valor', casasDecimais: 2,
+    orgaos: [
+      { id: 's2', nome: 'Secretaria Municipal de Educação', papel: 'Gerenciador', valor: 310000, saldo: 128000,
+        itens: [
+          { descricao: 'Arroz tipo 1 (saco 30kg)', qtd: 1200, valorUnit: 98.00, saldo: 260 },
+          { descricao: 'Feijão carioca (saco 30kg)', qtd: 900, valorUnit: 145.00, saldo: 180 },
+        ] },
+      { id: 's4', nome: 'Secretaria Municipal de Assistência Social', papel: 'Participante', valor: 45000, saldo: 6200,
+        itens: [
+          { descricao: 'Arroz tipo 1 (saco 30kg)', qtd: 180, valorUnit: 98.00, saldo: 22 },
+        ] },
+    ] },
+];
+
+const CREDENCIAMENTOS_DATA = [
+  { id: 'cred1', numero: '002/2026', processo: 'PA-006/2026', objeto: 'Credenciamento de laboratórios para exames clínicos', vigencia: '10/01/2026 – 09/01/2027', detentores: 6 },
+];
+
+const MODOS = {
+  NORMAL: { nome: 'Quantidade × valor', icone: 'ph ph-list-checks', curto: 'saldo por item', descricao: 'Saldo por item, em quantidade e em valor. É o modo do MVP atual.',
+    explicacao: 'Cada item tem saldo próprio. Uma ordem é recusada quando qualquer linha excede a quantidade disponível daquele item.' },
+  GLOBAL: { nome: 'Valor global', icone: 'ph ph-currency-circle-dollar', curto: 'saldo global', descricao: 'Um único saldo financeiro para o contrato. Quantidades por item são referenciais.',
+    explicacao: 'O contrato tem um só saldo, em reais. As quantidades servem de referência de preço; o bloqueio ocorre no valor.' },
+  QUANTIDADE: { nome: 'Quantidade por item', icone: 'ph ph-package', curto: 'saldo por qtd.', descricao: 'Saldo apenas em quantidade, sem controle financeiro por item.',
+    explicacao: 'Usado quando o preço unitário varia por entrega (reajuste, medição). O controle é físico: quantidade contratada menos quantidade utilizada.' },
+};
+
+const CONTRATOS = [
+  { id: 'c1', numero: '010/2026', fornecedorId: 'f1', orgaoId: 's1', licitacao: '001/2026', objeto: 'Aquisição parcelada de material de escritório', valorTotal: 20650, saldo: 11650, situacao: 'VIGENTE', modo: 'NORMAL', vigencia: '01/01/2026 – 31/12/2026', ordens: 6, ultimaOrdem: '14/08/2026' },
+  { id: 'c2', numero: '013/2026', fornecedorId: 'f2', orgaoId: 's2', licitacao: '004/2026', objeto: 'Fornecimento de gêneros alimentícios para a merenda escolar', valorTotal: 486300, saldo: 201455, situacao: 'VIGENTE', modo: 'QUANTIDADE', vigencia: '01/02/2026 – 31/01/2027', ordens: 14, ultimaOrdem: '21/08/2026' },
+  { id: 'c3', numero: '018/2026', fornecedorId: 'f3', orgaoId: 's1', licitacao: '012/2026', objeto: 'Aquisição de medicamentos da rede básica de atenção à saúde', valorTotal: 312800, saldo: 96420, situacao: 'VIGENTE', modo: 'NORMAL', vigencia: '15/03/2026 – 14/03/2027', ordens: 11, ultimaOrdem: '19/08/2026' },
+  { id: 'c4', numero: '021/2026', fornecedorId: 'f4', orgaoId: 's3', licitacao: '009/2026', objeto: 'Execução de pavimentação asfáltica no Bairro São Cristóvão', valorTotal: 1248900, saldo: 742310, situacao: 'VIGENTE', modo: 'GLOBAL', vigencia: '10/04/2026 – 31/10/2026', ordens: 5, ultimaOrdem: '28/08/2026' },
+  { id: 'c5', numero: '024/2026', fornecedorId: 'f5', orgaoId: 's5', licitacao: '015/2026', objeto: 'Aquisição de computadores e periféricos', valorTotal: 189400, saldo: 0, situacao: 'VENCENDO', modo: 'NORMAL', vigencia: '02/05/2026 – 30/09/2026', ordens: 1, ultimaOrdem: '05/08/2026' },
+  { id: 'c6', numero: '027/2026', fornecedorId: 'f6', orgaoId: 's3', licitacao: '001/2026', objeto: 'Fornecimento de combustíveis para a frota municipal', valorTotal: 640000, saldo: 118750, situacao: 'VIGENTE', modo: 'QUANTIDADE', vigencia: '01/03/2026 – 28/02/2027', ordens: 9, ultimaOrdem: '26/08/2026' },
+  { id: 'c7', numero: '004/2025', fornecedorId: 'f1', orgaoId: 's4', licitacao: '001/2026', objeto: 'Aquisição de material de limpeza e higienização', valorTotal: 96500, saldo: 4210, situacao: 'VENCIDO', modo: 'NORMAL', vigencia: '01/03/2025 – 28/02/2026', ordens: 12, ultimaOrdem: '19/02/2026' },
+];
+
+const ITENS = {
+  c1: [
+    { id: 'i1', numero: 1, descricao: 'Papel A4, resma 500 folhas', unidade: 'Resma', quantidade: 500, valorUnitario: 22.5, utilizada: 180 },
+    { id: 'i2', numero: 2, descricao: 'Caneta esferográfica azul', unidade: 'Unidade', quantidade: 2000, valorUnitario: 1.1, utilizada: 900 },
+    { id: 'i3', numero: 3, descricao: 'Toner para impressora laser', unidade: 'Unidade', quantidade: 40, valorUnitario: 180, utilizada: 22 },
+  ],
+  c2: [
+    { id: 'i4', numero: 1, descricao: 'Arroz tipo 1, pacote 5 kg', unidade: 'Pacote', quantidade: 12000, valorUnitario: 24.9, utilizada: 7100 },
+    { id: 'i5', numero: 2, descricao: 'Feijão carioca, pacote 1 kg', unidade: 'Pacote', quantidade: 9000, valorUnitario: 8.75, utilizada: 5200 },
+    { id: 'i6', numero: 3, descricao: 'Leite integral UHT', unidade: 'Litro', quantidade: 28000, valorUnitario: 5.4, utilizada: 15800 },
+    { id: 'i7', numero: 4, descricao: 'Óleo de soja, frasco 900 ml', unidade: 'Frasco', quantidade: 4000, valorUnitario: 9.2, utilizada: 2400 },
+  ],
+  c3: [
+    { id: 'i8', numero: 1, descricao: 'Dipirona sódica 500 mg', unidade: 'Comprimido', quantidade: 120000, valorUnitario: 0.18, utilizada: 84000 },
+    { id: 'i9', numero: 2, descricao: 'Amoxicilina 500 mg', unidade: 'Cápsula', quantidade: 40000, valorUnitario: 0.95, utilizada: 26500 },
+    { id: 'i10', numero: 3, descricao: 'Insulina NPH 100 UI/ml, frasco 10 ml', unidade: 'Frasco', quantidade: 3200, valorUnitario: 42.6, utilizada: 2050 },
+  ],
+  c4: [
+    { id: 'i11', numero: 1, descricao: 'Concreto asfáltico usinado a quente (CBUQ)', unidade: 'Tonelada', quantidade: 3800, valorUnitario: 268, utilizada: 1420 },
+    { id: 'i12', numero: 2, descricao: 'Meio-fio de concreto pré-moldado', unidade: 'Metro', quantidade: 4200, valorUnitario: 38.5, utilizada: 2600 },
+    { id: 'i13', numero: 3, descricao: 'Imprimação com emulsão asfáltica', unidade: 'Metro quadrado', quantidade: 22000, valorUnitario: 3.2, utilizada: 9000 },
+  ],
+  c5: [
+    { id: 'i14', numero: 1, descricao: 'Computador desktop i5, 16 GB, SSD 512 GB', unidade: 'Unidade', quantidade: 40, valorUnitario: 4200, utilizada: 40 },
+    { id: 'i15', numero: 2, descricao: 'Monitor LED 24 polegadas', unidade: 'Unidade', quantidade: 40, valorUnitario: 535, utilizada: 40 },
+  ],
+  c6: [
+    { id: 'i16', numero: 1, descricao: 'Óleo diesel S-10', unidade: 'Litro', quantidade: 80000, valorUnitario: 6.15, utilizada: 66000 },
+    { id: 'i17', numero: 2, descricao: 'Gasolina comum', unidade: 'Litro', quantidade: 24000, valorUnitario: 6.05, utilizada: 18500 },
+  ],
+  c7: [
+    { id: 'i18', numero: 1, descricao: 'Água sanitária, frasco 1 litro', unidade: 'Frasco', quantidade: 9000, valorUnitario: 4.35, utilizada: 8700 },
+    { id: 'i19', numero: 2, descricao: 'Papel toalha interfolhado', unidade: 'Pacote', quantidade: 5000, valorUnitario: 11.35, utilizada: 4800 },
+  ],
+};
+
+const ADITIVOS = {
+  c4: [
+    { numero: '2º TA 021/2026', tipo: 'PRAZO', data: '03/08/2026', efeito: 'Vigência prorrogada de 30/06/2026 para 31/10/2026', valor: '+123 dias', rotuloValor: 'Prazo', fundamento: 'Art. 107', justificativa: 'Período de chuvas atípico impediu a execução do trecho 3 no cronograma original.' },
+    { numero: '1º TA 021/2026', tipo: 'VALOR', data: '12/05/2026', efeito: 'Acréscimo de 15% ao valor original, de R$ 1.086.000,00 para R$ 1.248.900,00', valor: '+R$ 162.900,00', rotuloValor: 'Valor', fundamento: 'Art. 125', justificativa: 'Reforço de sub-base em 640 m de extensão identificado após sondagem complementar.' },
+  ],
+  c2: [
+    { numero: '1º TA 013/2026', tipo: 'QUANTIDADE', data: '19/06/2026', efeito: 'Item 3 (Leite integral UHT) acrescido de 4.000 litros', valor: '+4.000 Litro', rotuloValor: 'Quantidade', fundamento: 'Art. 125', justificativa: 'Ampliação do atendimento em três creches municipais inauguradas no primeiro semestre.' },
+  ],
+};
+
+const ORDENS = [
+  { numero: 47, id: 'o1', contratoId: 'c4', valor: 184600, status: 'EMITIDA', data: '28/08/2026', itens: 'CBUQ · meio-fio', assinatura: 'CONCLUIDA',
+    historico: [
+      { evento: 'Ordem emitida', autor: 'Renata Vilela', data: '28/08/2026 09:12' },
+      { evento: 'Assinatura concluída', autor: 'Élcio Batista', data: '28/08/2026 14:40' },
+      { evento: 'Ordem cadastrada', autor: 'Renata Vilela', data: '27/08/2026 16:05' },
+    ] },
+  { numero: 46, id: 'o2', contratoId: 'c6', valor: 92250, status: 'EMITIDA', data: '26/08/2026', itens: 'Óleo diesel S-10', assinatura: 'PARCIAL',
+    historico: [
+      { evento: 'Ordem emitida', autor: 'Wagner T. Pinho', data: '26/08/2026 08:30' },
+      { evento: 'Ordem cadastrada', autor: 'Wagner T. Pinho', data: '25/08/2026 17:12' },
+    ] },
+  { numero: 45, id: 'o3', contratoId: 'c2', valor: 48770, status: 'EMITIDA', data: '21/08/2026', itens: 'Arroz · feijão · leite', assinatura: 'CONCLUIDA',
+    historico: [
+      { evento: 'Ordem emitida', autor: 'Wagner T. Pinho', data: '21/08/2026 10:02' },
+      { evento: 'Assinatura concluída', autor: 'Cláudia R. Faria', data: '21/08/2026 15:55' },
+      { evento: 'Ordem cadastrada', autor: 'Wagner T. Pinho', data: '20/08/2026 09:40' },
+    ] },
+  { numero: 44, id: 'o4', contratoId: 'c3', valor: 31815, status: 'CANCELADA', data: '19/08/2026', itens: 'Insulina NPH', assinatura: 'PENDENTE',
+    historico: [
+      { evento: 'Ordem cancelada', autor: 'Cláudia R. Faria', data: '19/08/2026 11:20' },
+      { evento: 'Ordem cadastrada', autor: 'Cláudia R. Faria', data: '18/08/2026 08:15' },
+    ] },
+  { numero: 43, id: 'o5', contratoId: 'c1', valor: 3487.5, status: 'EMITIDA', data: '14/08/2026', itens: 'Papel A4 · toner', assinatura: 'CONCLUIDA',
+    historico: [
+      { evento: 'Ordem emitida', autor: 'Wagner T. Pinho', data: '14/08/2026 09:00' },
+      { evento: 'Assinatura concluída', autor: 'Cláudia R. Faria', data: '14/08/2026 13:20' },
+    ] },
+  { numero: 42, id: 'o6', contratoId: 'c2', valor: 62340, status: 'EMITIDA', data: '11/08/2026', itens: 'Leite · óleo de soja', assinatura: 'CONCLUIDA',
+    historico: [
+      { evento: 'Ordem emitida', autor: 'Wagner T. Pinho', data: '11/08/2026 10:40' },
+      { evento: 'Assinatura concluída', autor: 'Marli S. Bastos', data: '11/08/2026 16:00' },
+    ] },
+  { numero: 41, id: 'o7', contratoId: 'c5', valor: 189400, status: 'EMITIDA', data: '05/08/2026', itens: 'Desktops · monitores', assinatura: 'PARCIAL',
+    historico: [
+      { evento: 'Ordem emitida', autor: 'Renata Vilela', data: '05/08/2026 09:30' },
+    ] },
+  { numero: 40, id: 'o8', contratoId: 'c3', valor: 27600, status: 'EMITIDA', data: '31/07/2026', itens: 'Dipirona · amoxicilina', assinatura: 'CONCLUIDA',
+    historico: [
+      { evento: 'Ordem emitida', autor: 'Cláudia R. Faria', data: '31/07/2026 08:50' },
+      { evento: 'Assinatura concluída', autor: 'Cláudia R. Faria', data: '31/07/2026 12:10' },
+    ] },
+  { numero: null, id: 'o9', contratoId: 'c2', valor: 51200, status: 'REQUISITADA', data: '02/09/2026', itens: 'Feijão · macarrão', assinatura: 'PENDENTE',
+    historico: [
+      { evento: 'Requisição cadastrada', autor: 'Wagner T. Pinho', data: '02/09/2026 11:00' },
+    ] },
+  { numero: null, id: 'o10', contratoId: 'c4', valor: 76900, status: 'REQUISITADA', data: '01/09/2026', itens: 'Sinalização viária', assinatura: 'PENDENTE',
+    historico: [
+      { evento: 'Requisição cadastrada', autor: 'Renata Vilela', data: '01/09/2026 15:30' },
+    ] },
+];
+
+const FIM_VIGENCIA = { c1: '2026-12-31', c2: '2027-01-31', c3: '2027-03-14', c4: '2026-10-31', c5: '2026-09-30', c6: '2027-02-28', c7: '2026-02-28' };
+const HOJE = new Date('2026-09-03T00:00:00');
+
+const MENU = [
+  { grupo: 'Compras', itens: [
+    { rota: 'dashboard', label: 'Visão geral', icone: 'ph ph-chart-line-up' },
+    { rota: 'contratos', label: 'Contratos', icone: 'ph ph-file-text' },
+    { rota: 'atas', label: 'Atas de registro de preços', icone: 'ph ph-notebook' },
+    { rota: 'ordens', label: 'Painel de ordens', icone: 'ph ph-clipboard-text' },
+    { rota: 'licitacoes', label: 'Licitações', icone: 'ph ph-gavel' },
+    { rota: 'fornecedores', label: 'Fornecedores', icone: 'ph ph-storefront' },
+  ]},
+  { grupo: 'Administrativo', itens: [
+    { rota: 'secretarias', label: 'Secretarias', icone: 'ph ph-buildings' },
+  ]},
+];
+
+const FILTROS_FORN = [
+  { k: 'valor', label: 'Valor contratado', titulo: 'Fornecedores por valor contratado' },
+  { k: 'vencimento', label: 'Próximos ao vencimento', titulo: 'Fornecedores com contratos próximos ao vencimento' },
+  { k: 'saldo', label: 'Próximos ao fim de saldo', titulo: 'Fornecedores com contratos próximos ao fim de saldo' },
+];
+
+const MODELOS = [
+  { id: 'contrato', nome: 'Minuta de contrato administrativo', icone: 'ph ph-file-text', campos: 18 },
+  { id: 'ordem', nome: 'Minuta de ordem de compra', icone: 'ph ph-clipboard-text', campos: 12 },
+  { id: 'aditivo', nome: 'Termo de aditamento contratual', icone: 'ph ph-file-plus', campos: 15 },
+  { id: 'extrato', nome: 'Extrato para publicação no DOM', icone: 'ph ph-newspaper', campos: 9 },
+];
+
+function n2(v) { return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function n0(v) { return v.toLocaleString('pt-BR'); }
+function forn(id) { return (FORNECEDORES.find((f) => f.id === id) || {}).razaoSocial || ''; }
+function orgao(id) { return SECRETARIAS.find((s) => s.id === id) || {}; }
+
+const TAG = { VIGENTE: 'tag tag-accent', VENCENDO: 'tag tag-outline', VENCIDO: 'tag tag-neutral' };
+const SIT = { VIGENTE: 'Vigente', VENCENDO: 'Vencendo', VENCIDO: 'Vencido' };
+
+const CARD_BASE = { padding: '11px 13px', borderRadius: 8, cursor: 'pointer', background: 'var(--color-surface)' };
+
+function letraSeq(n) { let s = ''; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; }
+function parseDataBr(d) { const p = d.split('/'); return new Date(+p[2], +p[1] - 1, +p[0]); }
+
+class Component extends DCLogic {
+  state = {
+    logado: true,
+    rota: 'contratos',
+    contratoAberto: 'c4',
+    aba: 'itens',
+    modos: {},
+    busca: '',
+    filtro: 'Todos',
+    mostrarFormContrato: false,
+    modoForm: 'NORMAL',
+    linhasItem: 2,
+    mostrarFormAditivo: false,
+    aditivoTipo: 'VALOR',
+    aditivoPerc: '15',
+    modeloMinuta: 'contrato',
+    mostrarFormLicitacao: false,
+    mostrarFormAta: false,
+    buscaAta: '',
+    filtroTipoAta: 'Atas',
+    ataAberta: null,
+    orgaoExpandido: null,
+    mostrarRemanejar: false,
+    remanejarOrigem: '',
+    remanejarDestino: '',
+    mostrarFormFornecedor: false,
+    mostrarFormSecretaria: false,
+    wizard: null,
+    passo: 1,
+    contratoSel: '',
+    quantidades: {},
+    erroOrdem: null,
+    numeroEmitida: null,
+    totalEmitida: null,
+    contratoOrdensAberto: null,
+    modoOrdens: 'contratos',
+    abaOrdensStatus: 'buscar',
+    mostrarFiltrosOrdens: false,
+    buscaOrdens: '',
+    menuOrdemAberto: null,
+    historicoAberto: null,
+  };
+
+  modoDe(c) { return this.state.modos[c.id] || c.modo; }
+
+  barra(frac, cor) {
+    return { width: Math.max(2, Math.round(frac * 100)) + '%', height: '100%', borderRadius: 2,
+      background: cor || 'var(--color-accent)', boxShadow: '0 0 10px color-mix(in srgb, var(--color-accent) 45%, transparent)' };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const ORDENS_NUMERADAS = ORDENS.filter((o) => o.status !== 'REQUISITADA');
+    const grupoContagem = {};
+    ORDENS_NUMERADAS.forEach((o) => { const k = o.contratoId + '|' + o.data; grupoContagem[k] = (grupoContagem[k] || 0) + 1; });
+    const contagemContrato = {};
+    const infoGrupo = {};
+    const letraMap = new Map();
+    ORDENS_NUMERADAS.slice().sort((a, b) => parseDataBr(a.data) - parseDataBr(b.data)).forEach((o) => {
+      const k = o.contratoId + '|' + o.data;
+      if (!infoGrupo[k]) {
+        contagemContrato[o.contratoId] = (contagemContrato[o.contratoId] || 0) + 1;
+        infoGrupo[k] = { letra: letraSeq(contagemContrato[o.contratoId]), n: 0 };
+      }
+      infoGrupo[k].n++;
+      letraMap.set(o, grupoContagem[k] > 1 ? infoGrupo[k].letra + infoGrupo[k].n : infoGrupo[k].letra);
+    });
+    const det = CONTRATOS.find((c) => c.id === s.contratoAberto) || CONTRATOS[0];
+    const modo = this.modoDe(det);
+    const detItensRaw = ITENS[det.id] || [];
+    const aditivos = ADITIVOS[det.id] || [];
+    const utilizado = det.valorTotal - det.saldo;
+
+    const wizContratoObj = CONTRATOS.find((c) => c.id === s.contratoSel);
+    const itensWizardBase = ITENS[s.contratoSel] || [];
+    const totalWiz = itensWizardBase.reduce((a, it) => a + (Number(s.quantidades[it.id] || 0) * it.valorUnitario), 0);
+    const selCount = Object.values(s.quantidades).filter((q) => Number(q) > 0).length;
+
+    const perc = Number(s.aditivoPerc.toString().replace(',', '.')) || 0;
+    const acrescimo = det.valorTotal * perc / 100;
+    const excede = perc > 25;
+
+    const buscaLower = s.busca.toLowerCase();
+    let contratosFiltrados = CONTRATOS.filter((c) => {
+      if (s.filtro === 'Vigentes' && c.situacao !== 'VIGENTE') return false;
+      if (s.filtro === 'Vencendo' && c.situacao !== 'VENCENDO') return false;
+      if (s.filtro === 'Vencidos' && c.situacao !== 'VENCIDO') return false;
+      if (!buscaLower) return true;
+      return (c.numero + ' ' + c.objeto + ' ' + forn(c.fornecedorId)).toLowerCase().indexOf(buscaLower) >= 0;
+    });
+    const ord = s.ordenacao || { campo: null, dir: 'asc' };
+    if (ord.campo) {
+      const mult = ord.dir === 'asc' ? 1 : -1;
+      const chave = {
+        numero: (c) => c.numero,
+        fornecedor: (c) => forn(c.fornecedorId),
+        orgao: (c) => orgao(c.orgaoId).curto,
+        saldo: (c) => c.saldo,
+        situacao: (c) => c.situacao,
+      }[ord.campo];
+      contratosFiltrados = contratosFiltrados.slice().sort((a, b) => {
+        const va = chave(a), vb = chave(b);
+        if (typeof va === 'number') return (va - vb) * mult;
+        return String(va).localeCompare(String(vb), 'pt-BR') * mult;
+      });
+    }
+    const ordenarPor = (campo) => () => this.setState({
+      ordenacao: { campo: campo, dir: (ord.campo === campo && ord.dir === 'asc') ? 'desc' : 'asc' },
+    });
+    const setaCampo = (campo) => ({
+      icone: (ord.campo === campo && ord.dir === 'desc') ? 'ph-arrow-down' : 'ph-arrow-up',
+      estiloIcone: { fontSize: '11px', color: ord.campo === campo ? 'var(--color-accent)' : 'color-mix(in srgb,var(--color-text) 35%,transparent)' },
+      clicar: ordenarPor(campo),
+    });
+
+    const totalOrgaos = (a) => a.orgaos.reduce((acc, o) => ({ valor: acc.valor + o.valor, saldo: acc.saldo + o.saldo }), { valor: 0, saldo: 0 });
+    const buscaAtaLower = (s.buscaAta || '').toLowerCase();
+    const filtroAtivo = (a) => !buscaAtaLower || (a.numero + ' ' + a.objeto + ' ' + a.processo).toLowerCase().indexOf(buscaAtaLower) >= 0;
+    let atasFiltradas = ATAS_DATA.filter(filtroAtivo);
+    let credenciamentosFiltrados = CREDENCIAMENTOS_DATA.filter(filtroAtivo);
+    const ordAta = s.ordenacaoAta || { campo: null, dir: 'asc' };
+    if (ordAta.campo) {
+      const multA = ordAta.dir === 'asc' ? 1 : -1;
+      const chaveAta = { numero: (a) => a.numero, objeto: (a) => a.objeto, processo: (a) => a.processo }[ordAta.campo];
+      atasFiltradas = atasFiltradas.slice().sort((a, b) => {
+        const va = chaveAta(a), vb = chaveAta(b);
+        return String(va).localeCompare(String(vb), 'pt-BR') * multA;
+      });
+    }
+    const ordenarPorAta = (campo) => () => this.setState({
+      ordenacaoAta: { campo: campo, dir: (ordAta.campo === campo && ordAta.dir === 'asc') ? 'desc' : 'asc' },
+    });
+    const setaCampoAta = (campo) => ({
+      icone: (ordAta.campo === campo && ordAta.dir === 'desc') ? 'ph-arrow-down' : 'ph-arrow-up',
+      estiloIcone: { fontSize: '11px', color: ordAta.campo === campo ? 'var(--color-accent)' : 'color-mix(in srgb,var(--color-text) 35%,transparent)' },
+      clicar: ordenarPorAta(campo),
+    });
+
+    const ataAberta = ATAS_DATA.find((a) => a.id === s.ataAberta) || ATAS_DATA[0];
+    const totAta = totalOrgaos(ataAberta);
+    const percAta = totAta.valor ? totAta.saldo / totAta.valor : 0;
+    const circ = 2 * Math.PI * 42;
+
+    const maxForn = 1248900;
+    const filtroForn = s.filtroForn || 'valor';
+    const dias = (id) => Math.round((new Date(FIM_VIGENCIA[id] + 'T00:00:00') - HOJE) / 86400000);
+
+    let listaFornecedores;
+    if (filtroForn === 'valor') {
+      listaFornecedores = FORNECEDORES.slice().sort((a, b) => b.valor - a.valor).slice(0, 5).map((f) => ({
+        nome: f.razaoSocial, valorFmt: 'R$ ' + n2(f.valor), barra: this.barra(f.valor / maxForn),
+      }));
+    } else if (filtroForn === 'vencimento') {
+      listaFornecedores = FORNECEDORES.map((f) => {
+        const meus = CONTRATOS.filter((c) => c.fornecedorId === f.id);
+        const d = Math.min.apply(null, meus.map((c) => dias(c.id)));
+        const alvo = meus.find((c) => dias(c.id) === d);
+        return { f: f, d: d, alvo: alvo };
+      }).sort((a, b) => a.d - b.d).slice(0, 5).map((x) => ({
+        nome: x.f.razaoSocial + ' · ' + x.alvo.numero,
+        valorFmt: x.d < 0 ? 'vencido há ' + Math.abs(x.d) + ' dias' : x.d + ' dias',
+        barra: this.barra(Math.max(0.02, Math.min(1, 1 - Math.max(0, x.d) / 365))),
+      }));
+    } else {
+      listaFornecedores = FORNECEDORES.map((f) => {
+        const meus = CONTRATOS.filter((c) => c.fornecedorId === f.id && c.situacao !== 'VENCIDO');
+        if (!meus.length) return null;
+        const fracs = meus.map((c) => (c.valorTotal ? c.saldo / c.valorTotal : 0));
+        const menor = Math.min.apply(null, fracs);
+        const alvo = meus[fracs.indexOf(menor)];
+        return { f: f, frac: menor, alvo: alvo };
+      }).filter(Boolean).sort((a, b) => a.frac - b.frac).slice(0, 5).map((x) => ({
+        nome: x.f.razaoSocial + ' · ' + x.alvo.numero,
+        valorFmt: 'R$ ' + n2(x.alvo.saldo),
+        barra: this.barra(Math.max(0.02, 1 - x.frac)),
+      }));
+    }
+    const minutaTextos = {
+      contrato: {
+        titulo: 'Minuta de contrato administrativo nº ' + det.numero,
+        p: [
+          'O MUNICÍPIO DE MURIAÉ, Estado de Minas Gerais, pessoa jurídica de direito público interno, inscrito no CNPJ sob o nº 18.338.202/0001-32, por intermédio da ' + orgao(det.orgaoId).titulo + ', doravante denominado CONTRATANTE, e ' + forn(det.fornecedorId) + ', inscrita no CNPJ sob o nº ' + ((FORNECEDORES.find((f) => f.id === det.fornecedorId) || {}).cnpj || '') + ', doravante denominada CONTRATADA, celebram o presente contrato administrativo, decorrente do procedimento licitatório nº ' + det.licitacao + ', com fundamento na Lei nº 14.133, de 1º de abril de 2021.',
+          'CLÁUSULA PRIMEIRA — DO OBJETO. Constitui objeto do presente instrumento ' + det.objeto.charAt(0).toLowerCase() + det.objeto.slice(1) + ', conforme especificações, quantidades e preços unitários constantes do anexo I, que integra este contrato independentemente de transcrição.',
+          'CLÁUSULA SEGUNDA — DO VALOR. O valor total do contrato é de R$ ' + n2(det.valorTotal) + ', compreendendo ' + detItensRaw.length + ' itens. O controle de saldo observará a forma "' + MODOS[modo].nome + '", nos termos da cláusula sétima.',
+          'CLÁUSULA TERCEIRA — DA VIGÊNCIA. O presente contrato vigorará de ' + det.vigencia.replace(' – ', ' a ') + ', podendo ser prorrogado nas hipóteses e limites do art. 107 da Lei nº 14.133/2021, mediante termo aditivo devidamente justificado.',
+          'CLÁUSULA QUARTA — DO FORNECIMENTO. O fornecimento ocorrerá de forma parcelada, mediante ordens de compra emitidas pelo CONTRATANTE, das quais constarão os itens, as quantidades e o prazo de entrega. Nenhuma ordem será emitida em valor ou quantidade superior ao saldo disponível do contrato.',
+        ],
+      },
+      ordem: {
+        titulo: 'Minuta de ordem de compra — contrato nº ' + det.numero,
+        p: [
+          'Ao fornecedor ' + forn(det.fornecedorId) + '. Autorizamos o fornecimento dos itens abaixo relacionados, nos termos do contrato administrativo nº ' + det.numero + ', celebrado em decorrência do processo licitatório nº ' + det.licitacao + '.',
+          'A entrega deverá ocorrer no prazo de 10 (dez) dias corridos contados do recebimento desta ordem, no endereço indicado pela ' + orgao(det.orgaoId).titulo + ', acompanhada da respectiva nota fiscal, na qual deverá constar o número desta ordem de compra.',
+          'O pagamento será efetuado após o atesto do recebimento definitivo pelo fiscal do contrato, observada a forma de faturamento pactuada e a disponibilidade orçamentária da dotação vinculada.',
+          'Esta ordem consome o saldo do contrato no ato da emissão e não poderá ser alterada após a baixa; eventual correção se dará por cancelamento e nova emissão.',
+        ],
+      },
+      aditivo: {
+        titulo: 'Termo de aditamento ao contrato nº ' + det.numero,
+        p: [
+          'O MUNICÍPIO DE MURIAÉ, por intermédio da ' + orgao(det.orgaoId).titulo + ', e ' + forn(det.fornecedorId) + ' resolvem celebrar o presente TERMO ADITIVO ao contrato administrativo nº ' + det.numero + ', com fundamento no art. 125 da Lei nº 14.133/2021 e na justificativa técnica constante do processo administrativo.',
+          'CLÁUSULA PRIMEIRA. Fica o valor do contrato acrescido em ' + n2(perc) + '%, correspondente a R$ ' + n2(acrescimo) + ', passando o valor total de R$ ' + n2(det.valorTotal) + ' para R$ ' + n2(det.valorTotal + acrescimo) + '.',
+          'CLÁUSULA SEGUNDA. O acréscimo observa o limite de 25% do valor inicial atualizado do contrato, previsto no art. 125 da Lei nº 14.133/2021, e será suportado pela mesma dotação orçamentária originalmente vinculada.',
+          'CLÁUSULA TERCEIRA. Permanecem inalteradas as demais cláusulas e condições do contrato originário, que não colidam com o disposto neste termo aditivo.',
+        ],
+      },
+      extrato: {
+        titulo: 'Extrato para publicação — contrato nº ' + det.numero,
+        p: [
+          'EXTRATO DE CONTRATO. Contratante: Município de Muriaé/MG, por intermédio da ' + orgao(det.orgaoId).titulo + '. Contratada: ' + forn(det.fornecedorId) + '.',
+          'Objeto: ' + det.objeto + '. Processo licitatório: ' + det.licitacao + '. Valor total: R$ ' + n2(det.valorTotal) + '. Vigência: ' + det.vigencia.replace(' – ', ' a ') + '.',
+          'Fundamento legal: Lei nº 14.133/2021. Dotação orçamentária: 10.301.0012.2045 — 3.3.90.30.00 — Fonte 1.500.',
+          'Muriaé, ' + new Date().toLocaleDateString('pt-BR') + '. Publicado no Diário Oficial do Município.',
+        ],
+      },
+    };
+    const minuta = minutaTextos[s.modeloMinuta];
+
+    const setAba = (a) => () => this.setState({ aba: a, mostrarFormAditivo: false });
+
+    const comBarra = this.props.mostrarSaldoEmBarra !== false;
+
+    return {
+      densidade: this.props.densidade || 'compacta',
+      comBarra: comBarra,
+      semBarra: !comBarra,
+      telaLogin: !s.logado,
+      telaApp: s.logado,
+      entrar: (e) => { e.preventDefault(); this.setState({ logado: true, rota: 'contratos' }); },
+      sair: () => this.setState({ logado: false }),
+
+      grupos: MENU.map((g) => ({
+        grupo: g.grupo,
+        itens: g.itens.map((i) => ({
+          label: i.label, icone: i.icone,
+          on: (s.rota === i.rota || (i.rota === 'contratos' && s.rota === 'detalhe')) ? '1' : '0',
+          ir: () => this.setState({ rota: i.rota, wizard: null }),
+        })),
+      })),
+
+      ehDashboard: s.rota === 'dashboard',
+      ehContratos: s.rota === 'contratos',
+      ehAtas: s.rota === 'atas',
+      ehDetalhe: s.rota === 'detalhe',
+      ehOrdens: s.rota === 'ordens',
+      ehLicitacoes: s.rota === 'licitacoes',
+      ehFornecedores: s.rota === 'fornecedores',
+      ehSecretarias: s.rota === 'secretarias',
+
+      situacoes: [
+        { nome: 'Vigentes', valor: 5, frac: 5 / 7 },
+        { nome: 'Vencendo em 30 dias', valor: 1, frac: 1 / 7 },
+        { nome: 'Vencidos', valor: 1, frac: 1 / 7 },
+      ].map((x) => ({ nome: x.nome, valor: x.valor, barra: this.barra(x.frac) })),
+
+      tituloFornecedores: FILTROS_FORN.find((x) => x.k === filtroForn).titulo,
+      filtrosForn: FILTROS_FORN.map((x) => ({
+        label: x.label,
+        aplicar: () => this.setState({ filtroForn: x.k }),
+        estilo: Object.assign({ padding: '4px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' },
+          filtroForn === x.k
+            ? { color: 'var(--color-accent-200)', boxShadow: 'inset 0 0 0 1px var(--color-accent)' }
+            : { color: 'color-mix(in srgb, var(--color-text) 50%, transparent)', boxShadow: 'inset 0 0 0 1px var(--color-divider)' }),
+      })),
+      topFornecedores: listaFornecedores,
+
+      filtros: ['Todos', 'Vigentes', 'Vencendo', 'Vencidos'].map((f) => ({
+        label: f,
+        aplicar: () => this.setState({ filtro: f }),
+        estilo: Object.assign({ padding: '6px 12px', borderRadius: 8, fontSize: 12.5, cursor: 'pointer' },
+          s.filtro === f
+            ? { color: 'var(--color-accent-200)', boxShadow: 'inset 0 0 0 1px var(--color-accent)' }
+            : { color: 'color-mix(in srgb, var(--color-text) 55%, transparent)', boxShadow: 'inset 0 0 0 1px var(--color-divider)' }),
+      })),
+      busca: s.busca,
+      mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      colNumero: setaCampo('numero'),
+      colFornecedor: setaCampo('fornecedor'),
+      colOrgao: setaCampo('orgao'),
+      colSaldo: setaCampo('saldo'),
+      colSituacao: setaCampo('situacao'),
+
+      buscaAta: s.buscaAta,
+      mudarBuscaAta: (e) => this.setState({ buscaAta: e.target.value }),
+      filtrosTipoAta: ['Atas', 'Credenciamento'].map((f) => ({
+        label: f,
+        aplicar: () => this.setState({ filtroTipoAta: f }),
+        estilo: Object.assign({ padding: '6px 12px', borderRadius: 8, fontSize: 12.5, cursor: 'pointer' },
+          s.filtroTipoAta === f
+            ? { color: 'var(--color-accent-200)', boxShadow: 'inset 0 0 0 1px var(--color-accent)' }
+            : { color: 'color-mix(in srgb, var(--color-text) 55%, transparent)', boxShadow: 'inset 0 0 0 1px var(--color-divider)' }),
+      })),
+      ehListaAtas: s.filtroTipoAta === 'Atas',
+      ehListaCredenciamento: s.filtroTipoAta === 'Credenciamento',
+      colAtaNumero: setaCampoAta('numero'),
+      colAtaObjeto: setaCampoAta('objeto'),
+      colAtaProcesso: setaCampoAta('processo'),
+      atasFiltradas: atasFiltradas.map((a) => {
+        const tot = totalOrgaos(a);
+        const frac = tot.valor ? tot.saldo / tot.valor : 0;
+        return {
+          id: a.id, numero: a.numero, objeto: a.objeto, processo: a.processo, vigenciaFmt: a.vigencia,
+          saldoFmt: n2(tot.saldo), valorFmt: n2(tot.valor), barra: this.barra(frac),
+          abrir: () => this.setState({ rota: 'ataDetalhe', ataAberta: a.id, orgaoExpandido: null }),
+        };
+      }),
+      credenciamentosFiltrados: credenciamentosFiltrados.map((c) => ({
+        numero: c.numero, objeto: c.objeto, processo: c.processo, vigenciaFmt: c.vigencia, detentoresFmt: c.detentores + ' detentores',
+      })),
+      mostrarFormAta: s.mostrarFormAta,
+      toggleFormAta: () => this.setState({ mostrarFormAta: !s.mostrarFormAta }),
+      iconeFormAta: s.mostrarFormAta ? 'ph ph-x' : 'ph ph-plus',
+      rotuloFormAta: s.mostrarFormAta ? 'Cancelar' : 'Nova ata',
+
+      ehAtaDetalhe: s.rota === 'ataDetalhe',
+      ataDet: {
+        numero: ataAberta.numero, objeto: ataAberta.objeto, processo: ataAberta.processo, vigencia: ataAberta.vigencia,
+        valorFmt: n2(totAta.valor), saldoFmt: n2(totAta.saldo),
+        percLabel: Math.round(percAta * 100) + '%',
+        donutDash: circ, donutOffset: circ * (1 - percAta),
+        modo: ataAberta.modo, casasDecimais: 'casas decimais: ' + ataAberta.casasDecimais,
+      },
+      voltarAtas: () => this.setState({ rota: 'atas' }),
+      verContratosAta: () => this.setState({ rota: 'contratos', busca: ataAberta.numero }),
+      abrirRemanejar: () => this.setState({ mostrarRemanejar: true, remanejarOrigem: ataAberta.orgaos[0].id, remanejarDestino: (ataAberta.orgaos[1] || ataAberta.orgaos[0]).id }),
+      orgaosAta: ataAberta.orgaos.map((o) => ({
+        id: o.id, nome: o.nome, papel: o.papel,
+        tagClasse: o.papel === 'Gerenciador' ? 'tag tag-accent' : 'tag tag-neutral',
+        valorFmt: n2(o.valor), saldoFmt: n2(o.saldo),
+        aberto: s.orgaoExpandido === o.id,
+        toggle: () => this.setState({ orgaoExpandido: s.orgaoExpandido === o.id ? null : o.id }),
+        icone: s.orgaoExpandido === o.id ? 'ph-caret-up' : 'ph-caret-down',
+        itens: o.itens.map((it) => ({
+          descricao: it.descricao, qtdFmt: it.qtd, valorUnitFmt: n2(it.valorUnit), saldoFmt: it.saldo,
+          barra: this.barra(it.qtd ? it.saldo / it.qtd : 0),
+        })),
+      })),
+      mostrarRemanejar: s.mostrarRemanejar,
+      fecharRemanejar: () => this.setState({ mostrarRemanejar: false }),
+      pararPropagacao: (e) => e.stopPropagation(),
+      remanejarOrigens: ataAberta.orgaos.map((o) => ({ id: o.id, nome: o.nome })),
+      remanejarOrigem: s.remanejarOrigem,
+      remanejarDestino: s.remanejarDestino,
+      mudarRemanejarOrigem: (e) => this.setState({ remanejarOrigem: e.target.value }),
+      mudarRemanejarDestino: (e) => this.setState({ remanejarDestino: e.target.value }),
+      itemElegivelRemanejo: (() => {
+        const origem = ataAberta.orgaos.find((o) => o.id === s.remanejarOrigem);
+        const destino = ataAberta.orgaos.find((o) => o.id === s.remanejarDestino);
+        if (!origem || !destino || origem.id === destino.id) return null;
+        const item = origem.itens.find((it) => destino.itens.some((d) => d.descricao === it.descricao && d.valorUnit === it.valorUnit));
+        if (!item) return null;
+        return { descricao: item.descricao, saldoFmt: item.saldo, unidFmt: n2(item.valorUnit) };
+      })(),
+
+      contratosFiltrados: contratosFiltrados.map((c) => ({
+        numero: c.numero, fornecedor: forn(c.fornecedorId), objeto: c.objeto,
+        orgaoCurto: orgao(c.orgaoId).curto, modoCurto: MODOS[this.modoDe(c)].curto,
+        saldoFmt: n2(c.saldo), valorTotalFmt: n2(c.valorTotal),
+        barra: this.barra(c.valorTotal ? c.saldo / c.valorTotal : 0),
+        percSaldo: (c.valorTotal ? (c.saldo / c.valorTotal * 100) : 0).toFixed(1).replace('.', ',') + '%',
+        tagClasse: TAG[c.situacao], situacaoLabel: SIT[c.situacao],
+        abrir: () => this.setState({ rota: 'detalhe', contratoAberto: c.id, aba: 'itens', mostrarFormAditivo: false }),
+      })),
+
+      mostrarFormContrato: s.mostrarFormContrato,
+      rotuloFormContrato: s.mostrarFormContrato ? 'Descartar' : 'Novo contrato',
+      iconeFormContrato: s.mostrarFormContrato ? 'ph ph-x' : 'ph ph-plus',
+      toggleFormContrato: () => this.setState({ mostrarFormContrato: !s.mostrarFormContrato }),
+      modosForm: Object.keys(MODOS).map((k) => ({
+        nome: MODOS[k].nome, descricao: MODOS[k].descricao, icone: MODOS[k].icone,
+        escolher: () => this.setState({ modoForm: k }),
+        estilo: Object.assign({ padding: '12px 13px', borderRadius: 8, cursor: 'pointer' },
+          s.modoForm === k
+            ? { boxShadow: 'inset 0 0 0 1px var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent-200)' }
+            : { boxShadow: 'inset 0 0 0 1px var(--color-divider)' }),
+      })),
+      linhasItem: Array.from({ length: s.linhasItem }, () => ({
+        remover: () => this.setState({ linhasItem: Math.max(1, s.linhasItem - 1) }),
+      })),
+      addItemLinha: () => this.setState({ linhasItem: s.linhasItem + 1 }),
+
+      det: {
+        numero: det.numero, objeto: det.objeto, fornecedor: forn(det.fornecedorId), orgao: orgao(det.orgaoId).titulo,
+        vigencia: det.vigencia, licitacao: 'Licitação ' + det.licitacao,
+        tagClasse: TAG[det.situacao], situacaoLabel: SIT[det.situacao],
+        saldoFmt: n2(det.saldo), valorTotalFmt: n2(det.valorTotal), utilizadoFmt: n2(utilizado),
+        percSaldo: (det.valorTotal ? (det.saldo / det.valorTotal * 100) : 0).toFixed(1).replace('.', ',') + '%',
+        barra: this.barra(det.valorTotal ? det.saldo / det.valorTotal : 0),
+        qtdOrdens: det.ordens, ultimaOrdem: det.ultimaOrdem, qtdAditivos: aditivos.length,
+        notaAditivo: aditivos.some((a) => a.tipo === 'VALOR') ? 'inclui 1 aditivo de valor' : 'valor original',
+        notaAcrescimo: aditivos.length ? 'último em ' + aditivos[0].data : 'nenhum registrado',
+        explicacaoModo: MODOS[modo].explicacao,
+        novaVigencia: '28/02/2027',
+      },
+      voltarContratos: () => this.setState({ rota: 'contratos' }),
+      irMinutas: () => this.setState({ aba: 'minutas' }),
+      novaOrdemDoContrato: () => this.setState({ rota: 'ordens', wizard: 'aberto', passo: 2, contratoSel: det.id, quantidades: {}, erroOrdem: null }),
+
+      abas: [
+        { k: 'itens', label: 'Itens e saldo' },
+        { k: 'ordens', label: 'Ordens' },
+        { k: 'aditivos', label: 'Aditivos (' + aditivos.length + ')' },
+        { k: 'minutas', label: 'Minutas' },
+      ].map((a) => ({ label: a.label, on: s.aba === a.k ? '1' : '0', ir: setAba(a.k) })),
+      abaItens: s.aba === 'itens',
+      abaOrdens: s.aba === 'ordens',
+      abaAditivos: s.aba === 'aditivos',
+      abaMinutas: s.aba === 'minutas',
+
+      modosDetalhe: Object.keys(MODOS).map((k) => ({
+        nome: MODOS[k].nome, on: modo === k,
+        escolher: () => this.setState({ modos: Object.assign({}, s.modos, { [det.id]: k }) }),
+      })),
+      modoGlobal: modo === 'GLOBAL',
+      colQtd: modo !== 'GLOBAL',
+      colValor: modo !== 'QUANTIDADE',
+      colSaldoValor: modo === 'NORMAL',
+      detItens: detItensRaw.map((it) => ({
+        numero: it.numero, descricao: it.descricao, unidade: it.unidade,
+        quantidade: n0(it.quantidade), valorUnitario: n2(it.valorUnitario),
+        utilizada: n0(it.utilizada), disponivel: n0(it.quantidade - it.utilizada),
+        saldoValor: n2((it.quantidade - it.utilizada) * it.valorUnitario),
+      })),
+
+      detOrdens: ORDENS.filter((o) => o.contratoId === det.id).map((o) => ({
+        numero: det.numero + ' ' + letraMap.get(o), data: o.data, itens: o.itens, valor: n2(o.valor),
+        status: o.status === 'EMITIDA' ? 'Emitida' : 'Cancelada',
+        tagClasse: o.status === 'EMITIDA' ? 'tag tag-accent' : 'tag tag-neutral',
+      })),
+
+      temAditivos: aditivos.length > 0,
+      semAditivos: aditivos.length === 0,
+      detAditivos: aditivos.map((a) => ({
+        numero: a.numero, data: a.data, efeito: a.efeito, justificativa: a.justificativa,
+        valor: a.valor, rotuloValor: a.rotuloValor, fundamento: a.fundamento + ', Lei 14.133/2021',
+        tipoLabel: a.tipo === 'PRAZO' ? 'Prazo' : a.tipo === 'VALOR' ? 'Valor' : 'Quantidade',
+        icone: a.tipo === 'PRAZO' ? 'ph ph-calendar-plus' : a.tipo === 'VALOR' ? 'ph ph-currency-circle-dollar' : 'ph ph-package',
+      })),
+      mostrarFormAditivo: s.mostrarFormAditivo,
+      rotuloFormAditivo: s.mostrarFormAditivo ? 'Cancelar' : 'Novo aditivo',
+      iconeFormAditivo: s.mostrarFormAditivo ? 'ph ph-x' : 'ph ph-plus',
+      toggleFormAditivo: () => this.setState({ mostrarFormAditivo: !s.mostrarFormAditivo }),
+      salvarAditivo: () => this.setState({ mostrarFormAditivo: false }),
+      aditivoTipo: s.aditivoTipo,
+      mudarAditivoTipo: (e) => this.setState({ aditivoTipo: e.target.value }),
+      aditivoEhValor: s.aditivoTipo === 'VALOR' || s.aditivoTipo === 'SUPRESSAO',
+      aditivoEhPrazo: s.aditivoTipo === 'PRAZO',
+      aditivoEhQuantidade: s.aditivoTipo === 'QUANTIDADE',
+      aditivoNumero: (aditivos.length + 1) + 'º TA ' + det.numero,
+      aditivoPerc: s.aditivoPerc,
+      mudarAditivoPerc: (e) => this.setState({ aditivoPerc: e.target.value }),
+      aditivoValorFmt: 'R$ ' + n2(acrescimo),
+      aditivoNovoTotalFmt: 'R$ ' + n2(det.valorTotal + acrescimo),
+      aditivoAlerta: excede
+        ? 'Acréscimo de ' + n2(perc) + '% excede o limite de 25% do art. 125 da Lei 14.133/2021. Reduza o percentual ou instrua o processo com nova contratação.'
+        : 'Dentro do limite de 25% do art. 125 da Lei 14.133/2021. Restam ' + n2(25 - perc) + ' pontos percentuais de margem neste contrato.',
+      aditivoAlertaIcone: excede ? 'ph ph-warning-circle' : 'ph ph-check-circle',
+      aditivoAlertaEstilo: {
+        display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 14px', borderRadius: 8, marginBottom: 16,
+        background: excede ? 'color-mix(in srgb, var(--color-accent) 16%, transparent)' : 'color-mix(in srgb, var(--color-text) 5%, transparent)',
+        boxShadow: excede ? 'inset 0 0 0 1px var(--color-accent)' : 'inset 0 0 0 1px var(--color-divider)',
+        color: excede ? 'var(--color-accent-200)' : 'color-mix(in srgb, var(--color-text) 70%, transparent)',
+      },
+
+      modelosMinuta: MODELOS.map((m) => ({
+        nome: m.nome, icone: m.icone, campos: m.campos,
+        escolher: () => this.setState({ modeloMinuta: m.id }),
+        estilo: Object.assign({}, CARD_BASE,
+          s.modeloMinuta === m.id
+            ? { boxShadow: 'inset 0 0 0 1px var(--color-accent)', color: 'var(--color-accent-200)' }
+            : { boxShadow: 'var(--shadow-sm)' }),
+      })),
+      gerarMinuta: () => this.forceUpdate(),
+      minutaTitulo: minuta.titulo,
+      minutaParagrafos: minuta.p.map((t) => ({ texto: t })),
+
+      ordens: ORDENS.map((o) => {
+        const c = CONTRATOS.find((x) => x.id === o.contratoId) || {};
+        return {
+          numero: (c.numero || '') + ' ' + letraMap.get(o), contrato: c.numero, fornecedor: forn(c.fornecedorId),
+          data: o.data, valor: n2(o.valor),
+          status: o.status === 'EMITIDA' ? 'Emitida' : 'Cancelada',
+          tagClasse: o.status === 'EMITIDA' ? 'tag tag-accent' : 'tag tag-neutral',
+        };
+      }),
+      semWizard: !s.wizard,
+      comWizard: !!s.wizard,
+      abrirWizard: () => this.setState({ wizard: 'aberto', passo: 1, contratoSel: '', quantidades: {}, erroOrdem: null }),
+      fecharWizard: () => this.setState({ wizard: null, passo: 1 }),
+      passos: [
+        { n: '1', titulo: 'Contrato', sub: 'origem do saldo' },
+        { n: '2', titulo: 'Itens e quantidades', sub: 'validação item a item' },
+      ].map((p, i) => {
+        const on = s.passo >= i + 1;
+        return {
+          n: p.n, titulo: p.titulo, sub: p.sub,
+          estilo: { display: 'flex', alignItems: 'center', gap: 11, padding: '10px 18px 10px 0', marginRight: 18,
+            boxShadow: i === 0 ? 'inset -1px 0 0 var(--color-divider)' : 'none', opacity: on ? 1 : 0.45 },
+          bolinha: { width: 26, height: 26, flex: 'none', borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 12,
+            color: on ? 'var(--color-accent)' : 'inherit', boxShadow: 'inset 0 0 0 1px ' + (on ? 'var(--color-accent)' : 'var(--color-divider)') },
+        };
+      }),
+      passo1: s.passo === 1,
+      passo2: s.passo === 2,
+      passo3: s.passo === 3,
+      opcoesContrato: CONTRATOS.filter((c) => c.situacao !== 'VENCIDO' && c.saldo > 0).map((c) => ({
+        numero: c.numero, fornecedor: forn(c.fornecedorId), objeto: c.objeto,
+        modoCurto: MODOS[this.modoDe(c)].curto, saldoFmt: n2(c.saldo),
+        barra: this.barra(c.saldo / c.valorTotal),
+        check: s.contratoSel === c.id ? 'ph-fill ph-check-circle' : 'ph ph-circle',
+        escolher: () => this.setState({ contratoSel: c.id, quantidades: {} }),
+        estilo: Object.assign({ display: 'flex', alignItems: 'center', gap: 18, padding: '13px 15px', borderRadius: 8, cursor: 'pointer' },
+          s.contratoSel === c.id
+            ? { boxShadow: 'inset 0 0 0 1px var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 9%, transparent)' }
+            : { boxShadow: 'var(--shadow-sm)', background: 'var(--color-surface)' }),
+      })),
+      semContrato: !s.contratoSel,
+      irPasso2: () => { if (s.contratoSel) this.setState({ passo: 2, quantidades: {}, erroOrdem: null }); },
+      voltarPasso1: () => this.setState({ passo: 1 }),
+      wizContrato: wizContratoObj ? wizContratoObj.numero : '',
+      wizFornecedor: wizContratoObj ? forn(wizContratoObj.fornecedorId) : '',
+      wizSaldo: wizContratoObj ? n2(wizContratoObj.saldo) : '0,00',
+      itensWizard: itensWizardBase.map((it) => {
+        const q = Number(s.quantidades[it.id] || 0);
+        return {
+          descricao: it.descricao, unidade: it.unidade,
+          disponivel: n0(it.quantidade - it.utilizada), valorUnitario: n2(it.valorUnitario),
+          qtd: s.quantidades[it.id] || '',
+          subtotal: q > 0 ? n2(q * it.valorUnitario) : '—',
+          mudar: (e) => this.setState({ quantidades: Object.assign({}, s.quantidades, { [it.id]: e.target.value }) }),
+        };
+      }),
+      itensSelecionados: selCount,
+      totalWizard: n2(totalWiz),
+      saldoDepois: wizContratoObj ? n2(Math.max(0, wizContratoObj.saldo - totalWiz)) : '0,00',
+      erroOrdem: s.erroOrdem,
+      emitir: () => {
+        if (!selCount) { this.setState({ erroOrdem: 'Informe a quantidade de ao menos um item para emitir a ordem.' }); return; }
+        const excedeItem = itensWizardBase.find((it) => Number(s.quantidades[it.id] || 0) > (it.quantidade - it.utilizada));
+        if (excedeItem && this.modoDe(wizContratoObj) !== 'GLOBAL') {
+          this.setState({ erroOrdem: 'Quantidade pedida para "' + excedeItem.descricao + '" excede o saldo disponível de ' + n0(excedeItem.quantidade - excedeItem.utilizada) + ' ' + excedeItem.unidade + '. Nenhum item foi gravado.' });
+          return;
+        }
+        if (wizContratoObj && totalWiz > wizContratoObj.saldo) {
+          this.setState({ erroOrdem: 'Total de R$ ' + n2(totalWiz) + ' excede o saldo do contrato (R$ ' + n2(wizContratoObj.saldo) + '). A transação foi revertida por inteiro.' });
+          return;
+        }
+        this.setState({ passo: 3, numeroEmitida: wizContratoObj.numero + ' ' + letraSeq((contagemContrato[wizContratoObj.id] || 0) + 1), totalEmitida: n2(totalWiz), erroOrdem: null });
+      },
+      numeroEmitida: s.numeroEmitida,
+      totalEmitida: s.totalEmitida,
+
+      semSubPagina: !s.contratoOrdensAberto,
+      comSubPagina: !!s.contratoOrdensAberto,
+      resumoContratosOrdens: (() => {
+        const grupos = {};
+        ORDENS.forEach((o) => { (grupos[o.contratoId] = grupos[o.contratoId] || []).push(o); });
+        return Object.keys(grupos).map((cid) => {
+          const c = CONTRATOS.find((x) => x.id === cid) || {};
+          const lista = grupos[cid].slice().sort((a, b) => parseDataBr(b.data) - parseDataBr(a.data));
+          const total = lista.reduce((a, o) => a + o.valor, 0);
+          return {
+            id: cid, numero: c.numero, fornecedor: forn(c.fornecedorId), orgaoCurto: orgao(c.orgaoId).curto,
+            qtd: lista.length, totalFmt: n2(total), ultimaFmt: lista[0].data, ultimaData: parseDataBr(lista[0].data),
+            abrir: () => this.setState({ contratoOrdensAberto: cid }),
+          };
+        }).sort((a, b) => b.ultimaData - a.ultimaData);
+      })(),
+      voltarPainelOrdens: () => this.setState({ contratoOrdensAberto: null }),
+      contratoOrdensNumero: (CONTRATOS.find((c) => c.id === s.contratoOrdensAberto) || {}).numero || '',
+      contratoOrdensFornecedor: (() => { const c = CONTRATOS.find((c) => c.id === s.contratoOrdensAberto); return c ? forn(c.fornecedorId) : ''; })(),
+      ordensDoContrato: (() => {
+        const c = CONTRATOS.find((c) => c.id === s.contratoOrdensAberto);
+        if (!c) return [];
+        return ORDENS.filter((o) => o.contratoId === c.id).slice().sort((a, b) => parseDataBr(b.data) - parseDataBr(a.data)).map((o) => ({
+          numero: o.status === 'REQUISITADA' ? 'Solicitação' : c.numero + ' ' + letraMap.get(o), data: o.data, itens: o.itens, valorFmt: n2(o.valor),
+          status: o.status === 'EMITIDA' ? 'Emitida' : (o.status === 'REQUISITADA' ? 'Requisitada' : 'Cancelada'),
+          tagClasse: o.status === 'EMITIDA' ? 'tag tag-accent' : (o.status === 'REQUISITADA' ? 'tag tag-outline' : 'tag tag-neutral'),
+        }));
+      })(),
+      novaOrdemDesteContrato: () => this.setState({ wizard: 'aberto', passo: 2, contratoSel: s.contratoOrdensAberto || '', quantidades: {}, erroOrdem: null }),
+
+      modoOrdensContratos: s.modoOrdens === 'contratos',
+      modoOrdensBuscar: s.modoOrdens === 'buscar',
+      abasOrdensStatus: (() => {
+        const na = ORDENS.length;
+        const req = ORDENS.filter((o) => o.status === 'REQUISITADA').length;
+        const emi = ORDENS.filter((o) => o.status === 'EMITIDA').length;
+        const can = ORDENS.filter((o) => o.status === 'CANCELADA').length;
+        const atual = s.modoOrdens === 'contratos' ? 'contratos' : s.abaOrdensStatus;
+        return [
+          { k: 'contratos', label: 'Por contrato' },
+          { k: 'buscar', label: 'Buscar (' + na + ')' },
+          { k: 'requisicoes', label: 'Requisições (' + req + ')' },
+          { k: 'emitido', label: 'Emitido (' + emi + ')' },
+          { k: 'cancelado', label: 'Cancelado (' + can + ')' },
+        ].map((a) => ({
+          label: a.label,
+          on: atual === a.k ? '1' : '0',
+          ir: a.k === 'contratos'
+            ? () => this.setState({ modoOrdens: 'contratos', contratoOrdensAberto: null })
+            : () => this.setState({ modoOrdens: 'buscar', abaOrdensStatus: a.k }),
+        }));
+      })(),
+      mostrarFiltrosOrdens: s.mostrarFiltrosOrdens,
+      toggleFiltrosOrdens: () => this.setState({ mostrarFiltrosOrdens: !s.mostrarFiltrosOrdens }),
+      iconeFiltrosOrdens: s.mostrarFiltrosOrdens ? 'ph-caret-up' : 'ph-caret-down',
+      buscaOrdens: s.buscaOrdens,
+      mudarBuscaOrdens: (e) => this.setState({ buscaOrdens: e.target.value }),
+      ordensFlat: (() => {
+        const srpNums = new Set(LICITACOES.filter((l) => l.srp).map((l) => l.numero));
+        const buscaLower2 = (s.buscaOrdens || '').toLowerCase();
+        return ORDENS.filter((o) => {
+          if (s.abaOrdensStatus === 'requisicoes' && o.status !== 'REQUISITADA') return false;
+          if (s.abaOrdensStatus === 'emitido' && o.status !== 'EMITIDA') return false;
+          if (s.abaOrdensStatus === 'cancelado' && o.status !== 'CANCELADA') return false;
+          if (!buscaLower2) return true;
+          return o.itens.toLowerCase().indexOf(buscaLower2) >= 0;
+        }).slice().sort((a, b) => parseDataBr(b.data) - parseDataBr(a.data)).map((o) => {
+          const c = CONTRATOS.find((x) => x.id === o.contratoId) || {};
+          const ehArp = srpNums.has(c.licitacao);
+          const chave = o.id;
+          const assinaturaInfo = { CONCLUIDA: { label: 'Assinatura concluída', cls: 'tag tag-accent' }, PARCIAL: { label: 'Assinatura parcial', cls: 'tag tag-outline' }, PENDENTE: { label: 'Assinatura pendente', cls: 'tag tag-neutral' } }[o.assinatura];
+          return {
+            chave: chave,
+            numero: o.status === 'REQUISITADA' ? '—' : c.numero + ' ' + letraMap.get(o),
+            contratoArpLabel: c.numero, contratoArpTag: ehArp ? 'tag tag-accent-2' : 'tag tag-outline', contratoArpTexto: ehArp ? 'ARP' : 'Contrato',
+            fornecedor: forn(c.fornecedorId), data: o.data, valorFmt: n2(o.valor), itens: o.itens,
+            statusLabel: o.status === 'EMITIDA' ? 'Emitida' : (o.status === 'REQUISITADA' ? 'Requisitada' : 'Cancelada'),
+            statusTag: o.status === 'EMITIDA' ? 'tag tag-accent' : (o.status === 'REQUISITADA' ? 'tag tag-outline' : 'tag tag-neutral'),
+            assinaturaLabel: assinaturaInfo.label, assinaturaTag: assinaturaInfo.cls,
+            podeImprimir: o.status === 'EMITIDA',
+            menuAberto: s.menuOrdemAberto === chave,
+            toggleMenu: () => this.setState({ menuOrdemAberto: s.menuOrdemAberto === chave ? null : chave }),
+            abrirHistorico: () => this.setState({ historicoAberto: chave, menuOrdemAberto: null }),
+            historico: o.historico.map((h) => ({ evento: h.evento, autor: h.autor, data: h.data })),
+          };
+        });
+      })(),
+      historicoAbertoItem: (() => {
+        if (!s.historicoAberto) return null;
+        const found = ORDENS.find((o) => o.id === s.historicoAberto);
+        if (!found) return null;
+        const c = CONTRATOS.find((x) => x.id === found.contratoId) || {};
+        return { numero: found.status === 'REQUISITADA' ? 'Solicitação' : c.numero + ' ' + letraMap.get(found), eventos: found.historico };
+      })(),
+      fecharHistorico: () => this.setState({ historicoAberto: null }),
+      pararPropagacao2: (e) => e.stopPropagation(),
+
+      licitacoes: LICITACOES.map((l) => ({
+        numero: l.numero, modalidade: l.modalidade, processo: l.processo, objeto: l.objeto,
+        srpBool: l.srp, contratos: l.contratos === 1 ? '1 contrato' : l.contratos + ' contratos',
+        opcao: l.numero + ' — ' + l.modalidade,
+      })),
+      mostrarFormLicitacao: s.mostrarFormLicitacao,
+      rotuloFormLicitacao: s.mostrarFormLicitacao ? 'Cancelar' : 'Nova licitação',
+      iconeFormLicitacao: s.mostrarFormLicitacao ? 'ph ph-x' : 'ph ph-plus',
+      toggleFormLicitacao: () => this.setState({ mostrarFormLicitacao: !s.mostrarFormLicitacao }),
+
+      fornecedores: FORNECEDORES.map((f) => ({
+        cnpj: f.cnpj, razaoSocial: f.razaoSocial, contratos: f.contratos, valorFmt: n2(f.valor),
+        opcao: f.razaoSocial + ' (' + f.cnpj + ')',
+      })),
+      mostrarFormFornecedor: s.mostrarFormFornecedor,
+      rotuloFormFornecedor: s.mostrarFormFornecedor ? 'Cancelar' : 'Novo fornecedor',
+      iconeFormFornecedor: s.mostrarFormFornecedor ? 'ph ph-x' : 'ph ph-plus',
+      toggleFormFornecedor: () => this.setState({ mostrarFormFornecedor: !s.mostrarFormFornecedor }),
+
+      secretarias: SECRETARIAS.map((x) => ({
+        titulo: x.titulo, responsavel: x.responsavel, contratos: x.contratos,
+        pncp: x.pncp || 'Não vinculado',
+        pncpClasse: x.pncp ? 'tag tag-neutral num' : 'tag tag-outline',
+      })),
+      mostrarFormSecretaria: s.mostrarFormSecretaria,
+      rotuloFormSecretaria: s.mostrarFormSecretaria ? 'Cancelar' : 'Nova unidade',
+      iconeFormSecretaria: s.mostrarFormSecretaria ? 'ph ph-x' : 'ph ph-plus',
+      toggleFormSecretaria: () => this.setState({ mostrarFormSecretaria: !s.mostrarFormSecretaria }),
+    };
+  }
+}
+</script>
+</body>
+</html>

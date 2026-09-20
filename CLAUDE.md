@@ -109,10 +109,52 @@ during development; see the `findDetalhada(dbOrTx, ...)` helper pattern used to 
 ### Backend module layout
 
 One Nest module per business entity (`usuarios`, `secretarias`, `fornecedores`,
-`licitacoes`, `contratos`, `dotacoes`, `ordens`, `dashboard`), each with its own
-controller/service/dto, wired together in `src/app.module.ts`. `DbModule` (`src/db/db.module.ts`)
-is `@Global()` and exports a single `DRIZZLE` token — every service injects it rather than
-instantiating its own pool.
+`licitacoes`, `licitacoes-homologacao`, `contratos`, `aditivos`, `atas`, `dotacoes`,
+`configuracoes`, `unidades-executoras`, `ordens`, `dashboard` — check `src/app.module.ts`
+for the current, authoritative list), each with its own controller/service/dto, wired
+together in `src/app.module.ts`. `DbModule` (`src/db/db.module.ts`) is `@Global()` and
+exports a single `DRIZZLE` token — every service injects it rather than instantiating its
+own pool.
+
+### Homologação de licitação → extração determinística de planilha (`src/licitacoes-homologacao/`)
+
+Upload de uma planilha `.xlsx` de homologação (empresas vencedoras + itens distribuídos +
+valores) numa licitação, extraída e depois importada para os itens de uma Ata/Contrato. Ver
+`briefing_upload_homologacao.md` para o desenho original (via PDF+IA) e a conversa que levou
+à troca para planilha; pontos que não são óbvios lendo o código:
+
+- **Por que planilha, não PDF+IA**: a primeira versão extraía texto de PDF com `pdf-parse` e
+  mandava pra uma IA estruturar. Comparado com amostras reais do formato de homologação
+  tabular usado pelo sistema de pregão do município, a extração de texto de PDF embaralhava
+  a ordem das colunas de forma inconsistente entre blocos do mesmo documento — um parser
+  determinístico em cima daquele texto arriscava associar o preço errado ao item errado, sem
+  aviso. A planilha `.xlsx` exportada pelo mesmo sistema tem a mesma informação, mas em
+  linhas/colunas de verdade — sem essa ambiguidade.
+- **Formato esperado da planilha** (`ExtracaoHomologacaoService.extrair`): dentro de uma
+  única aba, cada fornecedor vencedor começa com uma linha só na coluna A no formato
+  `"Fornecedor: NOME- CNPJ"`, seguida de uma linha de cabeçalho de colunas, seguida das
+  linhas de item daquele fornecedor (colunas `ITEM, QUANTIDADE, UNIDADE, DESCRIÇÃO, MARCA,
+  MODELO, UNITÁRIO ADJUDICADO, TOTAL ADJUDICADO, UNITÁRIO ORÇADO, TOTAL ORÇADO, ECONOMIA %,
+  ECONOMIA R$`) até a próxima linha `"Fornecedor:"` ou o fim da planilha. Só `UNITÁRIO
+  ADJUDICADO` é importado como `valorUnitario` (é o preço realmente homologado); as colunas
+  de orçado/economia são ignoradas — na amostra real usada para desenhar isso, a coluna
+  ECONOMIA vinha com valores visivelmente errados no próprio sistema de origem.
+- **Tabelas de rascunho** (`licitacaoHomologacoes`, `homologacaoFornecedores`,
+  `homologacaoItens`) nunca são lidas por saldo/ordens/relatórios — só depois de
+  `concluir-revisao` (status `'revisado'`) é que ficam disponíveis para import via
+  `GET /licitacoes/:id/homologacao-itens`, que devolve uma cópia (não uma referência) para
+  `itensContrato`/`ataItens`. A revisão humana continua obrigatória mesmo com extração
+  determinística — planilhas reais têm erro de digitação (valor unitário trocado, etc.).
+- **Extração é síncrona** (mesma requisição do upload) — sem chamada externa, sem custo por
+  documento. Qualquer falha (planilha ilegível, nenhum bloco `"Fornecedor:"` encontrado)
+  grava `status: 'erro'` com `erroDetalhe`, sem nunca chegar a inserir fornecedor/item.
+- Arquivos ficam em `api/uploads/homologacoes/` (path configurável via
+  `HOMOLOGACAO_UPLOADS_DIR`, gitignored) com nome gerado (`randomUUID()`) — nunca o nome
+  original do arquivo, que fica só na coluna `arquivoNome` para exibição.
+- As queries de `LicitacoesHomologacaoService.detalhe()` usam `orderBy` explícito por `id`
+  nos fornecedores/itens — sem isso, um `UPDATE` (ex.: salvar um campo na tela de revisão)
+  pode fazer o Postgres devolver a linha em outra posição na próxima leitura, e a tela
+  "pula" itens de lugar a cada edição.
 
 ### Frontend
 
@@ -125,7 +167,8 @@ server-side if hit directly.
 
 ### What's deliberately not implemented
 
-Contract amendments (aditivos), the two alternate balance-control modes beyond
-`quantidade × valor unitário`, document/minuta generation, electronic signatures, AI-assisted
-item selection, and PNCP integration are out of scope for this MVP by design — see the
-project's own README for the phased roadmap this was built against.
+The two alternate balance-control modes beyond `quantidade × valor unitário`, electronic
+signatures, and PNCP integration are out of scope for this MVP by design — see the
+project's own README for the phased roadmap this was built against. (Contract amendments —
+`aditivos` —, document/minuta generation, and spreadsheet-based extraction of homologação
+documents *are* implemented; see the sections above.)

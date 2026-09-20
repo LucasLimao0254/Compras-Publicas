@@ -1,5 +1,5 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { and, eq, ne } from 'drizzle-orm';
 import * as bcrypt from 'bcryptjs';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import { permissoes, usuarios } from '../db/schema';
@@ -22,12 +22,28 @@ export class UsuariosService {
     return { ...rest, permissoes: perms.map((p) => p.recurso) };
   }
 
-  async create(tenantId: string, dto: CreateUsuarioDto) {
+  // CPF é a identidade da pessoa entre tenants (ver AuthService.trocarTenant)
+  // — sem essa checagem, qualquer admin de tenant poderia criar um usuário
+  // com o CPF de outra pessoa em outro tenant e, via troca de tenant, assumir
+  // a sessão dela (inclusive virando admin de plataforma se o CPF copiado for
+  // o de um). Só um admin de plataforma pode "vincular" um CPF já usado em
+  // outro tenant — criar usuários dentro do próprio tenant continua livre.
+  private async validarCpfEntreTenants(tenantId: string, cpf: string, callerEhAdminPlataforma: boolean) {
+    if (callerEhAdminPlataforma) return;
+    const outros = await this.db.select({ id: usuarios.id }).from(usuarios).where(and(eq(usuarios.cpf, cpf), ne(usuarios.tenantId, tenantId)));
+    if (outros.length) {
+      throw new BadRequestException('Este CPF já está cadastrado em outro município — só um administrador de plataforma pode vincular a mesma pessoa a mais de um tenant');
+    }
+  }
+
+  async create(tenantId: string, callerEhAdminPlataforma: boolean, dto: CreateUsuarioDto) {
     const existing = await this.db
       .select()
       .from(usuarios)
       .where(and(eq(usuarios.tenantId, tenantId), eq(usuarios.email, dto.email)));
     if (existing.length) throw new ConflictException('Já existe um usuário com este e-mail neste município');
+
+    await this.validarCpfEntreTenants(tenantId, dto.cpf, callerEhAdminPlataforma);
 
     const senhaHash = await bcrypt.hash(dto.senha, 10);
     const [created] = await this.db
@@ -64,7 +80,7 @@ export class UsuariosService {
     if (dto.senha) patch.senhaHash = await bcrypt.hash(dto.senha, 10);
 
     if (Object.keys(patch).length) {
-      await this.db.update(usuarios).set(patch).where(eq(usuarios.id, id));
+      await this.db.update(usuarios).set(patch).where(and(eq(usuarios.id, id), eq(usuarios.tenantId, tenantId)));
     }
 
     if (dto.permissoes) {
@@ -81,7 +97,7 @@ export class UsuariosService {
 
   async remove(tenantId: string, id: string) {
     await this.get(tenantId, id);
-    await this.db.delete(usuarios).where(eq(usuarios.id, id));
+    await this.db.delete(usuarios).where(and(eq(usuarios.id, id), eq(usuarios.tenantId, tenantId)));
     return { ok: true };
   }
 }

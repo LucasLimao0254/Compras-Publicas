@@ -3,3 +3,5 @@ dist/
 .env
 .pgdata/
 *.log
+api/uploads/
+web/token.txt

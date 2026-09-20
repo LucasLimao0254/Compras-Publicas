@@ -9,6 +9,10 @@ export class ItemContratoInput {
   @IsString() unidade: string;
   @IsNumber() quantidade: number;
   @IsNumber() valorUnitario: number;
+  // Item-mestre da homologação de onde esta linha abate saldo — ver
+  // SaldoCeilingService. Só válido quando o contrato tem ataOrgaoId ou
+  // homologacaoFornecedorId preenchido.
+  @IsOptional() @IsString() homologacaoItemId?: string;
 }
 
 export class CreateContratoDto {
@@ -19,6 +23,11 @@ export class CreateContratoDto {
   @IsString() orgaoGerenciadorId: string;
   @IsString() fornecedorId: string;
   @IsOptional() @IsString() fiscalId?: string;
+  // De onde o contrato abate saldo, quando vem da cadeia de homologação — no
+  // máximo um dos dois (ver ContratosService.create). Imutável depois de
+  // criado; nunca adicione estes campos em UpdateContratoDto.
+  @IsOptional() @IsString() ataOrgaoId?: string;
+  @IsOptional() @IsString() homologacaoFornecedorId?: string;
   @IsDateString() vigenciaInicial: string;
   @IsDateString() vigenciaFinal: string;
   @IsOptional() @IsDateString() dataAssinatura?: string;

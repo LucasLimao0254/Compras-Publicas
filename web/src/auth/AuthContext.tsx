@@ -8,12 +8,14 @@ export interface Usuario {
   email: string;
   tipoUsuario: 'ADMIN' | 'PADRAO';
   permissoes: string[];
+  ehAdminPlataforma: boolean;
 }
 
 interface Tenant {
   id: string;
   codigo: number;
   nome: string;
+  tipo: string | null;
 }
 
 interface AuthContextValue {
@@ -22,6 +24,7 @@ interface AuthContextValue {
   login: (email: string, senha: string, tenantCodigo: number) => Promise<void>;
   logout: () => void;
   temPermissao: (recurso: string) => boolean;
+  trocarTenant: (usuarioId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -45,6 +48,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTenant(data.tenant);
   }
 
+  // Emite uma nova sessão pra outro tenant da mesma pessoa (mesmo CPF), sem
+  // pedir senha de novo — ver AuthService.trocarTenant. Recarrega a página
+  // depois de trocar o storage: mais simples e seguro do que tentar
+  // invalidar/reconstruir todo o estado da aplicação em memória.
+  async function trocarTenant(usuarioId: string) {
+    const data = await api.post('/auth/trocar-tenant', { usuarioId });
+    localStorage.setItem('token', data.accessToken);
+    localStorage.setItem('usuario', JSON.stringify(data.usuario));
+    localStorage.setItem('tenant', JSON.stringify(data.tenant));
+    window.location.href = '/';
+  }
+
   function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
@@ -60,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ usuario, tenant, login, logout, temPermissao }}>
+    <AuthContext.Provider value={{ usuario, tenant, login, logout, temPermissao, trocarTenant }}>
       {children}
     </AuthContext.Provider>
   );

@@ -24,7 +24,7 @@ export class UsuariosController {
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateUsuarioDto) {
-    return this.service.create(user.tenantId, dto);
+    return this.service.create(user.tenantId, user.ehAdminPlataforma, dto);
   }
 
   @Patch(':id')

@@ -25,13 +25,13 @@ export class SecretariasService {
 
   async update(tenantId: string, id: string, dto: SecretariaDto) {
     await this.get(tenantId, id);
-    const [row] = await this.db.update(secretarias).set(dto).where(eq(secretarias.id, id)).returning();
+    const [row] = await this.db.update(secretarias).set(dto).where(and(eq(secretarias.id, id), eq(secretarias.tenantId, tenantId))).returning();
     return row;
   }
 
   async remove(tenantId: string, id: string) {
     await this.get(tenantId, id);
-    await this.db.delete(secretarias).where(eq(secretarias.id, id));
+    await this.db.delete(secretarias).where(and(eq(secretarias.id, id), eq(secretarias.tenantId, tenantId)));
     return { ok: true };
   }
 }

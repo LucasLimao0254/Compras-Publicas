@@ -12,10 +12,13 @@ import { JwtStrategy } from './jwt.strategy';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET') || 'dev-secret-change-me',
-        signOptions: { expiresIn: '8h' },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET');
+        // Mesmo motivo do JwtStrategy: nenhum fallback hardcoded — um
+        // segredo padrão no código permitiria forjar tokens válidos.
+        if (!secret) throw new Error('JWT_SECRET não configurado — defina essa variável de ambiente antes de iniciar a API');
+        return { secret, signOptions: { expiresIn: '8h' } };
+      },
     }),
   ],
   providers: [AuthService, JwtStrategy],

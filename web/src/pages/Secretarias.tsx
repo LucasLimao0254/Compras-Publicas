@@ -10,6 +10,7 @@ interface Secretaria {
 
 export function Secretarias() {
   const [lista, setLista] = useState<Secretaria[]>([]);
+  const [mostrarForm, setMostrarForm] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [codigoPncp, setCodigoPncp] = useState('');
   const [erro, setErro] = useState<string | null>(null);
@@ -27,6 +28,7 @@ export function Secretarias() {
       await api.post('/secretarias', { titulo, codigoUnidadePncp: codigoPncp || undefined });
       setTitulo('');
       setCodigoPncp('');
+      setMostrarForm(false);
       carregar();
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Erro ao salvar');
@@ -34,43 +36,42 @@ export function Secretarias() {
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold mb-4">Secretarias & Responsáveis</h1>
-
-      <form onSubmit={onSubmit} className="bg-white border rounded-lg p-4 mb-6 flex gap-3 items-end flex-wrap">
+    <div className="content-page">
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, marginBottom: 22 }}>
         <div>
-          <label className="block text-xs text-slate-600 mb-1">Título</label>
-          <input className="border rounded px-3 py-2 text-sm" value={titulo} onChange={(e) => setTitulo(e.target.value)} required />
+          <div className="eyebrow">Administrativo</div>
+          <h2 className="page-title">Secretarias e responsáveis</h2>
+          <p className="text-muted" style={{ fontSize: 13.5, margin: '8px 0 0' }}>{lista.length} {lista.length === 1 ? 'unidade' : 'unidades'}</p>
         </div>
-        <div>
-          <label className="block text-xs text-slate-600 mb-1">Código Unidade PNCP</label>
-          <input className="border rounded px-3 py-2 text-sm" value={codigoPncp} onChange={(e) => setCodigoPncp(e.target.value)} />
-        </div>
-        <button className="bg-[#4C2A85] text-white text-sm px-4 py-2 rounded">Adicionar Novo</button>
-        {erro && <span className="text-sm text-red-600">{erro}</span>}
-      </form>
-
-      <div className="bg-white border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left">
-            <tr>
-              <th className="px-4 py-2">Título</th>
-              <th className="px-4 py-2">Código PNCP</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lista.map((s) => (
-              <tr key={s.id} className="border-t">
-                <td className="px-4 py-2">{s.titulo}</td>
-                <td className="px-4 py-2 text-slate-500">{s.codigoUnidadePncp || 'Não vinculado'}</td>
-              </tr>
-            ))}
-            {!lista.length && (
-              <tr><td colSpan={2} className="px-4 py-6 text-center text-slate-400">Nenhuma secretaria cadastrada</td></tr>
-            )}
-          </tbody>
-        </table>
+        <button className="btn btn-primary" onClick={() => setMostrarForm((v) => !v)}>
+          <i className={`ph ${mostrarForm ? 'ph-x' : 'ph-plus'}`} />{mostrarForm ? 'Cancelar' : 'Nova unidade'}
+        </button>
       </div>
+
+      {mostrarForm && (
+        <form onSubmit={onSubmit} className="card elev-md" style={{ padding: '20px 22px', marginBottom: 26, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="field" style={{ flex: 1, minWidth: 280 }}><label>Título</label>
+            <input className="input" value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Secretaria Municipal de ..." required /></div>
+          <div className="field" style={{ width: 200 }}><label>Código unidade PNCP</label>
+            <input className="input num" value={codigoPncp} onChange={(e) => setCodigoPncp(e.target.value)} /></div>
+          <button className="btn btn-primary" type="submit">Salvar</button>
+          <button className="btn btn-secondary" type="button" onClick={() => setMostrarForm(false)}>Cancelar</button>
+          {erro && <span style={{ fontSize: 12.5, color: 'var(--color-critical)' }}>{erro}</span>}
+        </form>
+      )}
+
+      <table className="table">
+        <thead><tr><th>Unidade</th><th style={{ width: 160 }}>Código PNCP</th></tr></thead>
+        <tbody>
+          {lista.map((s) => (
+            <tr key={s.id}>
+              <td>{s.titulo}</td>
+              <td>{s.codigoUnidadePncp ? <span className="tag tag-neutral num">{s.codigoUnidadePncp}</span> : <span className="tag tag-outline">Não vinculado</span>}</td>
+            </tr>
+          ))}
+          {!lista.length && <tr><td colSpan={2} style={{ padding: '24px 0', textAlign: 'center' }} className="text-muted">Nenhuma secretaria cadastrada</td></tr>}
+        </tbody>
+      </table>
     </div>
   );
 }
