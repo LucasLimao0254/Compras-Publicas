@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+> `MODELO.md`, na raiz do repositório, é a fonte de verdade do domínio — a cascata de
+> abatimento Homologação → Ata → Contrato → Ordem, os dez invariantes que o sistema precisa
+> manter e as decisões de escopo do MVP. Em qualquer divergência entre este arquivo e
+> `MODELO.md`, `MODELO.md` vence; se algo aqui parecer contradizê-lo, é este arquivo que está
+> desatualizado.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
@@ -31,12 +37,27 @@ who prefers Docker over the embedded option.
 ```bash
 npm install
 npx drizzle-kit push --config=drizzle.config.ts   # create/sync tables from src/db/schema.ts — no separate migration files, push-based
+# push is interactive and unreliable for destructive changes (dropped/renamed columns, enum
+# value renames) in this environment — it prompts for a choice per change and the prompt
+# doesn't resolve non-interactively. For those, a one-off Node script with `pg.Client` running
+# the equivalent ALTER TABLE/ALTER TYPE directly against DATABASE_URL, then deleted, has been
+# the reliable path so far — additive changes (new table/column) push fine.
 npx ts-node -r dotenv/config src/db/seed.ts       # idempotent: creates tenant "código 1", admin user, one sample contract
 npm run start:dev      # nest start --watch, http://localhost:3001
 npm run build          # nest build -> dist/src/main.js (NOT dist/main.js — package.json's "start" script accounts for this)
 ```
 
-No test suite exists yet (Fase 5 of the build guide this project follows). `tsc --noEmit -p tsconfig.json` is the fastest way to type-check without a full Nest build.
+```bash
+npm test                    # full suite (Jest) — needs the embedded Postgres running (see above)
+npm run test:invariantes    # only api/test/invariantes/ — one spec per invariant in MODELO.md §2
+```
+
+`api/test/` is a self-contained integration harness against a real, disposable Postgres
+database (`compras_test`, dropped and recreated on every run from `src/db/schema.ts` via
+`npx drizzle-kit export`, since `drizzle-kit push` is unreliable for destructive schema
+changes in this environment — see the one-off `pg.Client` migration pattern below). It never
+touches the dev database. `tsc --noEmit -p tsconfig.json` is the fastest way to type-check
+without a full Nest build.
 
 ### Frontend (`web/`)
 
@@ -155,6 +176,33 @@ valores) numa licitação, extraída e depois importada para os itens de uma Ata
   nos fornecedores/itens — sem isso, um `UPDATE` (ex.: salvar um campo na tela de revisão)
   pode fazer o Postgres devolver a linha em outra posição na próxima leitura, e a tela
   "pula" itens de lugar a cada edição.
+
+### Minutas → geração de documento por marcador de texto (`src/minutas/`)
+
+Upload de um modelo `.docx` por tenant e por tipo (`ARP`, `CONTRATO`, `ADITIVO`,
+`APOSTILAMENTO` — `minutaModelos`, UNIQUE em `tenantId`+`tipo`; reenviar substitui, nunca
+acumula versões), com marcadores de texto (`{{numero_contrato}}` etc.) no corpo, substituídos
+na geração pelos dados reais da entidade. Ver MODELO.md, seção 8.
+
+- **Sem modelo cadastrado para um tipo, o documento daquele tipo não é gerado** — sem
+  fallback, sem modelo de sistema. `MinutasService.gerar()` rejeita explicitamente; o
+  frontend desabilita o botão de gerar com a razão dita ao lado
+  (`GerarMinutaButton`), nunca o esconde.
+- Mesmo padrão de upload de `licitacoes-homologacao`: nome gerado por `randomUUID()` no disco
+  (`MINUTAS_UPLOADS_DIR`, configurável e gitignored), nome original só em coluna. Diferença:
+  o controller usa multer em memória (não `diskStorage`) porque o service precisa abrir o
+  arquivo como zip (`JSZip.loadAsync`) *antes* de gravar, para rejeitar um `.docx` corrompido
+  sem nunca chegar a escrever no disco — por isso `enviarModelo()` recebe `{ originalname,
+  buffer }`, não um path.
+- Substituição é regex sobre `word/document.xml` dentro do `.docx` (que é um zip) — troca
+  `{{chave}}` pelo valor resolvido, com escape de XML (`&`, `<`, `>`, aspas) no valor, porque
+  o texto vem de campos livres (razão social, objeto etc.) que podem conter esses caracteres.
+- Upload restrito ao Administrador do tenant — checado dentro do `MinutasService`, não só no
+  `@RequirePermission` do controller.
+- `gerar()` não exige uma permissão própria no controller: é chamado a partir de telas já
+  gated por permissões diferentes conforme o tipo (contrato/ata), e o dado exposto é o mesmo
+  que a tela de origem já mostra; o isolamento que importa (tenant) é garantido dentro do
+  service, não no controller.
 
 ### Frontend
 
