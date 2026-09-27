@@ -171,10 +171,13 @@ export class ContratosService {
     if (ataExistente) throw new BadRequestException('Este fornecedor já tem uma ata para esta homologação — use ataOrgaoId em vez de homologacaoFornecedorId');
   }
 
-  private async validarItemPertenceAoFornecedor(tx: DrizzleDB, tenantId: string, homologacaoItemId: string, homologacaoFornecedorEsperado: string, descricao: string) {
-    const [row] = await tx.select({ homologacaoFornecedorId: homologacaoItens.homologacaoFornecedorId }).from(homologacaoItens).where(and(eq(homologacaoItens.id, homologacaoItemId), eq(homologacaoItens.tenantId, tenantId)));
+  // Devolve o item homologado (já confirmado como do fornecedor esperado) —
+  // é dele que saem descrição, unidade e valor unitário do item do contrato.
+  private async itemHomologadoDoFornecedor(tx: DrizzleDB, tenantId: string, homologacaoItemId: string, homologacaoFornecedorEsperado: string, descricao: string) {
+    const [row] = await tx.select().from(homologacaoItens).where(and(eq(homologacaoItens.id, homologacaoItemId), eq(homologacaoItens.tenantId, tenantId)));
     if (!row) throw new BadRequestException(`Item homologado referenciado por "${descricao}" não encontrado`);
     if (row.homologacaoFornecedorId !== homologacaoFornecedorEsperado) throw new BadRequestException(`Item "${descricao}" não pertence ao fornecedor deste contrato`);
+    return row;
   }
 
   // Contrato derivado de homologação ou de ata controla saldo por item —
@@ -188,36 +191,69 @@ export class ContratosService {
     }
   }
 
-  // Valida e, se ok, retorna nada — lança BadRequestException citando o item
-  // e o saldo restante quando a quantidade pedida excede o disponível.
-  private async validarTetoItens(
+  // Normaliza e valida os itens de um contrato contra a origem de saldo:
+  // - origem que resolve para uma homologação (homologacaoFornecedorId, ou
+  //   ata vinculada a uma homologação): todo item PRECISA referenciar um
+  //   item homologado, e descrição/unidade/valor unitário vêm dele, nunca do
+  //   que o cliente digitou (MODELO.md, invariante 2). Sem isso, um item
+  //   "digitado à mão" num contrato com origem escapava do teto por completo.
+  // - o mesmo item homologado não pode aparecer duas vezes no contrato — duas
+  //   linhas passavam na checagem de teto uma a uma e juntas a estouravam.
+  // - quantidade pedida ≤ saldo da ata (órgão) ou da homologação.
+  // Contrato sem origem (ou de ata comum, sem homologação) segue livre.
+  private async normalizarItensDaOrigem(
     tx: DrizzleDB,
     tenantId: string,
     itens: ItemContratoInput[],
     origem: { ataOrgaoId?: string; homologacaoFornecedorId?: string; ataHomologacaoFornecedorId?: string | null },
-  ) {
+    homologacaoItemIdsJaNoContrato: (string | null)[] = [],
+  ): Promise<ItemContratoInput[]> {
+    const homologacaoFornecedorDaOrigem = origem.ataOrgaoId ? origem.ataHomologacaoFornecedorId : origem.homologacaoFornecedorId;
+    const vistos = new Set(homologacaoItemIdsJaNoContrato.filter((v): v is string => !!v));
+    const normalizados: ItemContratoInput[] = [];
+
     for (const item of itens) {
-      if (!item.homologacaoItemId) continue;
+      if (!item.homologacaoItemId) {
+        if (homologacaoFornecedorDaOrigem) {
+          throw new BadRequestException(`Item "${item.descricao}" precisa referenciar um item da homologação — contratos com origem em ata/homologação não aceitam itens digitados à mão`);
+        }
+        normalizados.push(item);
+        continue;
+      }
       if (!origem.ataOrgaoId && !origem.homologacaoFornecedorId) {
         throw new BadRequestException(`Item "${item.descricao}" referencia homologação, mas o contrato não indica de onde puxa saldo (ataOrgaoId/homologacaoFornecedorId)`);
       }
+      if (!homologacaoFornecedorDaOrigem) {
+        throw new BadRequestException(`Item "${item.descricao}" referencia homologação, mas a ata deste contrato não está vinculada a uma homologação`);
+      }
+      if (vistos.has(item.homologacaoItemId)) {
+        throw new BadRequestException(`Item "${item.descricao}" aparece mais de uma vez neste contrato — informe a quantidade total numa única linha`);
+      }
+      vistos.add(item.homologacaoItemId);
+
+      const homologado = await this.itemHomologadoDoFornecedor(tx, tenantId, item.homologacaoItemId, homologacaoFornecedorDaOrigem, item.descricao);
+      const normalizado: ItemContratoInput = {
+        descricao: homologado.descricao,
+        unidade: homologado.unidade ?? item.unidade,
+        quantidade: item.quantidade,
+        valorUnitario: Number(homologado.valorUnitario),
+        homologacaoItemId: homologado.id,
+      };
+
       if (origem.ataOrgaoId) {
-        if (!origem.ataHomologacaoFornecedorId) {
-          throw new BadRequestException(`Item "${item.descricao}" referencia homologação, mas a ata deste contrato não está vinculada a uma homologação`);
+        const { disponivel } = await this.saldoCeiling.ataItemSaldoDisponivel(tx, tenantId, origem.ataOrgaoId, homologado.id);
+        if (normalizado.quantidade > disponivel) {
+          throw new BadRequestException(`Item "${normalizado.descricao}": quantidade (${normalizado.quantidade}) excede o saldo disponível na ata (${disponivel})`);
         }
-        await this.validarItemPertenceAoFornecedor(tx, tenantId, item.homologacaoItemId, origem.ataHomologacaoFornecedorId, item.descricao);
-        const { disponivel } = await this.saldoCeiling.ataItemSaldoDisponivel(tx, tenantId, origem.ataOrgaoId, item.homologacaoItemId);
-        if (item.quantidade > disponivel) {
-          throw new BadRequestException(`Item "${item.descricao}": quantidade (${item.quantidade}) excede o saldo disponível na ata (${disponivel})`);
-        }
-      } else if (origem.homologacaoFornecedorId) {
-        await this.validarItemPertenceAoFornecedor(tx, tenantId, item.homologacaoItemId, origem.homologacaoFornecedorId, item.descricao);
-        const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, item.homologacaoItemId);
-        if (item.quantidade > disponivel) {
-          throw new BadRequestException(`Item "${item.descricao}": quantidade (${item.quantidade}) excede o saldo homologado restante (${disponivel})`);
+      } else {
+        const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, homologado.id);
+        if (normalizado.quantidade > disponivel) {
+          throw new BadRequestException(`Item "${normalizado.descricao}": quantidade (${normalizado.quantidade}) excede o saldo homologado restante (${disponivel})`);
         }
       }
+      normalizados.push(normalizado);
     }
+    return normalizados;
   }
 
   async create(tenantId: string, dto: CreateContratoDto) {
@@ -232,11 +268,6 @@ export class ContratosService {
     }
     this.validarFormaControleSaldo(dto.formaControleSaldo, dto.ataOrgaoId, dto.homologacaoFornecedorId);
 
-    // Snapshot do valor original — base para o limite de 25%/50% do art. 125
-    // da Lei 14.133/2021 nos aditivos de valor (AditivosService), que nunca
-    // muda mesmo depois de aditivos aumentarem o valor corrente do contrato.
-    const valorOriginal = (dto.itens ?? []).reduce((acc, it) => acc + it.quantidade * it.valorUnitario, 0);
-
     const contratoId = await this.db.transaction(async (tx) => {
       let ataHomologacaoFornecedorId: string | null = null;
       if (dto.ataOrgaoId) {
@@ -247,11 +278,16 @@ export class ContratosService {
         await this.validarHomologacaoFornecedorDireto(tx, tenantId, dto.homologacaoFornecedorId, dto.licitacaoId, dto.fornecedorId);
       }
 
-      await this.validarTetoItens(tx, tenantId, dto.itens ?? [], {
+      const itens = await this.normalizarItensDaOrigem(tx, tenantId, dto.itens ?? [], {
         ataOrgaoId: dto.ataOrgaoId,
         homologacaoFornecedorId: dto.homologacaoFornecedorId,
         ataHomologacaoFornecedorId,
       });
+
+      // Snapshot do valor original — base para o limite de 25%/50% do art. 125
+      // da Lei 14.133/2021 nos aditivos de valor (AditivosService), que nunca
+      // muda mesmo depois de aditivos aumentarem o valor corrente do contrato.
+      const valorOriginal = itens.reduce((acc, it) => acc + it.quantidade * it.valorUnitario, 0);
 
       const [created] = await tx
         .insert(contratos)
@@ -276,9 +312,9 @@ export class ContratosService {
         })
         .returning();
 
-      if (dto.itens?.length) {
+      if (itens.length) {
         await tx.insert(itensContrato).values(
-          dto.itens.map((it, idx) => ({
+          itens.map((it, idx) => ({
             contratoId: created.id,
             numero: idx + 1,
             descricao: it.descricao,
@@ -328,24 +364,24 @@ export class ContratosService {
         const [ata] = await tx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(ataOrgaos).innerJoin(atas, eq(ataOrgaos.ataId, atas.id)).where(eq(ataOrgaos.id, contrato.ataOrgaoId));
         ataHomologacaoFornecedorId = ata?.homologacaoFornecedorId ?? null;
       }
-      await this.validarTetoItens(tx, tenantId, [item], {
+      const existentes = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
+      const [normalizado] = await this.normalizarItensDaOrigem(tx, tenantId, [item], {
         ataOrgaoId: contrato.ataOrgaoId ?? undefined,
         homologacaoFornecedorId: contrato.homologacaoFornecedorId ?? undefined,
         ataHomologacaoFornecedorId,
-      });
+      }, existentes.map((e) => e.homologacaoItemId));
 
-      const existentes = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
       const proximoNumero = existentes.length + 1;
       const [row] = await tx
         .insert(itensContrato)
         .values({
           contratoId,
           numero: proximoNumero,
-          descricao: item.descricao,
-          unidade: item.unidade,
-          quantidade: String(item.quantidade),
-          valorUnitario: String(item.valorUnitario),
-          homologacaoItemId: item.homologacaoItemId,
+          descricao: normalizado.descricao,
+          unidade: normalizado.unidade,
+          quantidade: String(normalizado.quantidade),
+          valorUnitario: String(normalizado.valorUnitario),
+          homologacaoItemId: normalizado.homologacaoItemId,
         })
         .returning();
       return row;
