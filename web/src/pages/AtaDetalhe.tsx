@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { RemanejarSaldoModal } from '../components/RemanejarSaldoModal';
 import { ImportarHomologacaoModal } from '../components/ImportarHomologacaoModal';
@@ -14,7 +14,6 @@ interface ContratoDaAta { id: string; numero: string; saldoDisponivel: number; v
 
 export function AtaDetalhe() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [ata, setAta] = useState<any>(null);
   const [orgaoAberto, setOrgaoAberto] = useState<string | null>(null);
   const [itensPorOrgao, setItensPorOrgao] = useState<Record<string, Item[]>>({});
@@ -32,8 +31,9 @@ export function AtaDetalhe() {
   const [importarPlanilhaOrgao, setImportarPlanilhaOrgao] = useState<string | null>(null);
   const [itemEditando, setItemEditando] = useState<Item | null>(null);
   const [itemHistorico, setItemHistorico] = useState<{ orgaoId: string; item: Item } | null>(null);
-  const [confirmandoRenovar, setConfirmandoRenovar] = useState(false);
-  const [renovando, setRenovando] = useState(false);
+  const [prorrogando, setProrrogando] = useState(false);
+  const [novaVigencia, setNovaVigencia] = useState('');
+  const [salvandoProrrogacao, setSalvandoProrrogacao] = useState(false);
   const [contratosDaAta, setContratosDaAta] = useState<ContratoDaAta[]>([]);
 
   async function carregar() {
@@ -75,16 +75,21 @@ export function AtaDetalhe() {
     }
   }
 
-  async function renovarAta() {
-    setRenovando(true);
+  // Renovar uma ata é só estender a própria vigenciaFinal (MODELO.md, seção
+  // 4) — mesma ata, mesmo teto, saldo restante preservado, sem criar ata
+  // nova nem ciclo. O backend valida que a nova data é posterior à atual.
+  async function prorrogarAta() {
+    setSalvandoProrrogacao(true);
     setErro(null);
     try {
-      const nova = await api.post(`/atas/${id}/renovar`);
-      navigate(`/atas/${nova.id}`);
+      await api.post(`/atas/${id}/prorrogar`, { vigenciaFinal: novaVigencia });
+      setProrrogando(false);
+      setNovaVigencia('');
+      await carregar();
     } catch (err) {
-      setErro(err instanceof Error ? err.message : 'Erro ao renovar ata');
-      setRenovando(false);
-      setConfirmandoRenovar(false);
+      setErro(err instanceof Error ? err.message : 'Erro ao prorrogar vigência');
+    } finally {
+      setSalvandoProrrogacao(false);
     }
   }
 
@@ -175,16 +180,21 @@ export function AtaDetalhe() {
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn btn-primary" onClick={() => setMostrarRemanejar(true)}><i className="ph ph-arrows-left-right" />Remanejar saldo</button>
           </div>
-          {confirmandoRenovar ? (
+          {prorrogando ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-              <span className="text-muted">Cria uma nova ata com os mesmos itens e a quantidade cheia original?</span>
-              <button className="btn btn-primary" onClick={renovarAta} disabled={renovando}>{renovando ? 'Renovando...' : 'Confirmar'}</button>
-              <button className="btn btn-ghost" onClick={() => setConfirmandoRenovar(false)}>Cancelar</button>
+              <input
+                type="date"
+                className="input"
+                style={{ width: 148 }}
+                value={novaVigencia}
+                min={new Date(new Date(ata.vigenciaFinal).getTime() + 86400000).toISOString().slice(0, 10)}
+                onChange={(e) => setNovaVigencia(e.target.value)}
+              />
+              <button className="btn btn-primary" onClick={prorrogarAta} disabled={salvandoProrrogacao || !novaVigencia}>{salvandoProrrogacao ? 'Salvando...' : 'Confirmar'}</button>
+              <button className="btn btn-ghost" onClick={() => setProrrogando(false)}>Cancelar</button>
             </div>
           ) : (
-            !ata.homologacaoFornecedorId && (
-              <button className="btn btn-ghost" onClick={() => setConfirmandoRenovar(true)}><i className="ph ph-repeat" />Renovar ata</button>
-            )
+            <button className="btn btn-ghost" onClick={() => setProrrogando(true)}><i className="ph ph-calendar-plus" />Prorrogar vigência</button>
           )}
         </div>
       </div>

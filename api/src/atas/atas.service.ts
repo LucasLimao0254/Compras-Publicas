@@ -6,6 +6,7 @@ import {
   ataItens,
   ataLotes,
   ataOrgaos,
+  ataProrrogacoes,
   ataRemanejamentos,
   atas,
   contratos,
@@ -19,7 +20,7 @@ import {
 } from '../db/schema';
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { ContratosService } from '../contratos/contratos.service';
-import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
+import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
 
 // Números de planilha podem vir como texto formatado em padrão BR ("1.234,56")
 // OU como célula numérica comum do Excel, que o SheetJS (com raw:false)
@@ -44,19 +45,13 @@ export class AtasService {
     private contratosService: ContratosService,
   ) {}
 
-  async list(tenantId: string, apenasCiclosAnteriores = false) {
+  async list(tenantId: string) {
     const rows = await this.db.query.atas.findMany({
       where: eq(atas.tenantId, tenantId),
       with: { licitacao: true, detentorPrincipal: true, orgaos: { with: { itens: true } } },
       orderBy: (a, { desc }) => [desc(a.createdAt)],
     });
-    // "Ciclos Anteriores": atas que já têm uma renovação mais recente
-    // apontando de volta pra elas via ataOrigemId — a aba padrão (vigentes)
-    // precisa excluir essas, senão uma ata já substituída continua aparecendo
-    // ao lado da própria renovação.
-    const temRenovacaoMaisNova = (r: (typeof rows)[number]) => rows.some((r2) => r2.ataOrigemId === r.id);
-    const filtradas = apenasCiclosAnteriores ? rows.filter(temRenovacaoMaisNova) : rows.filter((r) => !temRenovacaoMaisNova(r));
-    return Promise.all(filtradas.map((r) => this.comSaldoResumo(r)));
+    return Promise.all(rows.map((r) => this.comSaldoResumo(r)));
   }
 
   async get(tenantId: string, id: string) {
@@ -221,7 +216,6 @@ export class AtasService {
     const patch: Record<string, unknown> = {};
     if (dto.numeroArp !== undefined) patch.numeroArp = dto.numeroArp;
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);
-    if (dto.vigenciaFinal !== undefined) patch.vigenciaFinal = new Date(dto.vigenciaFinal);
     if (dto.situacao !== undefined) patch.situacao = dto.situacao as any;
     if (Object.keys(patch).length) {
       await this.db.update(atas).set(patch).where(and(eq(atas.id, id), eq(atas.tenantId, tenantId)));
@@ -486,84 +480,49 @@ export class AtasService {
     return { inseridos, erros };
   }
 
-  // Cria uma nova ata a partir desta, com a mesma composição de órgãos/itens
-  // e a QUANTIDADE CHEIA ORIGINAL (não o saldo atual) — ata original não é
-  // alterada. Atas vinculadas a uma homologação não são renováveis por
-  // enquanto: a UNIQUE em atas.homologacaoFornecedorId impede duas atas
-  // ativas pro mesmo fornecedor homologado ao mesmo tempo, e copiar o
-  // vínculo sem ele faria a ata renovada perder o rastreio de teto.
-  async renovar(tenantId: string, ataId: string) {
-    const [original] = await this.db.select().from(atas).where(and(eq(atas.id, ataId), eq(atas.tenantId, tenantId)));
-    if (!original) throw new NotFoundException('Ata não encontrada');
-    if (original.homologacaoFornecedorId) {
-      throw new BadRequestException('Atas vinculadas a uma homologação ainda não podem ser renovadas');
-    }
+  // Renovar uma ata é só estender a própria vigenciaFinal (MODELO.md, seção
+  // 4) — mesma ata, mesmo teto, saldo restante preservado. Não cria ata
+  // nova, não copia itens, não gera ciclo. A nova data precisa ser
+  // estritamente posterior à atual (senão não é uma prorrogação); o evento
+  // fica registrado em ataProrrogacoes, mesmo padrão de log imutável já
+  // usado em ataRemanejamentos.
+  async prorrogar(tenantId: string, ataId: string, usuarioId: string, dto: ProrrogarAtaDto) {
+    // this.get() lê pela conexão comum (this.db), fora da transação — chamar
+    // isso ainda dentro do callback leria pela conexão errada e não veria o
+    // UPDATE feito por `tx`, ainda não commitado (mesma armadilha documentada
+    // em OrdensService.findDetalhada/CLAUDE.md). Por isso o retorno só
+    // acontece depois que a transação já foi confirmada.
+    await this.db.transaction(async (tx) => {
+      const [ata] = await tx.select().from(atas).where(and(eq(atas.id, ataId), eq(atas.tenantId, tenantId))).for('update');
+      if (!ata) throw new NotFoundException('Ata não encontrada');
 
-    const novoId = await this.db.transaction(async (tx) => {
-      const orgaosOriginais = await tx.select().from(ataOrgaos).where(eq(ataOrgaos.ataId, ataId));
-      const itensOriginais = orgaosOriginais.length
-        ? await tx.select().from(ataItens).where(inArray(ataItens.ataOrgaoId, orgaosOriginais.map((o) => o.id)))
-        : [];
-
-      const vigenciaInicial = new Date();
-      const vigenciaFinal = new Date(vigenciaInicial);
-      vigenciaFinal.setFullYear(vigenciaFinal.getFullYear() + 1);
-
-      const [nova] = await tx
-        .insert(atas)
-        .values({
-          tenantId,
-          tipo: original.tipo,
-          // Mesmo número base + sufixo de data — a UNIQUE(tenantId, numeroArp)
-          // impede reusar o número original enquanto a ata antiga existir.
-          numeroArp: `${original.numeroArp} (renovação ${vigenciaInicial.toISOString().slice(0, 10)})`,
-          licitacaoId: original.licitacaoId,
-          detentorPrincipalId: original.detentorPrincipalId,
-          ataOrigemId: original.id,
-          vigenciaInicial,
-          vigenciaFinal,
-          atasComLotes: original.atasComLotes,
-          formaControleSaldo: original.formaControleSaldo,
-          casasDecimaisValor: original.casasDecimaisValor,
-          casasDecimaisQuantidade: original.casasDecimaisQuantidade,
-          situacao: 'VIGENTE',
-        })
-        .returning();
-
-      const mapaOrgaos = new Map<string, string>();
-      for (const o of orgaosOriginais) {
-        const [novoOrgao] = await tx.insert(ataOrgaos).values({ tenantId, ataId: nova.id, secretariaId: o.secretariaId, perfil: o.perfil }).returning();
-        mapaOrgaos.set(o.id, novoOrgao.id);
+      const vigenciaFinalNova = new Date(dto.vigenciaFinal);
+      if (vigenciaFinalNova <= new Date(ata.vigenciaFinal)) {
+        throw new BadRequestException(`A nova vigência final (${dto.vigenciaFinal}) precisa ser posterior à atual (${new Date(ata.vigenciaFinal).toISOString().slice(0, 10)})`);
       }
 
-      if (itensOriginais.length) {
-        await tx.insert(ataItens).values(
-          itensOriginais.map((it) => ({
-            tenantId,
-            ataOrgaoId: mapaOrgaos.get(it.ataOrgaoId)!,
-            numeroItem: it.numeroItem,
-            descricao: it.descricao,
-            unidade: it.unidade,
-            // Lotes não são clonados (número colidiria por ata) — usuário
-            // recadastra se precisar na ata renovada.
-            loteId: null,
-            quantidadeContratada: it.quantidadeContratada,
-            valorUnitario: it.valorUnitario,
-          })),
-        );
-      }
-
-      // Arquiva a original — sem isso, ela continua VIGENTE com o próprio
-      // saldo restante ao mesmo tempo em que o clone nasce com a quantidade
-      // cheia, dobrando o teto realmente gastável enquanto a vigência da
-      // original não vence. Emissão de ordem já rejeita ata ARQUIVADO
-      // incondicionalmente (OrdensService.validarOrigemAta/revalidarSaldoAta).
-      await tx.update(atas).set({ situacao: 'ARQUIVADO' }).where(and(eq(atas.id, ataId), eq(atas.tenantId, tenantId)));
-
-      return nova.id;
+      await tx.update(atas).set({ vigenciaFinal: vigenciaFinalNova }).where(and(eq(atas.id, ataId), eq(atas.tenantId, tenantId)));
+      await tx.insert(ataProrrogacoes).values({
+        tenantId,
+        ataId,
+        vigenciaFinalAnterior: ata.vigenciaFinal,
+        vigenciaFinalNova,
+        usuarioId,
+      });
     });
 
-    return this.get(tenantId, novoId);
+    return this.get(tenantId, ataId);
+  }
+
+  async prorrogacoes(tenantId: string, ataId: string) {
+    await this.get(tenantId, ataId); // valida que a ata pertence ao tenant
+    const rows = await this.db.query.ataProrrogacoes.findMany({
+      where: and(eq(ataProrrogacoes.tenantId, tenantId), eq(ataProrrogacoes.ataId, ataId)),
+      with: { usuario: true },
+      orderBy: (p, { desc }) => [desc(p.criadoEm)],
+    });
+    // Nunca expor o hash de senha do usuário autor da prorrogação na resposta.
+    return rows.map(({ usuario: { senhaHash, ...usuario }, ...rest }) => ({ ...rest, usuario }));
   }
 
   // Contratos que abatem de algum órgão desta ata — reusa

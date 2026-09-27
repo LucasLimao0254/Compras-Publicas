@@ -33,11 +33,18 @@ export class CreateAtaDto {
   orgaos?: OrgaoAtaInput[];
 }
 
+// vigenciaFinal não entra aqui de propósito — a única forma de estendê-la é
+// POST /atas/:id/prorrogar, que valida que a nova data é posterior e
+// registra o evento (ver AtasService.prorrogar). Um PATCH genérico sem essa
+// validação anularia a garantia.
 export class UpdateAtaDto {
   @IsOptional() @IsString() numeroArp?: string;
   @IsOptional() @IsDateString() vigenciaInicial?: string;
-  @IsOptional() @IsDateString() vigenciaFinal?: string;
   @IsOptional() @IsIn(SITUACOES_ATA) situacao?: string;
+}
+
+export class ProrrogarAtaDto {
+  @IsDateString() vigenciaFinal: string;
 }
 
 export class ItemAtaInput {

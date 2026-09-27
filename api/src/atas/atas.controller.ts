@@ -7,7 +7,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -18,7 +17,7 @@ import { PermissionsGuard } from '../common/permissions.guard';
 import { RequirePermission } from '../common/require-permission.decorator';
 import { CurrentUser, AuthUser } from '../common/current-user.decorator';
 import { AtasService } from './atas.service';
-import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
+import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @RequirePermission('compras.atas')
@@ -26,10 +25,7 @@ import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, RemanejarSaldo
 export class AtasController {
   constructor(private service: AtasService) {}
 
-  @Get()
-  list(@CurrentUser() u: AuthUser, @Query('aba') aba?: string) {
-    return this.service.list(u.tenantId, aba === 'anteriores');
-  }
+  @Get() list(@CurrentUser() u: AuthUser) { return this.service.list(u.tenantId); }
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: CreateAtaDto) { return this.service.create(u.tenantId, dto); }
   @Patch(':id') update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: UpdateAtaDto) { return this.service.update(u.tenantId, id, dto); }
@@ -101,9 +97,14 @@ export class AtasController {
     return this.service.removerLote(u.tenantId, id, loteId);
   }
 
-  @Post(':id/renovar')
-  renovar(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.service.renovar(u.tenantId, id);
+  @Post(':id/prorrogar')
+  prorrogar(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ProrrogarAtaDto) {
+    return this.service.prorrogar(u.tenantId, id, u.userId, dto);
+  }
+
+  @Get(':id/prorrogacoes')
+  prorrogacoes(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.service.prorrogacoes(u.tenantId, id);
   }
 
   @Get(':id/contratos')

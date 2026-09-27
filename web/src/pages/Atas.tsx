@@ -34,7 +34,6 @@ export function Atas() {
   const [orgaos, setOrgaos] = useState<OrgaoForm[]>([{ secretariaId: '', perfil: 'GERENCIADOR' }]);
   const [atasComLotes, setAtasComLotes] = useState(false);
   const [fornecedoresHomologados, setFornecedoresHomologados] = useState<FornecedorHomologado[]>([]);
-  const [aba, setAba] = useState<'atual' | 'anteriores'>('atual');
 
   // Quando a licitação escolhida tem homologação revisada e o detentor
   // principal está entre os fornecedores homologados, a ata nasce já
@@ -50,14 +49,14 @@ export function Atas() {
 
   async function carregar() {
     const [a, l, f, s] = await Promise.all([
-      api.get(`/atas${aba === 'anteriores' ? '?aba=anteriores' : ''}`), api.get('/licitacoes'), api.get('/fornecedores'), api.get('/secretarias'),
+      api.get('/atas'), api.get('/licitacoes'), api.get('/fornecedores'), api.get('/secretarias'),
     ]);
     setLista(a);
     setLicitacoes(l.map((x: any) => ({ id: x.id, label: `${x.numero} — ${x.modalidade.replaceAll('_', ' ')}` })));
     setFornecedores(f.map((x: any) => ({ id: x.id, label: `${x.razaoSocial} (${x.cnpjCpf})` })));
     setSecretarias(s.map((x: any) => ({ id: x.id, label: x.titulo })));
   }
-  useEffect(() => { carregar(); }, [aba]);
+  useEffect(() => { carregar(); }, []);
 
   function addOrgaoRow() { setOrgaos([...orgaos, { secretariaId: '', perfil: 'PARTICIPANTE' }]); }
   function updateOrgao(idx: number, patch: Partial<OrgaoForm>) {
@@ -94,11 +93,6 @@ export function Atas() {
         <button className="btn btn-primary" onClick={() => setMostrarForm((v) => !v)}>
           <i className={`ph ${mostrarForm ? 'ph-x' : 'ph-plus'}`} />{mostrarForm ? 'Cancelar' : 'Nova ata'}
         </button>
-      </div>
-
-      <div style={{ display: 'flex', gap: 18, margin: '0 0 18px', boxShadow: 'inset 0 -1px 0 var(--color-divider)' }}>
-        <button className={`tabbtn${aba === 'atual' ? ' active' : ''}`} onClick={() => setAba('atual')}>Vigentes</button>
-        <button className={`tabbtn${aba === 'anteriores' ? ' active' : ''}`} onClick={() => setAba('anteriores')}>Ciclos anteriores</button>
       </div>
 
       {mostrarForm && (

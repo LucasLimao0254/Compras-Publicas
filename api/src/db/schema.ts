@@ -342,10 +342,6 @@ export const atas = pgTable('atas', {
   // Uma ata por fornecedor homologado, no máximo — UNIQUE permite múltiplos
   // NULL (atas que não vêm de homologação nenhuma continuam livres).
   homologacaoFornecedorId: uuid('homologacao_fornecedor_id').references(() => homologacaoFornecedores.id),
-  // De qual ata esta nasceu via "Renovar Ata" (POST /atas/:id/renovar) — null
-  // pra atas originais. Autorreferência, sem onDelete cascade (a ata original
-  // some silenciosamente não é uma perda aceitável do vínculo do ciclo).
-  ataOrigemId: uuid('ata_origem_id').references((): any => atas.id),
   vigenciaInicial: timestamp('vigencia_inicial').notNull(),
   vigenciaFinal: timestamp('vigencia_final').notNull(),
   atasComLotes: boolean('atas_com_lotes').notNull().default(false),
@@ -402,6 +398,20 @@ export const ataItens = pgTable('ata_itens', {
 }, (t) => ({
   uniqNumero: unique().on(t.ataOrgaoId, t.numeroItem),
 }));
+
+// Log imutável, só insert — histórico auditável de prorrogações de prazo.
+// Renovar uma ata é só estender vigenciaFinal na própria ata (MODELO.md,
+// seção 4): mesma ata, mesmo teto, saldo restante preservado — não cria ata
+// nova, não copia itens, não gera ciclo. Ver AtasService.prorrogar.
+export const ataProrrogacoes = pgTable('ata_prorrogacoes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  ataId: uuid('ata_id').notNull().references(() => atas.id, { onDelete: 'cascade' }),
+  vigenciaFinalAnterior: timestamp('vigencia_final_anterior').notNull(),
+  vigenciaFinalNova: timestamp('vigencia_final_nova').notNull(),
+  usuarioId: uuid('usuario_id').notNull().references(() => usuarios.id),
+  criadoEm: timestamp('criado_em').defaultNow().notNull(),
+});
 
 // Log imutável, só insert — histórico auditável do modal de remanejamento.
 export const ataRemanejamentos = pgTable('ata_remanejamentos', {
@@ -574,11 +584,14 @@ export const ordemHistoricoRelations = relations(ordemHistorico, ({ one }) => ({
 export const atasRelations = relations(atas, ({ many, one }) => ({
   orgaos: many(ataOrgaos),
   lotes: many(ataLotes),
+  prorrogacoes: many(ataProrrogacoes),
   licitacao: one(licitacoes, { fields: [atas.licitacaoId], references: [licitacoes.id] }),
   detentorPrincipal: one(fornecedores, { fields: [atas.detentorPrincipalId], references: [fornecedores.id] }),
   homologacaoFornecedor: one(homologacaoFornecedores, { fields: [atas.homologacaoFornecedorId], references: [homologacaoFornecedores.id] }),
-  ataOrigem: one(atas, { fields: [atas.ataOrigemId], references: [atas.id], relationName: 'renovacao' }),
-  renovacoes: many(atas, { relationName: 'renovacao' }),
+}));
+export const ataProrrogacoesRelations = relations(ataProrrogacoes, ({ one }) => ({
+  ata: one(atas, { fields: [ataProrrogacoes.ataId], references: [atas.id] }),
+  usuario: one(usuarios, { fields: [ataProrrogacoes.usuarioId], references: [usuarios.id] }),
 }));
 export const ataLotesRelations = relations(ataLotes, ({ one, many }) => ({
   ata: one(atas, { fields: [ataLotes.ataId], references: [atas.id] }),
