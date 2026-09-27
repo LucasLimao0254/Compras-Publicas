@@ -133,14 +133,18 @@ export class OrdensService {
   }
 
   // Contador sequencial por tenant — cria com valor inicial 1 na primeira ordem.
+  // Incremento atômico (UPDATE ... SET x = x + 1 RETURNING): o UPDATE trava a
+  // linha do contador até o fim da transação, então duas emissões
+  // simultâneas serializam aqui. O antigo "lê e depois grava" deixava as duas
+  // lerem o mesmo número e uma delas estourar a UNIQUE (tenant, numero).
   private async proximoNumero(tx: DrizzleDB, tenantId: string) {
-    const [contador] = await tx.select().from(contadores).where(eq(contadores.tenantId, tenantId));
-    if (!contador) {
-      await tx.insert(contadores).values({ tenantId, proximaOrdem: 2 });
-      return 1;
-    }
-    await tx.update(contadores).set({ proximaOrdem: contador.proximaOrdem + 1 }).where(eq(contadores.tenantId, tenantId));
-    return contador.proximaOrdem;
+    await tx.insert(contadores).values({ tenantId, proximaOrdem: 1 }).onConflictDoNothing({ target: contadores.tenantId });
+    const [row] = await tx
+      .update(contadores)
+      .set({ proximaOrdem: sql`${contadores.proximaOrdem} + 1` })
+      .where(eq(contadores.tenantId, tenantId))
+      .returning({ proximaOrdem: contadores.proximaOrdem });
+    return row.proximaOrdem - 1;
   }
 
   // Emite uma ordem a partir de um contrato — ordem só nasce de contrato (ver
