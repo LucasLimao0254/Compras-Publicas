@@ -8,6 +8,7 @@ import { GerenciarLotesModal } from '../components/GerenciarLotesModal';
 import { ItemHistoricoModal } from '../components/ItemHistoricoModal';
 import { ImportarItensAtaModal } from '../components/ImportarItensAtaModal';
 import { GerarMinutaButton } from '../components/GerarMinutaButton';
+import { formatarDia } from '../lib/datas';
 
 interface Orgao { id: string; perfil: string; quantidadeItens: number; valorTotal: number; valorUtilizado: number; saldoDisponivel: number; secretaria: { titulo: string }; }
 interface Item { id: string; numeroItem: number; descricao: string; unidade: string; quantidadeContratada: string; valorUnitario: string; quantidadeUtilizada: number; quantidadeDisponivel: number; homologacaoItemId: string | null; }
@@ -174,7 +175,7 @@ export function AtaDetalhe() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <span className="tag tag-neutral">{ata.tipo === 'ATAS' ? 'Ata de Registro de Preços' : 'Credenciamento'}</span>
               <span className="tag tag-outline">{ata.situacao}</span>
-              <span className="tag tag-outline">{new Date(ata.vigenciaInicial).toLocaleDateString('pt-BR')} – {new Date(ata.vigenciaFinal).toLocaleDateString('pt-BR')}</span>
+              <span className="tag tag-outline">{formatarDia(ata.vigenciaInicial)} – {formatarDia(ata.vigenciaFinal)}</span>
             </div>
           </div>
         </div>

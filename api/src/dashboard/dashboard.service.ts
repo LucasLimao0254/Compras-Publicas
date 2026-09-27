@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
+import { diaDaData, hoje } from '../common/datas';
 import { contratos, fornecedores, itensContrato, itensOrdem, ordens } from '../db/schema';
 
 @Injectable()
@@ -9,16 +10,20 @@ export class DashboardService {
 
   async resumo(tenantId: string) {
     const listaContratos = await this.db.select().from(contratos).where(eq(contratos.tenantId, tenantId));
-    const agora = new Date();
-    const em30dias = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000);
+    // Datas de calendário comparadas por dia (ver common/datas.ts): o
+    // contrato ainda vale no próprio dia final de vigência.
+    const hojeDia = hoje();
+    const limite30 = new Date(`${hojeDia}T00:00:00Z`);
+    limite30.setUTCDate(limite30.getUTCDate() + 30);
+    const em30dias = diaDaData(limite30);
 
     let vigentes = 0, vencendo30 = 0, vencidos = 0, arquivados = 0;
     let valorTotalContratado = 0;
 
     for (const c of listaContratos) {
       if (c.situacao === 'ARQUIVADO') { arquivados++; continue; }
-      const vf = new Date(c.vigenciaFinal);
-      if (vf < agora) vencidos++;
+      const vf = diaDaData(c.vigenciaFinal);
+      if (vf < hojeDia) vencidos++;
       else if (vf <= em30dias) { vigentes++; vencendo30++; }
       else vigentes++;
     }

@@ -15,6 +15,7 @@ import {
 } from '../db/schema';
 import { CreateOrdemDto, UpdateOrdemDto } from './dto/ordem.dto';
 import { centavosDoTotal, decimal2 } from '../common/dinheiro';
+import { vencida } from '../common/datas';
 
 type ItemCalculado = { itemContratoId: string; quantidade: string; precoUnitario: string; precoTotal: string };
 type LinhaArmazenada = { itemContratoId: string | null; quantidade: string };
@@ -217,7 +218,7 @@ export class OrdensService {
     if (contrato.situacao === 'ARQUIVADO' || contrato.situacao === 'MINUTA') {
       throw new BadRequestException('Não é possível emitir ordem para um contrato arquivado ou em minuta');
     }
-    if (!permitirVencido && new Date(contrato.vigenciaFinal) < new Date()) {
+    if (!permitirVencido && vencida(contrato.vigenciaFinal)) {
       throw new BadRequestException('Contrato vencido: emissão de ordens bloqueada (habilite em Configurações se necessário)');
     }
 
@@ -300,7 +301,7 @@ export class OrdensService {
     if (contrato.situacao === 'ARQUIVADO' || contrato.situacao === 'MINUTA') {
       throw new BadRequestException('Não é possível emitir ordem para um contrato arquivado ou em minuta');
     }
-    if (!permitirVencido && new Date(contrato.vigenciaFinal) < new Date()) {
+    if (!permitirVencido && vencida(contrato.vigenciaFinal)) {
       throw new BadRequestException('Contrato vencido: emissão de ordens bloqueada (habilite em Configurações se necessário)');
     }
 
@@ -351,7 +352,7 @@ export class OrdensService {
       if (contrato.situacao === 'ARQUIVADO' || contrato.situacao === 'MINUTA') {
         throw new BadRequestException('Não é possível editar ordem de um contrato arquivado ou em minuta');
       }
-      if (!config.permitirOrdemContratoVencido && new Date(contrato.vigenciaFinal) < new Date()) {
+      if (!config.permitirOrdemContratoVencido && vencida(contrato.vigenciaFinal)) {
         throw new BadRequestException('Contrato vencido: edição de ordens bloqueada (habilite em Configurações se necessário)');
       }
 
@@ -395,13 +396,22 @@ export class OrdensService {
   // histórico. Não existe decremento a "desfazer" explicitamente: o saldo é
   // sempre derivado filtrando status='EMITIDA', então uma ordem cancelada
   // simplesmente para de contar — o saldo volta sozinho.
-  async cancelar(tenantId: string, usuarioId: string, id: string) {
-    const ordem = await this.get(tenantId, id);
-    if (ordem.status === 'CANCELADA') {
-      throw new BadRequestException('Esta ordem já está cancelada');
-    }
-    await this.db.update(ordens).set({ status: 'CANCELADA' }).where(and(eq(ordens.id, id), eq(ordens.tenantId, tenantId)));
-    await this.db.insert(ordemHistorico).values({ tenantId, ordemId: id, tipoEvento: 'cancelou', usuarioId });
+  // Cancelar uma ordem JÁ EMITIDA é a "exclusão pós-emissão" do MODELO.md
+  // (seção 6): exclusiva do Administrador do tenant. Rascunho qualquer
+  // usuário do módulo descarta. Antes a regra só existia na interface.
+  async cancelar(tenantId: string, usuarioId: string, id: string, tipoUsuario: 'ADMIN' | 'PADRAO') {
+    await this.db.transaction(async (tx) => {
+      const [ordem] = await tx.select().from(ordens).where(and(eq(ordens.tenantId, tenantId), eq(ordens.id, id))).for('update');
+      if (!ordem) throw new NotFoundException('Ordem não encontrada');
+      if (ordem.status === 'CANCELADA') {
+        throw new BadRequestException('Esta ordem já está cancelada');
+      }
+      if (ordem.status === 'EMITIDA' && tipoUsuario !== 'ADMIN') {
+        throw new ForbiddenException('Somente administradores do tenant podem excluir uma ordem já emitida');
+      }
+      await tx.update(ordens).set({ status: 'CANCELADA' }).where(and(eq(ordens.id, id), eq(ordens.tenantId, tenantId)));
+      await tx.insert(ordemHistorico).values({ tenantId, ordemId: id, tipoEvento: 'cancelou', usuarioId });
+    });
     return this.get(tenantId, id);
   }
 

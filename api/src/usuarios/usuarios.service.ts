@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import { permissoes, usuarios } from '../db/schema';
 import { CreateUsuarioDto, UpdateUsuarioDto } from './dto/usuario.dto';
+import { codigoPostgres } from '../common/postgres-exception.filter';
 
 // Quem está chamando — o módulo inteiro é gated por 'administrativo.usuarios',
 // mas essa permissão pode ser concedida a um usuário PADRAO. Sem checar o
@@ -119,7 +120,18 @@ export class UsuariosService {
   async remove(tenantId: string, chamador: ChamadorUsuarios, id: string) {
     const alvo = await this.get(tenantId, id);
     if (alvo.tipoUsuario === 'ADMIN') this.exigirAdminPara(chamador, 'remover um usuário administrador');
-    await this.db.delete(usuarios).where(and(eq(usuarios.id, id), eq(usuarios.tenantId, tenantId)));
+    try {
+      await this.db.delete(usuarios).where(and(eq(usuarios.id, id), eq(usuarios.tenantId, tenantId)));
+    } catch (err) {
+      // 23503 = violação de chave estrangeira: o usuário é autor de eventos
+      // (histórico de ordens, prorrogações, remanejamentos, apostilamentos…)
+      // que precisam continuar apontando para ele. Apagar quebraria a
+      // auditoria; o caminho é desativar.
+      if (codigoPostgres(err) === '23503') {
+        throw new BadRequestException('Este usuário tem registros no histórico e não pode ser excluído — desative-o em vez disso');
+      }
+      throw err;
+    }
     return { ok: true };
   }
 }

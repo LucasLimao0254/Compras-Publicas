@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { GerarMinutaButton } from '../components/GerarMinutaButton';
+import { formatarDia } from '../lib/datas';
 
 type Aba = 'itens' | 'ordens' | 'aditivos' | 'minutas';
 type TipoAditivo = 'VALOR' | 'PRAZO' | 'QUANTIDADE' | 'SUPRESSAO' | 'ACRESCIMO_ESPECIAL';
@@ -166,7 +167,7 @@ export function ContratoDetalhe() {
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 12, color: 'color-mix(in srgb, var(--color-text) 48%, transparent)' }}>
             <span><i className="ph ph-storefront" style={{ fontSize: 13, verticalAlign: -2 }} /> {contrato.fornecedor?.razaoSocial}</span>
             <span><i className="ph ph-buildings" style={{ fontSize: 13, verticalAlign: -2 }} /> {contrato.orgaoGerenciador?.titulo}</span>
-            <span><i className="ph ph-calendar-blank" style={{ fontSize: 13, verticalAlign: -2 }} /> até {new Date(contrato.vigenciaFinal).toLocaleDateString('pt-BR')}</span>
+            <span><i className="ph ph-calendar-blank" style={{ fontSize: 13, verticalAlign: -2 }} /> até {formatarDia(contrato.vigenciaFinal)}</span>
           </div>
         </div>
       </div>
@@ -316,7 +317,7 @@ export function ContratoDetalhe() {
                   <div className="field"><label>Dias de prorrogação</label>
                     <input className="input num" type="number" value={diasProrrogacao} onChange={(e) => setDiasProrrogacao(e.target.value)} required /></div>
                   <div className="field"><label>Vigência final atual</label>
-                    <input className="input" value={new Date(contrato.vigenciaFinal).toLocaleDateString('pt-BR')} disabled /></div>
+                    <input className="input" value={formatarDia(contrato.vigenciaFinal)} disabled /></div>
                 </div>
               )}
 
@@ -376,7 +377,7 @@ export function ContratoDetalhe() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
                     <span className="num" style={{ fontFamily: 'var(--font-heading)', fontWeight: 500, fontSize: 14 }}>{a.numero}</span>
                     <span className="tag tag-neutral">{TIPO_LABEL[a.tipo]}</span>
-                    <span className="num text-muted" style={{ fontSize: 11.5 }}>assinado em {new Date(a.dataAssinatura).toLocaleDateString('pt-BR')}</span>
+                    <span className="num text-muted" style={{ fontSize: 11.5 }}>assinado em {formatarDia(a.dataAssinatura)}</span>
                   </div>
                   <div style={{ fontSize: 13.5, marginBottom: 4 }}>
                     {a.tipo === 'VALOR' && `Acréscimo de ${a.percentual}% ao valor, +R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
@@ -384,7 +385,7 @@ export function ContratoDetalhe() {
                     {a.tipo === 'SUPRESSAO' && (a.itens.length
                       ? `Supressão de ${a.itens.map((it) => `${it.itemContrato.descricao} ${it.quantidadeAcrescida}`).join(', ')}, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                       : `Supressão de ${a.percentual}% do valor, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)}
-                    {a.tipo === 'PRAZO' && `Vigência prorrogada de ${a.vigenciaFinalAnterior ? new Date(a.vigenciaFinalAnterior).toLocaleDateString('pt-BR') : ''} para ${a.vigenciaFinalNova ? new Date(a.vigenciaFinalNova).toLocaleDateString('pt-BR') : ''}`}
+                    {a.tipo === 'PRAZO' && `Vigência prorrogada de ${a.vigenciaFinalAnterior ? formatarDia(a.vigenciaFinalAnterior) : ''} para ${a.vigenciaFinalNova ? formatarDia(a.vigenciaFinalNova) : ''}`}
                     {a.tipo === 'QUANTIDADE' && a.itens.map((it) => `${it.itemContrato.descricao} +${it.quantidadeAcrescida}`).join(', ')}
                   </div>
                   <div className="text-muted" style={{ fontSize: 12 }}>{a.justificativa}</div>

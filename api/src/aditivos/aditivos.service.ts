@@ -194,7 +194,7 @@ export class AditivosService {
         diasProrrogacao = dto.diasProrrogacao;
         vigenciaFinalAnterior = contrato.vigenciaFinal;
         vigenciaFinalNova = new Date(contrato.vigenciaFinal);
-        vigenciaFinalNova.setDate(vigenciaFinalNova.getDate() + dto.diasProrrogacao);
+        vigenciaFinalNova.setUTCDate(vigenciaFinalNova.getUTCDate() + dto.diasProrrogacao); // data de calendário: sempre em UTC (ver common/datas.ts)
         patchContrato.vigenciaFinal = vigenciaFinalNova;
       } else if (dto.tipo === 'QUANTIDADE') {
         if (!dto.itens?.length) throw new BadRequestException('Informe ao menos um item para acrescer quantidade');

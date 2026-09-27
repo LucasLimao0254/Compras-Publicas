@@ -23,6 +23,37 @@ import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { centavos, centavosDoTotal, decimal2, reais } from '../common/dinheiro';
 import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/contrato.dto';
 
+// Valor total (itens + aditivos de valor), utilizado e saldo de um contrato.
+// Exportado para quem precisa do mesmo número fora deste service (minuta).
+// Dinheiro em centavos inteiros (duas casas, ver common/dinheiro.ts): cada
+// item arredondado para centavos antes de somar, igual ao precoTotal
+// gravado nas ordens — sem isso sobravam frações de centavo que nunca
+// zeravam o saldo. Supressão com itens já reduziu a quantidade dos itens,
+// então só a supressão antiga por percentual (sem itens) entra aqui.
+export async function calcularSaldoContrato(tx: DrizzleDB, contratoId: string) {
+  const itens = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
+  const valorItens = itens.reduce((acc, it) => acc + centavosDoTotal(it.quantidade, it.valorUnitario), 0);
+
+  const [aditivosRow] = await tx
+    .select({ total: sql<string>`coalesce(sum(case when ${aditivos.tipo} = 'SUPRESSAO' then -${aditivos.valorAcrescimo} else ${aditivos.valorAcrescimo} end), 0)` })
+    .from(aditivos)
+    .where(and(
+      eq(aditivos.contratoId, contratoId),
+      sql`${aditivos.tipo} in ('VALOR', 'SUPRESSAO', 'ACRESCIMO_ESPECIAL')`,
+      sql`not exists (select 1 from aditivo_itens ai where ai.aditivo_id = ${aditivos.id})`,
+    ));
+  const valorTotal = valorItens + centavos(aditivosRow?.total);
+
+  const [utilizadoRow] = await tx
+    .select({ total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
+    .from(itensOrdem)
+    .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
+    .where(and(eq(ordens.contratoId, contratoId), eq(ordens.status, 'EMITIDA')));
+
+  const utilizado = centavos(utilizadoRow?.total);
+  return { valorTotal: reais(valorTotal), saldoDisponivel: reais(valorTotal - utilizado), valorUtilizado: reais(utilizado) };
+}
+
 @Injectable()
 export class ContratosService {
   constructor(
@@ -64,33 +95,8 @@ export class ContratosService {
   // transação (leituras normais, via this.db) quanto dentro de uma (o
   // pré-check de 3 níveis de AditivosService, que precisa ver o mesmo lock
   // que o resto daquela transação já tomou).
-  // Dinheiro em centavos inteiros (duas casas, ver common/dinheiro.ts): cada
-  // item arredondado para centavos antes de somar, igual ao precoTotal
-  // gravado nas ordens — sem isso sobravam frações de centavo que nunca
-  // zeravam o saldo. Supressão com itens já reduziu a quantidade dos itens,
-  // então só a supressão antiga por percentual (sem itens) entra aqui.
-  private async calcularSaldo(tx: DrizzleDB, contratoId: string) {
-    const itens = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
-    const valorItens = itens.reduce((acc, it) => acc + centavosDoTotal(it.quantidade, it.valorUnitario), 0);
-
-    const [aditivosRow] = await tx
-      .select({ total: sql<string>`coalesce(sum(case when ${aditivos.tipo} = 'SUPRESSAO' then -${aditivos.valorAcrescimo} else ${aditivos.valorAcrescimo} end), 0)` })
-      .from(aditivos)
-      .where(and(
-        eq(aditivos.contratoId, contratoId),
-        sql`${aditivos.tipo} in ('VALOR', 'SUPRESSAO', 'ACRESCIMO_ESPECIAL')`,
-        sql`not exists (select 1 from aditivo_itens ai where ai.aditivo_id = ${aditivos.id})`,
-      ));
-    const valorTotal = valorItens + centavos(aditivosRow?.total);
-
-    const [utilizadoRow] = await tx
-      .select({ total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
-      .from(itensOrdem)
-      .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
-      .where(and(eq(ordens.contratoId, contratoId), eq(ordens.status, 'EMITIDA')));
-
-    const utilizado = centavos(utilizadoRow?.total);
-    return { valorTotal: reais(valorTotal), saldoDisponivel: reais(valorTotal - utilizado), valorUtilizado: reais(utilizado) };
+  private calcularSaldo(tx: DrizzleDB, contratoId: string) {
+    return calcularSaldoContrato(tx, contratoId);
   }
 
   private async comSaldo<T extends { id: string }>(row: T) {
@@ -385,6 +391,17 @@ export class ContratosService {
     this.validarItensEntrada([item]);
 
     return this.db.transaction(async (tx) => {
+      // valorOriginal é a base do limite de 25%/50% dos aditivos: um item
+      // incluído antes do primeiro aditivo faz parte do valor original (antes
+      // ficava de fora — contrato criado vazio e montado por addItem tinha
+      // valorOriginal 0 e nenhum aditivo de valor passava). Depois de haver
+      // aditivo, incluir item seria um acréscimo sem termo aditivo.
+      const [travado] = await tx.select({ valorOriginal: contratos.valorOriginal }).from(contratos).where(eq(contratos.id, contratoId)).for('update');
+      const [temAditivo] = await tx.select({ id: aditivos.id }).from(aditivos).where(eq(aditivos.contratoId, contratoId)).limit(1);
+      if (temAditivo) {
+        throw new BadRequestException('Este contrato já tem aditivos — acréscimos de itens ou quantidades precisam ser feitos por termo aditivo');
+      }
+
       let ataHomologacaoFornecedorId: string | null = null;
       if (contrato.ataOrgaoId) {
         const [ata] = await tx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(ataOrgaos).innerJoin(atas, eq(ataOrgaos.ataId, atas.id)).where(eq(ataOrgaos.id, contrato.ataOrgaoId));
@@ -410,6 +427,8 @@ export class ContratosService {
           homologacaoItemId: normalizado.homologacaoItemId,
         })
         .returning();
+      const novoValorOriginal = centavos(travado.valorOriginal) + centavosDoTotal(normalizado.quantidade, normalizado.valorUnitario);
+      await tx.update(contratos).set({ valorOriginal: decimal2(novoValorOriginal) }).where(eq(contratos.id, contratoId));
       return row;
     });
   }

@@ -13,8 +13,13 @@ async function request(path: string, options: RequestInit = {}) {
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
-  return handleResponse(res);
+  return handleResponse(res, path);
 }
+
+// 401 no próprio login é "credenciais inválidas", não sessão expirada —
+// redirecionar ali recarregava a tela de login e a mensagem do servidor
+// nunca aparecia.
+const ROTAS_SEM_SESSAO = ['/auth/login'];
 
 // Upload multipart (FormData) — sem Content-Type manual: o browser define o
 // boundary do multipart sozinho: definir a header aqui quebra o parse no multer.
@@ -70,15 +75,23 @@ export function salvarArquivo(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-async function handleResponse(res: Response) {
-  if (res.status === 401) {
+async function handleResponse(res: Response, path = '') {
+  if (res.status === 401 && !ROTAS_SEM_SESSAO.includes(path)) {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     window.location.href = '/login';
     throw new Error('Sessão expirada');
   }
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // corpo não-JSON (ex.: página de erro de um proxy) — sem isso o usuário
+    // via "Unexpected token <" em vez de uma mensagem de erro
+    if (!res.ok) throw new Error(`Erro na requisição (HTTP ${res.status})`);
+    throw new Error('Resposta inválida do servidor');
+  }
   if (!res.ok) {
     const message = Array.isArray(data?.message) ? data.message.join('; ') : data?.message;
     throw new Error(message || 'Erro na requisição');
