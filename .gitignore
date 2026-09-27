@@ -5,3 +5,5 @@ dist/
 *.log
 api/uploads/
 web/token.txt
+.pgdata-teste/
+.ambiente-teste/

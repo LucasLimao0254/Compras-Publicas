@@ -7,7 +7,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        // API_URL permite apontar para outra API (ex.: o ambiente de teste
+        // interno, que sobe em outra porta — ver scripts/ambiente-teste.js).
+        target: process.env.API_URL || 'http://localhost:3001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

@@ -59,6 +59,17 @@ changes in this environment — see the one-off `pg.Client` migration pattern be
 touches the dev database. `tsc --noEmit -p tsconfig.json` is the fastest way to type-check
 without a full Nest build.
 
+### Internal test environment
+
+```bash
+npm run teste:interno   # (repo root) DB + API + web with scenario data, stops at the login screen
+```
+
+Separate from the dev setup (Postgres 55433 / API 3101 / web 5174, database
+`compras_teste_interno`). Scenario data lives in `api/src/db/seed-teste.ts` and is created
+through the services, so it obeys the same rules as the UI — keep it that way when adding
+scenarios, and update the roteiro in `TESTE_INTERNO.md` alongside.
+
 ### Frontend (`web/`)
 
 ```bash
@@ -252,7 +263,10 @@ Plain React Router SPA, no state library — each page component fetches its own
 on 401). `src/auth/AuthContext.tsx` holds the logged-in user/tenant and exposes
 `temPermissao(recurso)`, which `src/components/Layout.tsx` uses to filter the sidebar —
 the same permission strings as the backend, so a page hidden from nav is also rejected
-server-side if hit directly.
+server-side if hit directly. `@RequirePermission` also accepts a list ("any of"): reads of
+reference data (secretarias, dotações, unidades executoras, fornecedores, licitações) accept
+any Compras screen that uses them in selectors (`TELAS_QUE_LEEM_CADASTROS_DE_APOIO`), while
+writes keep the owning screen's permission.
 
 ### What's deliberately not implemented
 
