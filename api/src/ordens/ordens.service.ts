@@ -14,6 +14,7 @@ import {
   unidadesExecutoras,
 } from '../db/schema';
 import { CreateOrdemDto, UpdateOrdemDto } from './dto/ordem.dto';
+import { centavosDoTotal, decimal2 } from '../common/dinheiro';
 
 type ItemCalculado = { itemContratoId: string; quantidade: string; precoUnitario: string; precoTotal: string };
 type LinhaArmazenada = { itemContratoId: string | null; quantidade: string };
@@ -261,7 +262,7 @@ export class OrdensService {
         itemContratoId: item.id,
         quantidade: String(quantidade),
         precoUnitario: String(precoUnitario),
-        precoTotal: (precoUnitario * quantidade).toFixed(2),
+        precoTotal: decimal2(centavosDoTotal(quantidade, precoUnitario)),
       });
     }
 
@@ -375,7 +376,7 @@ export class OrdensService {
         const precoUnitario = Number(linha.precoUnitario);
         await tx
           .update(itensOrdem)
-          .set({ quantidade: String(alteracao.quantidade), precoTotal: (precoUnitario * alteracao.quantidade).toFixed(2) })
+          .set({ quantidade: String(alteracao.quantidade), precoTotal: decimal2(centavosDoTotal(alteracao.quantidade, precoUnitario)) })
           .where(eq(itensOrdem.id, linha.id));
         depois.push({ itensOrdemId: linha.id, quantidade: String(alteracao.quantidade) });
       }

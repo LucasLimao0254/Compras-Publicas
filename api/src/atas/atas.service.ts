@@ -18,7 +18,7 @@ import {
   licitacoes,
   secretarias,
 } from '../db/schema';
-import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
+import { quantidadeConsumidaDoTeto, SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { ContratosService } from '../contratos/contratos.service';
 import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
 
@@ -110,7 +110,7 @@ export class AtasService {
   private async quantidadeContratadaPorItens(dbOrTx: DrizzleDB, ataItemIds: string[]) {
     if (!ataItemIds.length) return new Map<string, number>();
     const rows = await dbOrTx
-      .select({ ataItemId: ataItens.id, total: sql<string>`coalesce(sum(${itensContrato.quantidade}), 0)` })
+      .select({ ataItemId: ataItens.id, total: sql<string>`coalesce(sum(${quantidadeConsumidaDoTeto}), 0)` })
       .from(ataItens)
       .innerJoin(itensContrato, eq(itensContrato.homologacaoItemId, ataItens.homologacaoItemId))
       .innerJoin(contratos, and(eq(itensContrato.contratoId, contratos.id), eq(contratos.ataOrgaoId, ataItens.ataOrgaoId)))

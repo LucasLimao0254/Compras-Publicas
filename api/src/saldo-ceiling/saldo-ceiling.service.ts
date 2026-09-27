@@ -3,6 +3,18 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { DrizzleDB } from '../db/db.module';
 import { ataItens, contratos, homologacaoItens, itensContrato } from '../db/schema';
 
+// Quanto uma linha de contrato consome do teto da ata/homologação: a
+// quantidade atual MENOS o que entrou por aditivo de QUANTIDADE — pelo
+// invariante 6, a quantidade do aditivo é acrescida FORA do teto. Sem isso,
+// cada aditivo deixava o saldo da ata e da homologação negativo. Supressão
+// reduz a própria quantidade do item, então devolve ao teto o que foi
+// suprimido (o que deixou de ser contratado volta a estar disponível).
+export const quantidadeConsumidaDoTeto = sql<string>`greatest(${itensContrato.quantidade} - coalesce((
+  select sum(ai.quantidade_acrescida) from aditivo_itens ai
+  inner join aditivos a on a.id = ai.aditivo_id
+  where ai.item_contrato_id = ${itensContrato.id} and a.tipo = 'QUANTIDADE'
+), 0), 0)`;
+
 // Serviço compartilhado de teto/saldo da cadeia Homologação → Ata → Contrato.
 // Todo método recebe `tx` explicitamente (nunca usa uma conexão própria) —
 // quem chama é responsável por já estar dentro de um db.transaction() com o
@@ -24,7 +36,7 @@ export class SaldoCeilingService {
     const ataItem = rows[0];
 
     const [consumidoRow] = await tx
-      .select({ total: sql<string>`coalesce(sum(${itensContrato.quantidade}), 0)` })
+      .select({ total: sql<string>`coalesce(sum(${quantidadeConsumidaDoTeto}), 0)` })
       .from(itensContrato)
       .innerJoin(contratos, eq(itensContrato.contratoId, contratos.id))
       .where(and(eq(contratos.ataOrgaoId, ataOrgaoId), eq(itensContrato.homologacaoItemId, homologacaoItemId), eq(contratos.tenantId, tenantId)));
@@ -55,7 +67,7 @@ export class SaldoCeilingService {
     const reservadoEmAtas = Number(reservadoRow?.total ?? 0);
 
     const [consumidoRow] = await tx
-      .select({ total: sql<string>`coalesce(sum(${itensContrato.quantidade}), 0)` })
+      .select({ total: sql<string>`coalesce(sum(${quantidadeConsumidaDoTeto}), 0)` })
       .from(itensContrato)
       .innerJoin(contratos, eq(itensContrato.contratoId, contratos.id))
       .where(and(

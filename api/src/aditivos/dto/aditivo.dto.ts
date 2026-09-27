@@ -23,7 +23,8 @@ export class CreateAditivoDto {
   @IsOptional() @IsNumber() @IsPositive() percentual?: number;
   // PRAZO
   @IsOptional() @IsInt() @IsPositive() diasProrrogacao?: number;
-  // QUANTIDADE
+  // QUANTIDADE (quantidade a acrescer) e SUPRESSAO (quantidade a suprimir,
+  // obrigatória salvo contrato em modo valor global)
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

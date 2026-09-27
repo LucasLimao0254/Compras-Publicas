@@ -20,6 +20,7 @@ import {
   usuarios,
 } from '../db/schema';
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
+import { centavos, centavosDoTotal, decimal2, reais } from '../common/dinheiro';
 import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/contrato.dto';
 
 @Injectable()
@@ -63,16 +64,24 @@ export class ContratosService {
   // transação (leituras normais, via this.db) quanto dentro de uma (o
   // pré-check de 3 níveis de AditivosService, que precisa ver o mesmo lock
   // que o resto daquela transação já tomou).
+  // Dinheiro em centavos inteiros (duas casas, ver common/dinheiro.ts): cada
+  // item arredondado para centavos antes de somar, igual ao precoTotal
+  // gravado nas ordens — sem isso sobravam frações de centavo que nunca
+  // zeravam o saldo. Supressão com itens já reduziu a quantidade dos itens,
+  // então só a supressão antiga por percentual (sem itens) entra aqui.
   private async calcularSaldo(tx: DrizzleDB, contratoId: string) {
     const itens = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
-    const valorItens = itens.reduce((acc, it) => acc + Number(it.quantidade) * Number(it.valorUnitario), 0);
+    const valorItens = itens.reduce((acc, it) => acc + centavosDoTotal(it.quantidade, it.valorUnitario), 0);
 
     const [aditivosRow] = await tx
       .select({ total: sql<string>`coalesce(sum(case when ${aditivos.tipo} = 'SUPRESSAO' then -${aditivos.valorAcrescimo} else ${aditivos.valorAcrescimo} end), 0)` })
       .from(aditivos)
-      .where(and(eq(aditivos.contratoId, contratoId), sql`${aditivos.tipo} in ('VALOR', 'SUPRESSAO')`));
-    const valorAditivos = Number(aditivosRow?.total ?? 0);
-    const valorTotal = valorItens + valorAditivos;
+      .where(and(
+        eq(aditivos.contratoId, contratoId),
+        sql`${aditivos.tipo} in ('VALOR', 'SUPRESSAO', 'ACRESCIMO_ESPECIAL')`,
+        sql`not exists (select 1 from aditivo_itens ai where ai.aditivo_id = ${aditivos.id})`,
+      ));
+    const valorTotal = valorItens + centavos(aditivosRow?.total);
 
     const [utilizadoRow] = await tx
       .select({ total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
@@ -80,8 +89,8 @@ export class ContratosService {
       .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
       .where(and(eq(ordens.contratoId, contratoId), eq(ordens.status, 'EMITIDA')));
 
-    const utilizado = Number(utilizadoRow?.total ?? 0);
-    return { valorTotal, saldoDisponivel: valorTotal - utilizado, valorUtilizado: utilizado };
+    const utilizado = centavos(utilizadoRow?.total);
+    return { valorTotal: reais(valorTotal), saldoDisponivel: reais(valorTotal - utilizado), valorUtilizado: reais(utilizado) };
   }
 
   private async comSaldo<T extends { id: string }>(row: T) {
@@ -90,10 +99,27 @@ export class ContratosService {
   }
 
   // Usado pelo pré-check de 3 níveis de AditivosService — sempre dentro da
-  // transação de quem chama, nunca via this.db.
+  // transação de quem chama, nunca via this.db. Quantidade (não dinheiro):
+  // contrato com origem controla saldo por item (invariante 8), e o
+  // arredondamento de cada ordem para centavos faz o saldo em R$ poder
+  // sobrar ou faltar 1 centavo mesmo com todo item consumido.
   async saldoDisponivel(tx: DrizzleDB, contratoId: string): Promise<number> {
     const { saldoDisponivel } = await this.calcularSaldo(tx, contratoId);
     return saldoDisponivel;
+  }
+
+  async itensComSaldoRestante(tx: DrizzleDB, contratoId: string) {
+    const itens = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
+    const usados = await tx
+      .select({ itemContratoId: itensOrdem.itemContratoId, total: sql<string>`coalesce(sum(${itensOrdem.quantidade}), 0)` })
+      .from(itensOrdem)
+      .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
+      .where(and(eq(ordens.contratoId, contratoId), eq(ordens.status, 'EMITIDA')))
+      .groupBy(itensOrdem.itemContratoId);
+    const usadoPorItem = new Map(usados.map((u) => [u.itemContratoId, Number(u.total)]));
+    return itens
+      .map((it) => ({ item: it, disponivel: Number(it.quantidade) - (usadoPorItem.get(it.id) ?? 0) }))
+      .filter((r) => r.disponivel > 0);
   }
 
   // Garante que cada FK do contrato pertence ao mesmo tenant de quem está
@@ -287,7 +313,7 @@ export class ContratosService {
       // Snapshot do valor original — base para o limite de 25%/50% do art. 125
       // da Lei 14.133/2021 nos aditivos de valor (AditivosService), que nunca
       // muda mesmo depois de aditivos aumentarem o valor corrente do contrato.
-      const valorOriginal = itens.reduce((acc, it) => acc + it.quantidade * it.valorUnitario, 0);
+      const valorOriginal = itens.reduce((acc, it) => acc + centavosDoTotal(it.quantidade, it.valorUnitario), 0);
 
       const [created] = await tx
         .insert(contratos)
@@ -308,7 +334,7 @@ export class ContratosService {
           formaFaturamento: dto.formaFaturamento as any,
           formaControleSaldo: (dto.formaControleSaldo as any) ?? 'NORMAL',
           situacao: (dto.situacao as any) ?? 'MINUTA',
-          valorOriginal: valorOriginal.toFixed(2),
+          valorOriginal: decimal2(valorOriginal),
         })
         .returning();
 
