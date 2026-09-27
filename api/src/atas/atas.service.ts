@@ -8,9 +8,11 @@ import {
   ataOrgaos,
   ataRemanejamentos,
   atas,
+  contratos,
   fornecedores,
   homologacaoFornecedores,
   homologacaoItens,
+  itensContrato,
   itensOrdem,
   licitacaoHomologacoes,
   licitacoes,
@@ -66,9 +68,10 @@ export class AtasService {
     });
     if (!row) throw new NotFoundException('Ata não encontrada');
 
+    const contratadas = await this.quantidadeContratadaPorItens(this.db, row.orgaos.flatMap((o) => o.itens.map((i) => i.id)));
     const orgaosComSaldo = await Promise.all(
       row.orgaos.map(async (o) => {
-        const utilizado = await this.usadoPorOrgao(o.id);
+        const utilizado = (await this.usadoPorOrgao(o.id)) + this.valorContratado(o.itens, contratadas);
         const valorTotal = o.itens.reduce((acc, it) => acc + Number(it.quantidadeContratada) * Number(it.valorUnitario), 0);
         return {
           id: o.id,
@@ -95,7 +98,8 @@ export class AtasService {
       (acc, o) => acc + o.itens.reduce((a2, it) => a2 + Number(it.quantidadeContratada) * Number(it.valorUnitario), 0),
       0,
     );
-    const utilizado = ataItemIds.length ? await this.usadoPorItens(ataItemIds) : 0;
+    const contratadas = await this.quantidadeContratadaPorItens(this.db, ataItemIds);
+    const utilizado = (ataItemIds.length ? await this.usadoPorItens(ataItemIds) : 0) + this.valorContratado(ata.orgaos.flatMap((o) => o.itens), contratadas);
     const { orgaos, ...rest } = ata;
     return {
       ...rest,
@@ -124,18 +128,43 @@ export class AtasService {
     return Number(row?.total ?? 0);
   }
 
-  // Quantidade (não valor monetário) já consumida por ordens emitidas contra
-  // um único item — diferente de usadoPorItens/usadoPorOrgao acima, que somam
-  // precoTotal pra alimentar valorUtilizado. Comparar uma quantidade contra
-  // uma soma de precoTotal seria misturar unidades; por isso este helper
-  // separado, parametrizado por tx pra ler dentro do lock de quem chama.
+  // Quantidade de cada item de ata já abatida por contratos do mesmo órgão —
+  // mesma regra de SaldoCeilingService.ataItemSaldoDisponivel (contrato do
+  // ataOrgaoId cujo item aponta pro mesmo item homologado), só que em lote.
+  // Contrato nunca é gravado como "consumo" na ata: é sempre somado na leitura.
+  private async quantidadeContratadaPorItens(dbOrTx: DrizzleDB, ataItemIds: string[]) {
+    if (!ataItemIds.length) return new Map<string, number>();
+    const rows = await dbOrTx
+      .select({ ataItemId: ataItens.id, total: sql<string>`coalesce(sum(${itensContrato.quantidade}), 0)` })
+      .from(ataItens)
+      .innerJoin(itensContrato, eq(itensContrato.homologacaoItemId, ataItens.homologacaoItemId))
+      .innerJoin(contratos, and(eq(itensContrato.contratoId, contratos.id), eq(contratos.ataOrgaoId, ataItens.ataOrgaoId)))
+      .where(inArray(ataItens.id, ataItemIds))
+      .groupBy(ataItens.id);
+    return new Map(rows.map((r) => [r.ataItemId, Number(r.total)]));
+  }
+
+  // Valor (quantidade contratada × preço do item na ata) — o mesmo preço usado
+  // para o valor reservado, para o saldo da ata nunca ficar negativo só porque
+  // o preço digitado no contrato difere.
+  private valorContratado(itens: { id: string; valorUnitario: string }[], contratadas: Map<string, number>) {
+    return itens.reduce((acc, it) => acc + (contratadas.get(it.id) ?? 0) * Number(it.valorUnitario), 0);
+  }
+
+  // Quantidade (não valor monetário) já consumida de um único item da ata: por
+  // ordens emitidas direto dele + por contratos que abatem dele. Diferente de
+  // usadoPorItens/usadoPorOrgao acima, que somam precoTotal pra alimentar
+  // valorUtilizado — comparar uma quantidade contra uma soma de precoTotal
+  // seria misturar unidades; por isso este helper separado, parametrizado por
+  // tx pra ler dentro do lock de quem chama.
   private async quantidadeUsadaPorItem(dbOrTx: DrizzleDB, ataItemId: string) {
     const [row] = await dbOrTx
       .select({ total: sql<string>`coalesce(sum(${itensOrdem.quantidade}), 0)` })
       .from(itensOrdem)
       .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
       .where(and(eq(itensOrdem.ataItemId, ataItemId), eq(ordens.status, 'EMITIDA')));
-    return Number(row?.total ?? 0);
+    const contratada = (await this.quantidadeContratadaPorItens(dbOrTx, [ataItemId])).get(ataItemId) ?? 0;
+    return Number(row?.total ?? 0) + contratada;
   }
 
   private async validarOrgao(tenantId: string, ataId: string, ataOrgaoId: string) {
@@ -250,9 +279,10 @@ export class AtasService {
       .groupBy(itensOrdem.ataItemId);
 
     const usadoPorItem = new Map(usados.map((u) => [u.ataItemId, Number(u.total)]));
+    const contratadas = await this.quantidadeContratadaPorItens(this.db, itens.map((it) => it.id));
 
     return itens.map((it) => {
-      const usado = usadoPorItem.get(it.id) ?? 0;
+      const usado = (usadoPorItem.get(it.id) ?? 0) + (contratadas.get(it.id) ?? 0);
       return { ...it, quantidadeUtilizada: usado, quantidadeDisponivel: Number(it.quantidadeContratada) - usado };
     });
   }

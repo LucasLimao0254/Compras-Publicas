@@ -54,7 +54,7 @@ export class AditivosService {
     const saldoContrato = await this.contratosService.saldoDisponivel(tx, contrato.id);
     if (saldoContrato > 0) {
       throw new BadRequestException(
-        `Ainda há saldo disponível neste contrato (R$ ${saldoContrato.toFixed(2)}) — esgote-o antes de abrir um aditivo`,
+        `Ainda há saldo disponível neste contrato (${saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) — esgote-o antes de abrir um aditivo`,
       );
     }
 
