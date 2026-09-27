@@ -155,6 +155,17 @@ export class ContratosService {
     if (row.homologacaoFornecedorId !== homologacaoFornecedorEsperado) throw new BadRequestException(`Item "${descricao}" não pertence ao fornecedor deste contrato`);
   }
 
+  // Contrato derivado de homologação ou de ata controla saldo por item —
+  // o modo "Valor global" (APENAS_VALOR_TOTAL) fica indisponível nesses
+  // casos (MODELO.md, invariante 8). Os outros dois modos alternativos
+  // (`formaControleSaldoEnum`) não têm nenhuma lógica implementada — não há
+  // nada a fazer além de impedir 'APENAS_VALOR_TOTAL' com origem.
+  private validarFormaControleSaldo(formaControleSaldo: string | undefined, ataOrgaoId: string | null | undefined, homologacaoFornecedorId: string | null | undefined) {
+    if (formaControleSaldo === 'APENAS_VALOR_TOTAL' && (ataOrgaoId || homologacaoFornecedorId)) {
+      throw new BadRequestException('Contratos derivados de homologação controlam saldo por item');
+    }
+  }
+
   // Valida e, se ok, retorna nada — lança BadRequestException citando o item
   // e o saldo restante quando a quantidade pedida excede o disponível.
   private async validarTetoItens(
@@ -196,6 +207,7 @@ export class ContratosService {
     if (dto.ataOrgaoId && dto.homologacaoFornecedorId) {
       throw new BadRequestException('Informe no máximo uma origem de saldo: ataOrgaoId ou homologacaoFornecedorId, não os dois');
     }
+    this.validarFormaControleSaldo(dto.formaControleSaldo, dto.ataOrgaoId, dto.homologacaoFornecedorId);
 
     // Snapshot do valor original — base para o limite de 25%/50% do art. 125
     // da Lei 14.133/2021 nos aditivos de valor (AditivosService), que nunca
@@ -268,12 +280,15 @@ export class ContratosService {
   }
 
   async update(tenantId: string, id: string, dto: UpdateContratoDto) {
-    await this.get(tenantId, id);
+    const contrato = await this.get(tenantId, id);
+    this.validarFormaControleSaldo(dto.formaControleSaldo, contrato.ataOrgaoId, contrato.homologacaoFornecedorId);
+
     const patch: Record<string, unknown> = {};
     if (dto.objeto !== undefined) patch.objeto = dto.objeto;
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);
     if (dto.vigenciaFinal !== undefined) patch.vigenciaFinal = new Date(dto.vigenciaFinal);
     if (dto.situacao !== undefined) patch.situacao = dto.situacao as any;
+    if (dto.formaControleSaldo !== undefined) patch.formaControleSaldo = dto.formaControleSaldo as any;
     if (Object.keys(patch).length) {
       await this.db.update(contratos).set(patch).where(and(eq(contratos.id, id), eq(contratos.tenantId, tenantId)));
     }

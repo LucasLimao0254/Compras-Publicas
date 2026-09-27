@@ -43,4 +43,8 @@ export class UpdateContratoDto {
   @IsOptional() @IsDateString() vigenciaInicial?: string;
   @IsOptional() @IsDateString() vigenciaFinal?: string;
   @IsOptional() @IsIn(SITUACOES) situacao?: string;
+  // Trocar para 'APENAS_VALOR_TOTAL' é rejeitado quando o contrato tem
+  // origem (ataOrgaoId/homologacaoFornecedorId) — ver
+  // ContratosService.validarFormaControleSaldo.
+  @IsOptional() @IsIn(FORMAS_SALDO) formaControleSaldo?: string;
 }
