@@ -38,6 +38,9 @@ export const homologacaoStatusEnum = pgEnum('homologacao_status', ['processando'
 export const confiancaExtracaoEnum = pgEnum('confianca_extracao', ['alta', 'media', 'baixa']);
 // Apostilamento (Lei 14.133/2021, art. 136): registro formal sem efeito de
 // saldo — ao contrário de aditivo, nunca altera quantidade/valor de item.
+// Os quatro tipos de documento gerável por marcador de texto (MODELO.md,
+// seção 8) — ver MinutasService.
+export const tipoMinutaEnum = pgEnum('tipo_minuta', ['ARP', 'CONTRATO', 'ADITIVO', 'APOSTILAMENTO']);
 export const tipoApostilamentoEnum = pgEnum('tipo_apostilamento', [
   'REAJUSTE_REPACTUACAO', 'ATUALIZACAO_FINANCEIRA', 'ALTERACAO_RAZAO_SOCIAL', 'EMPENHO_DOTACAO',
 ]);
@@ -456,6 +459,26 @@ export const configuracoesCompras = pgTable('configuracoes_compras', {
   dotacaoObrigatoria: boolean('dotacao_obrigatoria').notNull().default(true),
 });
 
+// Um modelo .docx por tenant+tipo — reenviar substitui o anterior (UPSERT em
+// MinutasService.enviarModelo), nunca acumula histórico de versões. Mesmo
+// padrão de upload de licitacaoHomologacoes: nome gerado por randomUUID() no
+// disco (diretório configurável e gitignored via MINUTAS_UPLOADS_DIR), nome
+// original só em coluna, para exibição. Sem linha para um tipo = "sem
+// modelo cadastrado" = documento daquele tipo não é gerado (MODELO.md,
+// seção 8) — nunca um fallback ou modelo de sistema.
+export const minutaModelos = pgTable('minuta_modelos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  tipo: tipoMinutaEnum('tipo').notNull(),
+  arquivoNome: text('arquivo_nome').notNull(),
+  arquivoPath: text('arquivo_path').notNull(),
+  tamanhoBytes: integer('tamanho_bytes').notNull(),
+  enviadoPor: uuid('enviado_por').notNull().references(() => usuarios.id),
+  enviadoEm: timestamp('enviado_em').defaultNow().notNull(),
+}, (t) => ({
+  uniqTipo: unique().on(t.tenantId, t.tipo),
+}));
+
 // ---------- SETORES & MÓDULOS (catálogo de plataforma + habilitação por tenant) ----------
 // Catálogo global (não por tenant) — substitui os dois arrays hoje hardcoded
 // e duplicados (MENU em Layout.tsx, RECURSOS em Usuarios.tsx) por uma única
@@ -630,4 +653,8 @@ export const modulosRelations = relations(modulos, ({ one }) => ({
 export const tenantSetoresRelations = relations(tenantSetores, ({ one }) => ({
   tenant: one(tenants, { fields: [tenantSetores.tenantId], references: [tenants.id] }),
   setor: one(setores, { fields: [tenantSetores.setorId], references: [setores.id] }),
+}));
+
+export const minutaModelosRelations = relations(minutaModelos, ({ one }) => ({
+  enviadoPorUsuario: one(usuarios, { fields: [minutaModelos.enviadoPor], references: [usuarios.id] }),
 }));

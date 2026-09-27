@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 const TIPOS_ATA = ['ATAS', 'CREDENCIAMENTO'];
@@ -50,7 +50,10 @@ export class ProrrogarAtaDto {
 export class ItemAtaInput {
   @IsString() descricao: string;
   @IsString() unidade: string;
-  @IsNumber() @IsPositive() quantidade: number;
+  // Min(0), não IsPositive(): quantidade zero para um órgão é válida (ver
+  // MODELO.md, invariante 4, e inv-04 dos testes de invariante) — não é
+  // erro, é a forma de reservar o item sem alocar quantidade a ele ainda.
+  @IsNumber() @Min(0) quantidade: number;
   @IsNumber() @IsPositive() valorUnitario: number;
   @IsOptional() @IsString() loteId?: string;
   // Item-mestre da homologação de onde este item de ata abate — ver

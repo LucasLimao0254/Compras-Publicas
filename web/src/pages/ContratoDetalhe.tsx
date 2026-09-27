@@ -2,10 +2,9 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { useAuth } from '../auth/AuthContext';
+import { GerarMinutaButton } from '../components/GerarMinutaButton';
 
 type Aba = 'itens' | 'ordens' | 'aditivos' | 'minutas';
-type ModeloMinuta = 'contrato' | 'ordem' | 'aditivo' | 'extrato';
 type TipoAditivo = 'VALOR' | 'PRAZO' | 'QUANTIDADE' | 'SUPRESSAO' | 'ACRESCIMO_ESPECIAL';
 type TipoApostilamento = 'REAJUSTE_REPACTUACAO' | 'ATUALIZACAO_FINANCEIRA' | 'ALTERACAO_RAZAO_SOCIAL' | 'EMPENHO_DOTACAO';
 
@@ -31,19 +30,13 @@ const TIPO_APOSTILAMENTO_LABEL: Record<TipoApostilamento, string> = {
   ALTERACAO_RAZAO_SOCIAL: 'Alteração de razão social', EMPENHO_DOTACAO: 'Empenho de dotação',
 };
 
-const MODELOS_MINUTA: { id: ModeloMinuta; nome: string; icone: string; campos: number }[] = [
-  { id: 'contrato', nome: 'Minuta de contrato administrativo', icone: 'ph-file-text', campos: 8 },
-  { id: 'ordem', nome: 'Minuta de ordem de compra', icone: 'ph-clipboard-text', campos: 6 },
-  { id: 'aditivo', nome: 'Termo de aditamento contratual', icone: 'ph-file-plus', campos: 7 },
-  { id: 'extrato', nome: 'Extrato para publicação', icone: 'ph-newspaper', campos: 5 },
-];
+interface ModelosMinuta { modelos: { tipo: 'ARP' | 'CONTRATO' | 'ADITIVO' | 'APOSTILAMENTO'; carregado: boolean }[]; prontos: number; total: number; }
 
 export function ContratoDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { tenant } = useAuth();
   const [contrato, setContrato] = useState<any>(null);
-  const [modeloMinuta, setModeloMinuta] = useState<ModeloMinuta>('contrato');
+  const [modelosMinuta, setModelosMinuta] = useState<ModelosMinuta | null>(null);
   const [itens, setItens] = useState<Item[]>([]);
   const [ordens, setOrdens] = useState<OrdemRow[]>([]);
   const [aba, setAba] = useState<Aba>('itens');
@@ -79,6 +72,9 @@ export function ContratoDetalhe() {
     if ((aba === 'aditivos' || aba === 'minutas') && id) {
       api.get(`/contratos/${id}/aditivos`).then(setAditivos);
       api.get(`/contratos/${id}/apostilamentos`).then(setApostilamentos);
+    }
+    if (aba === 'minutas') {
+      api.get('/minutas/modelos').then(setModelosMinuta);
     }
   }, [aba, id]);
 
@@ -447,88 +443,39 @@ export function ContratoDetalhe() {
       )}
 
       {aba === 'minutas' && (() => {
-        const n2 = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-        const dataHoje = new Date().toLocaleDateString('pt-BR');
         const ultimoAditivo = aditivos[0];
-        const textos: Record<ModeloMinuta, { titulo: string; p: string[] }> = {
-          contrato: {
-            titulo: `Minuta de contrato administrativo nº ${contrato.numero}`,
-            p: [
-              `${tenant?.nome ?? 'O MUNICÍPIO'}, pessoa jurídica de direito público interno, por intermédio da ${contrato.orgaoGerenciador?.titulo}, doravante denominado CONTRATANTE, e ${contrato.fornecedor?.razaoSocial}, inscrita no CNPJ sob o nº ${contrato.fornecedor?.cnpjCpf}, doravante denominada CONTRATADA, celebram o presente contrato administrativo, decorrente do procedimento licitatório nº ${contrato.licitacao?.numero ?? '—'}, com fundamento na Lei nº 14.133, de 1º de abril de 2021.`,
-              `CLÁUSULA PRIMEIRA — DO OBJETO. Constitui objeto do presente instrumento ${contrato.objeto?.charAt(0).toLowerCase()}${contrato.objeto?.slice(1)}, conforme especificações, quantidades e preços unitários constantes do anexo I, que integra este contrato independentemente de transcrição.`,
-              `CLÁUSULA SEGUNDA — DO VALOR. O valor total do contrato é de R$ ${n2(contrato.valorTotal)}, compreendendo ${itens.length} ${itens.length === 1 ? 'item' : 'itens'}.`,
-              `CLÁUSULA TERCEIRA — DA VIGÊNCIA. O presente contrato vigorará de ${new Date(contrato.vigenciaInicial).toLocaleDateString('pt-BR')} a ${new Date(contrato.vigenciaFinal).toLocaleDateString('pt-BR')}, podendo ser prorrogado nas hipóteses e limites do art. 107 da Lei nº 14.133/2021, mediante termo aditivo devidamente justificado.`,
-              `CLÁUSULA QUARTA — DO FORNECIMENTO. O fornecimento ocorrerá de forma parcelada, mediante ordens de compra emitidas pelo CONTRATANTE. Nenhuma ordem será emitida em valor ou quantidade superior ao saldo disponível do contrato.`,
-            ],
-          },
-          ordem: {
-            titulo: `Minuta de ordem de compra — contrato nº ${contrato.numero}`,
-            p: [
-              `Ao fornecedor ${contrato.fornecedor?.razaoSocial}. Autorizamos o fornecimento dos itens relacionados na ordem de compra, nos termos do contrato administrativo nº ${contrato.numero}, celebrado em decorrência do processo licitatório nº ${contrato.licitacao?.numero ?? '—'}.`,
-              `A entrega deverá ocorrer no prazo pactuado, no endereço indicado pela ${contrato.orgaoGerenciador?.titulo}, acompanhada da respectiva nota fiscal, na qual deverá constar o número desta ordem de compra.`,
-              `O pagamento será efetuado após o atesto do recebimento definitivo pelo fiscal do contrato, observada a forma de faturamento pactuada e a disponibilidade orçamentária da dotação vinculada.`,
-              `Esta ordem consome o saldo do contrato no ato da emissão e não poderá ser alterada após a baixa; eventual correção se dará por cancelamento e nova emissão.`,
-            ],
-          },
-          aditivo: ultimoAditivo ? {
-            titulo: `Termo de aditamento ao contrato nº ${contrato.numero}`,
-            p: [
-              `${tenant?.nome ?? 'O MUNICÍPIO'}, por intermédio da ${contrato.orgaoGerenciador?.titulo}, e ${contrato.fornecedor?.razaoSocial} resolvem celebrar o presente TERMO ADITIVO nº ${ultimoAditivo.numero}, ao contrato administrativo nº ${contrato.numero}, com fundamento no ${ultimoAditivo.fundamentoLegal} e na justificativa técnica constante do processo administrativo.`,
-              `CLÁUSULA PRIMEIRA. ${ultimoAditivo.tipo === 'VALOR' ? `Fica o valor do contrato acrescido em ${ultimoAditivo.percentual}%, correspondente a R$ ${n2(Number(ultimoAditivo.valorAcrescimo))}.` : ultimoAditivo.tipo === 'SUPRESSAO' ? `Fica o valor do contrato suprimido em ${ultimoAditivo.percentual}%, correspondente a R$ ${n2(Number(ultimoAditivo.valorAcrescimo))}.` : ultimoAditivo.tipo === 'PRAZO' ? `Fica a vigência do contrato prorrogada em ${ultimoAditivo.diasProrrogacao} dias, passando o termo final para ${ultimoAditivo.vigenciaFinalNova ? new Date(ultimoAditivo.vigenciaFinalNova).toLocaleDateString('pt-BR') : '—'}.` : `Ficam as quantidades contratadas acrescidas conforme especificado no processo administrativo.`}`,
-              `CLÁUSULA SEGUNDA. Este aditamento observa os limites e fundamentos legais da Lei nº 14.133/2021 e será suportado pela mesma dotação orçamentária originalmente vinculada.`,
-              `CLÁUSULA TERCEIRA. Permanecem inalteradas as demais cláusulas e condições do contrato originário, que não colidam com o disposto neste termo aditivo.`,
-            ],
-          } : { titulo: `Termo de aditamento ao contrato nº ${contrato.numero}`, p: ['Nenhum aditivo registrado neste contrato ainda — registre um na aba "Aditivos" para gerar este documento.'] },
-          extrato: {
-            titulo: `Extrato para publicação — contrato nº ${contrato.numero}`,
-            p: [
-              `EXTRATO DE CONTRATO. Contratante: ${tenant?.nome ?? '—'}, por intermédio da ${contrato.orgaoGerenciador?.titulo}. Contratada: ${contrato.fornecedor?.razaoSocial}.`,
-              `Objeto: ${contrato.objeto}. Processo licitatório: ${contrato.licitacao?.numero ?? '—'}. Valor total: R$ ${n2(contrato.valorTotal)}. Vigência: ${new Date(contrato.vigenciaInicial).toLocaleDateString('pt-BR')} a ${new Date(contrato.vigenciaFinal).toLocaleDateString('pt-BR')}.`,
-              `Fundamento legal: Lei nº 14.133/2021.`,
-              `${tenant?.nome ?? ''}, ${dataHoje}. Publicado no Diário Oficial do Município.`,
-            ],
-          },
-        };
-        const minuta = textos[modeloMinuta];
+        const ultimoApostilamento = apostilamentos[0];
+        const carregado = (tipo: 'ARP' | 'CONTRATO' | 'ADITIVO' | 'APOSTILAMENTO') => modelosMinuta?.modelos.find((m) => m.tipo === tipo)?.carregado ?? false;
         return (
-          <div style={{ paddingTop: 18, display: 'grid', gridTemplateColumns: '300px minmax(0,1fr)', gap: 28, alignItems: 'start' }}>
-            <div>
-              <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'color-mix(in srgb, var(--color-text) 45%, transparent)', marginBottom: 12 }}>Modelos</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {MODELOS_MINUTA.map((m) => (
-                  <div key={m.id} onClick={() => setModeloMinuta(m.id)}
-                    style={{ padding: '11px 13px', borderRadius: 8, cursor: 'pointer', background: 'var(--color-surface)', boxShadow: modeloMinuta === m.id ? 'inset 0 0 0 1px var(--color-accent)' : 'var(--shadow-sm)', color: modeloMinuta === m.id ? 'var(--color-accent-200)' : undefined }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                      <i className={`ph ${m.icone}`} style={{ fontSize: 16 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13 }}>{m.nome}</div>
-                        <div className="text-muted" style={{ fontSize: 11, marginTop: 1 }}>{m.campos} campos de mesclagem</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+          <div style={{ paddingTop: 18, maxWidth: 640 }}>
+            {modelosMinuta && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, fontSize: 12.5 }}>
+                <i className={`ph-fill ${modelosMinuta.prontos === modelosMinuta.total ? 'ph-check-circle' : 'ph-warning-circle'}`} style={{ fontSize: 15, color: modelosMinuta.prontos === modelosMinuta.total ? 'var(--color-accent)' : 'var(--color-warn)' }} />
+                <span>{modelosMinuta.prontos} de {modelosMinuta.total} modelos carregados —</span>
+                <Link to="/configuracoes" style={{ color: 'var(--color-accent)' }}>gerenciar em Configurações</Link>
               </div>
-              <div className="text-muted" style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: 12 }}>Os campos são preenchidos com os dados do contrato, do fornecedor e do órgão gerenciador.</div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'color-mix(in srgb, var(--color-text) 45%, transparent)' }}>Pré-visualização</div>
-                <button className="btn btn-secondary" onClick={() => window.print()}><i className="ph ph-printer" />Imprimir</button>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontFamily: 'var(--font-heading)', fontWeight: 500 }}>Minuta de contrato</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>Contrato {contrato.numero}</div>
+                </div>
+                <GerarMinutaButton tipo="CONTRATO" entidadeId={contrato.id} modeloCarregado={carregado('CONTRATO')} label="Gerar" />
               </div>
-              <div className="card elev-md" style={{ padding: '40px 48px', maxWidth: 780 }}>
-                <div style={{ textAlign: 'center', marginBottom: 32 }}>
-                  <div style={{ fontSize: 12.5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{tenant?.nome}</div>
-                  <div className="text-muted" style={{ fontSize: 11.5, marginTop: 3 }}>código {tenant?.codigo}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontFamily: 'var(--font-heading)', fontWeight: 500 }}>Termo aditivo</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>{ultimoAditivo ? `Último: ${ultimoAditivo.numero}` : 'Nenhum aditivo registrado ainda'}</div>
                 </div>
-                <h4 style={{ textAlign: 'center', fontSize: 16, margin: '0 0 28px', letterSpacing: '0.02em' }}>{minuta.titulo}</h4>
-                <div style={{ fontSize: 13.5, lineHeight: 1.85, color: 'color-mix(in srgb, var(--color-text) 82%, transparent)' }}>
-                  {minuta.p.map((p, i) => <p key={i} style={{ margin: '0 0 16px', textAlign: 'justify' }}>{p}</p>)}
+                <GerarMinutaButton tipo="ADITIVO" entidadeId={ultimoAditivo?.id ?? null} modeloCarregado={carregado('ADITIVO')} label="Gerar" motivoIndisponivel="Nenhum aditivo registrado ainda — registre um na aba Aditivos" />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontFamily: 'var(--font-heading)', fontWeight: 500 }}>Apostilamento</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>{ultimoApostilamento ? `Último: ${new Date(ultimoApostilamento.criadoEm).toLocaleDateString('pt-BR')}` : 'Nenhum apostilamento registrado ainda'}</div>
                 </div>
-                <div style={{ display: 'flex', gap: 48, marginTop: 48, fontSize: 12, color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>
-                  <div style={{ flex: 1, paddingTop: 8, boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--color-text) 22%, transparent)', textAlign: 'center' }}>Contratante</div>
-                  <div style={{ flex: 1, paddingTop: 8, boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--color-text) 22%, transparent)', textAlign: 'center' }}>Contratada</div>
-                </div>
+                <GerarMinutaButton tipo="APOSTILAMENTO" entidadeId={ultimoApostilamento?.id ?? null} modeloCarregado={carregado('APOSTILAMENTO')} label="Gerar" motivoIndisponivel="Nenhum apostilamento registrado ainda — registre um na aba Aditivos" />
               </div>
             </div>
           </div>

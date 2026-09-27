@@ -18,6 +18,7 @@ import { UnidadesExecutorasModule } from './unidades-executoras/unidades-executo
 import { ConfiguracoesModule } from './configuracoes/configuracoes.module';
 import { SetoresModule } from './setores/setores.module';
 import { PlataformaModule } from './plataforma/plataforma.module';
+import { MinutasModule } from './minutas/minutas.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { PlataformaModule } from './plataforma/plataforma.module';
     UnidadesExecutorasModule,
     OrdensModule,
     DashboardModule,
+    MinutasModule,
   ],
 })
 export class AppModule {}
