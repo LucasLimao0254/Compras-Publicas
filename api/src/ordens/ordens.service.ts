@@ -5,6 +5,7 @@ import { ConfiguracoesService } from '../configuracoes/configuracoes.service';
 import {
   contadores,
   contratos,
+  dotacoes,
   itensContrato,
   itensOrdem,
   ordemDotacoes,
@@ -159,6 +160,13 @@ export class OrdensService {
       if (dto.unidadeExecutoraId) {
         const [unidade] = await tx.select({ id: unidadesExecutoras.id }).from(unidadesExecutoras).where(and(eq(unidadesExecutoras.id, dto.unidadeExecutoraId), eq(unidadesExecutoras.tenantId, tenantId)));
         if (!unidade) throw new BadRequestException('Unidade executora não encontrada para este tenant');
+      }
+
+      if (dto.dotacoes?.length) {
+        // Sem isso, um dotacaoId de outro município era gravado na ordem.
+        const ids = [...new Set(dto.dotacoes.map((d) => d.dotacaoId))];
+        const encontradas = await tx.select({ id: dotacoes.id }).from(dotacoes).where(and(inArray(dotacoes.id, ids), eq(dotacoes.tenantId, tenantId)));
+        if (encontradas.length !== ids.length) throw new BadRequestException('Dotação orçamentária não encontrada para este tenant');
       }
 
       const { itensCalculados } = await this.validarOrigemContrato(tx, tenantId, dto, emitirAgora, config.permitirOrdemContratoVencido);

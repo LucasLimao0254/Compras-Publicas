@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import {
   aditivos,
@@ -7,6 +7,7 @@ import {
   atas,
   contratoDotacoes,
   contratos,
+  dotacoes,
   fornecedores,
   homologacaoFornecedores,
   homologacaoItens,
@@ -112,6 +113,27 @@ export class ContratosService {
       const [fiscal] = await this.db.select({ id: usuarios.id }).from(usuarios).where(and(eq(usuarios.id, dto.fiscalId), eq(usuarios.tenantId, tenantId)));
       if (!fiscal) throw new BadRequestException('Fiscal não encontrado para este tenant');
     }
+
+    if (dto.dotacaoIds?.length) {
+      const ids = [...new Set(dto.dotacaoIds)];
+      const encontradas = await this.db.select({ id: dotacoes.id }).from(dotacoes).where(and(inArray(dotacoes.id, ids), eq(dotacoes.tenantId, tenantId)));
+      if (encontradas.length !== ids.length) throw new BadRequestException('Dotação orçamentária não encontrada para este tenant');
+    }
+  }
+
+  // Mesma regra do DTO (quantidade e valor unitário positivos e finitos),
+  // repetida aqui porque o service também é chamado sem passar pelo
+  // ValidationPipe (testes, outros services) — uma quantidade negativa com
+  // homologacaoItemId reduziria o consumo do teto da ata/homologação.
+  private validarItensEntrada(itens: ItemContratoInput[]) {
+    for (const it of itens) {
+      if (!Number.isFinite(it.quantidade) || it.quantidade <= 0) {
+        throw new BadRequestException(`Item "${it.descricao}": quantidade precisa ser maior que zero`);
+      }
+      if (!Number.isFinite(it.valorUnitario) || it.valorUnitario <= 0) {
+        throw new BadRequestException(`Item "${it.descricao}": valor unitário precisa ser maior que zero`);
+      }
+    }
   }
 
   // Confirma que o órgão de ata pertence ao tenant, à mesma licitação do
@@ -203,6 +225,7 @@ export class ContratosService {
     if (dup.length) throw new ConflictException('Já existe um contrato com este número');
 
     await this.validarFksDoTenant(tenantId, dto);
+    this.validarItensEntrada(dto.itens ?? []);
 
     if (dto.ataOrgaoId && dto.homologacaoFornecedorId) {
       throw new BadRequestException('Informe no máximo uma origem de saldo: ataOrgaoId ou homologacaoFornecedorId, não os dois');
@@ -269,7 +292,7 @@ export class ContratosService {
 
       if (dto.dotacaoIds?.length) {
         await tx.insert(contratoDotacoes).values(
-          dto.dotacaoIds.map((dotacaoId) => ({ contratoId: created.id, dotacaoId })),
+          [...new Set(dto.dotacaoIds)].map((dotacaoId) => ({ contratoId: created.id, dotacaoId })),
         );
       }
 
@@ -297,6 +320,7 @@ export class ContratosService {
 
   async addItem(tenantId: string, contratoId: string, item: ItemContratoInput) {
     const contrato = await this.get(tenantId, contratoId);
+    this.validarItensEntrada([item]);
 
     return this.db.transaction(async (tx) => {
       let ataHomologacaoFornecedorId: string | null = null;
