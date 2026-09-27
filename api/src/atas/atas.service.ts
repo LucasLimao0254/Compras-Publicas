@@ -13,10 +13,8 @@ import {
   homologacaoFornecedores,
   homologacaoItens,
   itensContrato,
-  itensOrdem,
   licitacaoHomologacoes,
   licitacoes,
-  ordens,
   secretarias,
 } from '../db/schema';
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
@@ -71,7 +69,7 @@ export class AtasService {
     const contratadas = await this.quantidadeContratadaPorItens(this.db, row.orgaos.flatMap((o) => o.itens.map((i) => i.id)));
     const orgaosComSaldo = await Promise.all(
       row.orgaos.map(async (o) => {
-        const utilizado = (await this.usadoPorOrgao(o.id)) + this.valorContratado(o.itens, contratadas);
+        const utilizado = this.valorContratado(o.itens, contratadas);
         const valorTotal = o.itens.reduce((acc, it) => acc + Number(it.quantidadeContratada) * Number(it.valorUnitario), 0);
         return {
           id: o.id,
@@ -99,7 +97,7 @@ export class AtasService {
       0,
     );
     const contratadas = await this.quantidadeContratadaPorItens(this.db, ataItemIds);
-    const utilizado = (ataItemIds.length ? await this.usadoPorItens(ataItemIds) : 0) + this.valorContratado(ata.orgaos.flatMap((o) => o.itens), contratadas);
+    const utilizado = this.valorContratado(ata.orgaos.flatMap((o) => o.itens), contratadas);
     const { orgaos, ...rest } = ata;
     return {
       ...rest,
@@ -108,24 +106,6 @@ export class AtasService {
       valorUtilizado: utilizado,
       saldoDisponivel: valorTotal - utilizado,
     };
-  }
-
-  private async usadoPorOrgao(ataOrgaoId: string) {
-    const [row] = await this.db
-      .select({ total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
-      .from(itensOrdem)
-      .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
-      .where(and(eq(ordens.ataOrgaoId, ataOrgaoId), eq(ordens.status, 'EMITIDA')));
-    return Number(row?.total ?? 0);
-  }
-
-  private async usadoPorItens(ataItemIds: string[]) {
-    const [row] = await this.db
-      .select({ total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
-      .from(itensOrdem)
-      .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
-      .where(and(inArray(itensOrdem.ataItemId, ataItemIds), eq(ordens.status, 'EMITIDA')));
-    return Number(row?.total ?? 0);
   }
 
   // Quantidade de cada item de ata já abatida por contratos do mesmo órgão —
@@ -151,20 +131,11 @@ export class AtasService {
     return itens.reduce((acc, it) => acc + (contratadas.get(it.id) ?? 0) * Number(it.valorUnitario), 0);
   }
 
-  // Quantidade (não valor monetário) já consumida de um único item da ata: por
-  // ordens emitidas direto dele + por contratos que abatem dele. Diferente de
-  // usadoPorItens/usadoPorOrgao acima, que somam precoTotal pra alimentar
-  // valorUtilizado — comparar uma quantidade contra uma soma de precoTotal
-  // seria misturar unidades; por isso este helper separado, parametrizado por
-  // tx pra ler dentro do lock de quem chama.
+  // Quantidade (não valor monetário) já consumida de um único item da ata:
+  // pelos contratos que abatem dele — ordem nunca abate direto de uma ata
+  // (ver MODELO.md, seção 2), então este é o único consumo possível.
   private async quantidadeUsadaPorItem(dbOrTx: DrizzleDB, ataItemId: string) {
-    const [row] = await dbOrTx
-      .select({ total: sql<string>`coalesce(sum(${itensOrdem.quantidade}), 0)` })
-      .from(itensOrdem)
-      .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
-      .where(and(eq(itensOrdem.ataItemId, ataItemId), eq(ordens.status, 'EMITIDA')));
-    const contratada = (await this.quantidadeContratadaPorItens(dbOrTx, [ataItemId])).get(ataItemId) ?? 0;
-    return Number(row?.total ?? 0) + contratada;
+    return (await this.quantidadeContratadaPorItens(dbOrTx, [ataItemId])).get(ataItemId) ?? 0;
   }
 
   private async validarOrgao(tenantId: string, ataId: string, ataOrgaoId: string) {
@@ -265,24 +236,16 @@ export class AtasService {
     return row;
   }
 
-  // Itens de um órgão com a quantidade já usada em ordens emitidas e o saldo
-  // restante — mesmo papel de ContratosService.itensComSaldo para o wizard.
+  // Itens de um órgão com a quantidade já usada (pelos contratos que abatem
+  // dele — ordem nunca abate direto de uma ata) e o saldo restante — mesmo
+  // papel de ContratosService.itensComSaldo para o wizard.
   async itensDoOrgao(tenantId: string, ataId: string, ataOrgaoId: string) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
     const itens = await this.db.select().from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
-
-    const usados = await this.db
-      .select({ ataItemId: itensOrdem.ataItemId, total: sql<string>`coalesce(sum(${itensOrdem.quantidade}), 0)` })
-      .from(itensOrdem)
-      .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
-      .where(and(eq(ordens.ataOrgaoId, ataOrgaoId), eq(ordens.status, 'EMITIDA')))
-      .groupBy(itensOrdem.ataItemId);
-
-    const usadoPorItem = new Map(usados.map((u) => [u.ataItemId, Number(u.total)]));
     const contratadas = await this.quantidadeContratadaPorItens(this.db, itens.map((it) => it.id));
 
     return itens.map((it) => {
-      const usado = (usadoPorItem.get(it.id) ?? 0) + (contratadas.get(it.id) ?? 0);
+      const usado = contratadas.get(it.id) ?? 0;
       return { ...it, quantidadeUtilizada: usado, quantidadeDisponivel: Number(it.quantidadeContratada) - usado };
     });
   }

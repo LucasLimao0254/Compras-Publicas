@@ -1,13 +1,10 @@
 import { ArrayMinSize, IsArray, IsBoolean, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
-// Cada item referencia a mesma origem da ordem — itemContratoId quando a
-// ordem parte de um contrato, ataItemId quando parte de uma ata+órgão (nunca
-// os dois). Validado em OrdensService.create(), não aqui: a regra depende do
-// que veio em CreateOrdemDto.contratoId/ataOrgaoId.
+// Ordem só nasce de contrato (ver MODELO.md, seção 2) — itemContratoId é a
+// única origem possível de um item de ordem.
 export class ItemOrdemInput {
-  @IsOptional() @IsString() itemContratoId?: string;
-  @IsOptional() @IsString() ataItemId?: string;
+  @IsString() itemContratoId: string;
   @IsNumber() @IsPositive() quantidade: number;
 }
 
@@ -17,8 +14,7 @@ export class DotacaoOrdemInput {
 }
 
 export class CreateOrdemDto {
-  @IsOptional() @IsString() contratoId?: string;
-  @IsOptional() @IsString() ataOrgaoId?: string;
+  @IsString() contratoId: string;
   @IsOptional() @IsString() unidadeExecutoraId?: string;
   // false cria a ordem como REQUISICAO (rascunho, não valida/decrementa
   // saldo ainda) — default true preserva o comportamento anterior do wizard.

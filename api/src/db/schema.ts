@@ -275,15 +275,15 @@ export const contratoDotacoes = pgTable('contrato_dotacoes', {
   uniqPar: unique().on(t.contratoId, t.dotacaoId),
 }));
 
-// Uma ordem tem origem polimórfica: contrato OU ata+órgão, nunca as duas —
-// ver CLAUDE.md/briefing de Atas. Regra é de aplicação (checada em
-// OrdensService.create), não constraint de banco.
+// Ordem só nasce de contrato — não existe ordem derivada diretamente de ata
+// ou de homologação (ver MODELO.md, seção 2). contratoId é obrigatório em
+// nível de aplicação (CreateOrdemDto), não NOT NULL aqui, para não quebrar
+// nenhuma ordem legada que ainda exista sem essa checagem no schema.
 export const ordens = pgTable('ordens', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   numero: integer('numero').notNull(),
   contratoId: uuid('contrato_id').references(() => contratos.id),
-  ataOrgaoId: uuid('ata_orgao_id').references(() => ataOrgaos.id),
   unidadeExecutoraId: uuid('unidade_executora_id').references(() => unidadesExecutoras.id),
   status: statusOrdemEnum('status').notNull().default('EMITIDA'),
   statusAssinaturas: statusAssinaturasEnum('status_assinaturas').notNull().default('nao_iniciado'),
@@ -296,7 +296,6 @@ export const itensOrdem = pgTable('itens_ordem', {
   id: uuid('id').defaultRandom().primaryKey(),
   ordemId: uuid('ordem_id').notNull().references(() => ordens.id, { onDelete: 'cascade' }),
   itemContratoId: uuid('item_contrato_id').references(() => itensContrato.id),
-  ataItemId: uuid('ata_item_id').references(() => ataItens.id),
   quantidade: numeric('quantidade', { precision: 14, scale: 3 }).notNull(),
   precoUnitario: numeric('preco_unitario', { precision: 14, scale: 4 }).notNull(),
   precoTotal: numeric('preco_total', { precision: 14, scale: 2 }).notNull(),
@@ -441,7 +440,6 @@ export const configuracoesCompras = pgTable('configuracoes_compras', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().unique().references(() => tenants.id),
   permitirOrdemContratoVencido: boolean('permitir_ordem_contrato_vencido').notNull().default(false),
-  permitirOrdemDiretoAta: boolean('permitir_ordem_direto_ata').notNull().default(false),
   dotacaoObrigatoria: boolean('dotacao_obrigatoria').notNull().default(true),
 });
 
@@ -540,7 +538,6 @@ export const aditivoItensRelations = relations(aditivoItens, ({ one }) => ({
 export const ordensRelations = relations(ordens, ({ many, one }) => ({
   itens: many(itensOrdem),
   contrato: one(contratos, { fields: [ordens.contratoId], references: [contratos.id] }),
-  ataOrgao: one(ataOrgaos, { fields: [ordens.ataOrgaoId], references: [ataOrgaos.id] }),
   unidadeExecutora: one(unidadesExecutoras, { fields: [ordens.unidadeExecutoraId], references: [unidadesExecutoras.id] }),
   dotacoes: many(ordemDotacoes),
   historico: many(ordemHistorico),
@@ -552,7 +549,6 @@ export const unidadesExecutorasRelations = relations(unidadesExecutoras, ({ many
 export const itensOrdemRelations = relations(itensOrdem, ({ one }) => ({
   ordem: one(ordens, { fields: [itensOrdem.ordemId], references: [ordens.id] }),
   itemContrato: one(itensContrato, { fields: [itensOrdem.itemContratoId], references: [itensContrato.id] }),
-  ataItem: one(ataItens, { fields: [itensOrdem.ataItemId], references: [ataItens.id] }),
 }));
 
 export const contratoDotacoesRelations = relations(contratoDotacoes, ({ one }) => ({
@@ -592,7 +588,6 @@ export const ataOrgaosRelations = relations(ataOrgaos, ({ many, one }) => ({
   ata: one(atas, { fields: [ataOrgaos.ataId], references: [atas.id] }),
   secretaria: one(secretarias, { fields: [ataOrgaos.secretariaId], references: [secretarias.id] }),
   itens: many(ataItens),
-  ordens: many(ordens),
   contratos: many(contratos),
 }));
 export const ataItensRelations = relations(ataItens, ({ many, one }) => ({

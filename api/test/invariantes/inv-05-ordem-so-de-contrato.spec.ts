@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { itensOrdem, ordens } from '../../src/db/schema';
 import { Ctx, criarAta, criarCenario, criarCtx, criarContrato, emitirOrdem, encerrarCtx, rejeicao } from '../helpers';
@@ -6,21 +5,14 @@ import { Ctx, criarAta, criarCenario, criarCtx, criarContrato, emitirOrdem, ence
 // Invariante 5 — Ordem só nasce de contrato. Não existe ordem derivada
 // diretamente de ata ou de homologação. Não é possível emitir ordem de item não
 // contratado ou sem saldo no contrato.
+//
+// Item 2 da TAREFA_RECONCILIACAO removeu por completo `ordens.ataOrgaoId`,
+// `itensOrdem.ataItemId` e o toggle `permitirOrdemDiretoAta` — não existe mais
+// nenhum caminho, nem configurável, para uma ordem nascer de uma ata.
 describe('Invariante 5 — ordem só nasce de contrato', () => {
   let ctx: Ctx;
   beforeAll(() => { ctx = criarCtx(); });
   afterAll(() => encerrarCtx(ctx));
-
-  // Enquanto o toggle `permitirOrdemDiretoAta` existir no schema, liga-o: assim o
-  // teste prova que a ordem-direto-da-ata é rejeitada SEMPRE, e não só porque um
-  // flag de configuração estava desligado. Quando o toggle for removido (item 2
-  // da TAREFA_RECONCILIACAO), este passo vira no-op.
-  async function ligarToggleDeOrdemDiretoSeExistir(tenantId: string) {
-    const { rows } = await ctx.pool.query(
-      `select 1 from information_schema.columns where table_name = 'configuracoes_compras' and column_name = 'permitir_ordem_direto_ata'`,
-    );
-    if (rows.length) await ctx.pool.query(`update configuracoes_compras set permitir_ordem_direto_ata = true where tenant_id = $1`, [tenantId]);
-  }
 
   it('caminho feliz: ordem emitida a partir de contrato, com saldo', async () => {
     const c = await criarCenario(ctx);
@@ -31,28 +23,34 @@ describe('Invariante 5 — ordem só nasce de contrato', () => {
     expect(ordem.contratoId).toBe(contrato.id);
   });
 
-  it('violação: ordem a partir de ata (ataOrgaoId + ataItemId) é rejeitada, mesmo com o toggle antigo ligado', async () => {
+  it('violação: tentar criar ordem só com campos de ata (sem contratoId) é rejeitada — não existe origem alternativa', async () => {
     const c = await criarCenario(ctx);
     const ata = await criarAta(ctx, c, [{ orgao: 'A', item: 'item1', quantidade: 50 }]);
-    const [ataItem] = await ctx.atas.itensDoOrgao(c.tenantId, ata.ataId, ata.orgaoA);
-    await ligarToggleDeOrdemDiretoSeExistir(c.tenantId);
+    await ctx.atas.itensDoOrgao(c.tenantId, ata.ataId, ata.orgaoA);
 
-    await rejeicao(ctx.ordens.create(c.tenantId, c.usuarioId, { ataOrgaoId: ata.orgaoA, itens: [{ ataItemId: ataItem.id, quantidade: 1 }] } as any));
+    await rejeicao(ctx.ordens.create(c.tenantId, c.usuarioId, { ataOrgaoId: ata.orgaoA, itens: [{ ataItemId: 'qualquer', quantidade: 1 }] } as any));
 
-    const criadas = await ctx.db.select().from(ordens).where(eq(ordens.tenantId, c.tenantId));
-    expect(criadas).toHaveLength(0); // nada foi gravado
     const depois = await ctx.atas.itensDoOrgao(c.tenantId, ata.ataId, ata.orgaoA);
-    expect(depois[0].quantidadeDisponivel).toBe(50); // e o saldo da ata não se mexeu
+    expect(depois[0].quantidadeDisponivel).toBe(50); // nada foi criado; o saldo da ata não se mexeu
   });
 
-  it('violação: informar contrato E ata na mesma ordem é rejeitado', async () => {
+  it('um campo de ata enviado a mais na ordem é ignorado — a ordem nasce só do contrato, sem tocar o saldo da ata em paralelo', async () => {
     const c = await criarCenario(ctx);
     const ata = await criarAta(ctx, c, [{ orgao: 'A', item: 'item1', quantidade: 50 }]);
     const contrato = await criarContrato(ctx, c, { origem: { ataOrgaoId: ata.orgaoA }, itens: [{ item: 'item1', quantidade: 20 }] });
     const [itemContrato] = await ctx.contratos.itensComSaldo(c.tenantId, contrato.id);
-    await ligarToggleDeOrdemDiretoSeExistir(c.tenantId);
 
-    await rejeicao(ctx.ordens.create(c.tenantId, c.usuarioId, { contratoId: contrato.id, ataOrgaoId: ata.orgaoA, itens: [{ itemContratoId: itemContrato.id, quantidade: 1 }] } as any));
+    // `ataOrgaoId` não existe mais em CreateOrdemDto — este `as any` simula um
+    // cliente antigo (ou malicioso) ainda enviando o campo; o serviço nem chega
+    // a olhar para ele.
+    const ordem: any = await ctx.ordens.create(c.tenantId, c.usuarioId, { contratoId: contrato.id, ataOrgaoId: ata.orgaoA, itens: [{ itemContratoId: itemContrato.id, quantidade: 5 }] } as any);
+    expect(ordem.status).toBe('EMITIDA');
+    expect(ordem.contratoId).toBe(contrato.id);
+
+    const [itemAta] = await ctx.atas.itensDoOrgao(c.tenantId, ata.ataId, ata.orgaoA);
+    // 50 reservados na ata − 20 já contratados (fixo, não muda com a ordem) —
+    // se o campo extra tivesse algum efeito, a ata teria descontado de novo.
+    expect(itemAta.quantidadeDisponivel).toBe(30);
   });
 
   it('violação: ordem sem nenhuma origem é rejeitada', async () => {

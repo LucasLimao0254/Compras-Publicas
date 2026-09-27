@@ -19,11 +19,10 @@ export class OrdensController {
     @Query('numero') numero?: string,
     @Query('licitacaoId') licitacaoId?: string,
     @Query('contratoId') contratoId?: string,
-    @Query('ataOrgaoId') ataOrgaoId?: string,
     @Query('secretariaId') secretariaId?: string,
     @Query('fornecedorId') fornecedorId?: string,
   ) {
-    return this.service.list(u.tenantId, { status, numero, licitacaoId, contratoId, ataOrgaoId, secretariaId, fornecedorId });
+    return this.service.list(u.tenantId, { status, numero, licitacaoId, contratoId, secretariaId, fornecedorId });
   }
 
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }

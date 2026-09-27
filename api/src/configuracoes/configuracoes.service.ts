@@ -27,7 +27,6 @@ export class ConfiguracoesService {
 
     const patch: Record<string, unknown> = {};
     if (dto.permitirOrdemContratoVencido !== undefined) patch.permitirOrdemContratoVencido = dto.permitirOrdemContratoVencido;
-    if (dto.permitirOrdemDiretoAta !== undefined) patch.permitirOrdemDiretoAta = dto.permitirOrdemDiretoAta;
     if (dto.dotacaoObrigatoria !== undefined) patch.dotacaoObrigatoria = dto.dotacaoObrigatoria;
     if (Object.keys(patch).length) {
       await this.db.update(configuracoesCompras).set(patch).where(eq(configuracoesCompras.tenantId, tenantId));

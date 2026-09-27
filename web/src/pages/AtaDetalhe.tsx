@@ -16,7 +16,6 @@ export function AtaDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [ata, setAta] = useState<any>(null);
-  const [permitirOrdemDiretoAta, setPermitirOrdemDiretoAta] = useState(false);
   const [orgaoAberto, setOrgaoAberto] = useState<string | null>(null);
   const [itensPorOrgao, setItensPorOrgao] = useState<Record<string, Item[]>>({});
   const [mostrarRemanejar, setMostrarRemanejar] = useState(false);
@@ -44,9 +43,6 @@ export function AtaDetalhe() {
     api.get(`/atas/${id}/contratos`).then(setContratosDaAta).catch(() => setContratosDaAta([]));
   }
   useEffect(() => { carregar(); }, [id]);
-  useEffect(() => {
-    api.get('/configuracoes/compras').then((c) => setPermitirOrdemDiretoAta(c.permitirOrdemDiretoAta));
-  }, []);
 
   async function recarregarItens(orgaoId: string) {
     const itens = await api.get(`/atas/${id}/orgaos/${orgaoId}/itens`);
@@ -177,9 +173,6 @@ export function AtaDetalhe() {
             <div className="num text-muted" style={{ fontSize: 12 }}>de R$ {ata.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            {permitirOrdemDiretoAta && (
-              <button className="btn btn-secondary" onClick={() => navigate('/ordens')}><i className="ph ph-plus" />Criar ordem</button>
-            )}
             <button className="btn btn-primary" onClick={() => setMostrarRemanejar(true)}><i className="ph ph-arrows-left-right" />Remanejar saldo</button>
           </div>
           {confirmandoRenovar ? (

@@ -5,21 +5,17 @@ import { useAuth } from '../auth/AuthContext';
 import { HistoricoOrdemModal } from '../components/HistoricoOrdemModal';
 import { ImportarPlanilhaDemandaButton } from '../components/ImportarPlanilhaDemandaButton';
 
-type Origem = 'CONTRATO' | 'ATA';
 type Aba = 'CONTRATOS' | 'BUSCAR' | 'REQUISICAO' | 'EMITIDA' | 'CANCELADA';
 
 interface Opcao { id: string; label: string; }
 interface ContratoOpcao { id: string; numero: string; objeto: string; fornecedor: { razaoSocial: string }; saldoDisponivel: number; situacao: string; }
-interface AtaOpcao { id: string; numeroArp: string; }
-interface OrgaoOpcao { id: string; secretaria: { titulo: string }; perfil: string; saldoDisponivel: number; }
 interface ItemDisp { id: string; numero: number; descricao: string; unidade: string; valorUnitario: string; quantidadeDisponivel: number; }
 interface DotacaoLinha { dotacaoId: string; valorRateado: string; }
 
 interface OrdemRow {
   id: string; numero: number; numeroExibicao: string | null; status: string; statusAssinaturas: string; createdAt: string;
   contrato: { id: string; numero: string; fornecedor?: { razaoSocial: string } } | null;
-  ataOrgao: { id: string; ata: { id: string; numeroArp: string; detentorPrincipal?: { razaoSocial: string } }; secretaria: { titulo: string } } | null;
-  itens: { itemContratoId: string | null; ataItemId: string | null; quantidade: string; precoTotal: string }[];
+  itens: { itemContratoId: string | null; quantidade: string; precoTotal: string }[];
 }
 
 const ABAS_STATUS: { key: Aba; label: string }[] = [
@@ -36,37 +32,29 @@ const STATUS_ASSINATURAS_LABEL: Record<string, string> = {
 const STATUS_TAG: Record<string, string> = { EMITIDA: 'tag tag-accent', CANCELADA: 'tag tag-neutral', REQUISICAO: 'tag tag-outline' };
 const STATUS_LABEL: Record<string, string> = { EMITIDA: 'Emitida', CANCELADA: 'Cancelada', REQUISICAO: 'Requisição' };
 
-interface OrigemKey { tipo: 'contrato' | 'ata'; id: string; }
-
 export function PainelOrdens() {
   const { usuario } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [ordens, setOrdens] = useState<OrdemRow[]>([]);
   const [aba, setAba] = useState<Aba>('CONTRATOS');
-  const [origemAberta, setOrigemAberta] = useState<OrigemKey | null>(null);
+  const [contratoAberto, setContratoAberto] = useState<string | null>(null);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [fNumero, setFNumero] = useState('');
   const [fLicitacaoId, setFLicitacaoId] = useState('');
-  const [fOrigemFiltro, setFOrigemFiltro] = useState(''); // "contrato:<id>" ou "ata:<ataOrgaoId>"
+  const [fContratoId, setFContratoId] = useState('');
   const [fSecretariaId, setFSecretariaId] = useState('');
   const [fFornecedorId, setFFornecedorId] = useState('');
 
   const [contratos, setContratos] = useState<ContratoOpcao[]>([]);
-  const [atas, setAtas] = useState<AtaOpcao[]>([]);
   const [licitacoes, setLicitacoes] = useState<Opcao[]>([]);
   const [secretarias, setSecretarias] = useState<Opcao[]>([]);
   const [fornecedores, setFornecedores] = useState<Opcao[]>([]);
   const [dotacoesDisponiveis, setDotacoesDisponiveis] = useState<{ id: string; label: string }[]>([]);
   const [unidadesExecutoras, setUnidadesExecutoras] = useState<{ id: string; label: string }[]>([]);
-  const [orgaosParaFiltro, setOrgaosParaFiltro] = useState<{ ataId: string; orgaoId: string; label: string }[]>([]);
 
   const [mostrarWizard, setMostrarWizard] = useState(false);
   const [passo, setPasso] = useState<1 | 2>(1);
-  const [origem, setOrigem] = useState<Origem>('CONTRATO');
   const [contratoId, setContratoId] = useState('');
-  const [ataId, setAtaId] = useState('');
-  const [ataOrgaoId, setAtaOrgaoId] = useState('');
-  const [orgaosDaAta, setOrgaosDaAta] = useState<OrgaoOpcao[]>([]);
   const [itens, setItens] = useState<ItemDisp[]>([]);
   const [quantidades, setQuantidades] = useState<Record<string, string>>({});
   const [dotacoesForm, setDotacoesForm] = useState<DotacaoLinha[]>([{ dotacaoId: '', valorRateado: '' }]);
@@ -93,33 +81,25 @@ export function PainelOrdens() {
     if (fLicitacaoId) params.set('licitacaoId', fLicitacaoId);
     if (fSecretariaId) params.set('secretariaId', fSecretariaId);
     if (fFornecedorId) params.set('fornecedorId', fFornecedorId);
-    if (fOrigemFiltro.startsWith('contrato:')) params.set('contratoId', fOrigemFiltro.slice('contrato:'.length));
-    if (fOrigemFiltro.startsWith('ata:')) params.set('ataOrgaoId', fOrigemFiltro.slice('ata:'.length));
+    if (fContratoId) params.set('contratoId', fContratoId);
     const qs = params.toString();
     setOrdens(await api.get(`/ordens${qs ? `?${qs}` : ''}`));
   }
 
   async function carregarOpcoes() {
-    const [c, a, l, s, f, d, u] = await Promise.all([
-      api.get('/contratos'), api.get('/atas'), api.get('/licitacoes'), api.get('/secretarias'), api.get('/fornecedores'), api.get('/dotacoes'), api.get('/unidades-executoras'),
+    const [c, l, s, f, d, u] = await Promise.all([
+      api.get('/contratos'), api.get('/licitacoes'), api.get('/secretarias'), api.get('/fornecedores'), api.get('/dotacoes'), api.get('/unidades-executoras'),
     ]);
     setContratos(c);
-    setAtas(a);
     setLicitacoes(l.map((x: any) => ({ id: x.id, label: `${x.numero} — ${x.modalidade.replaceAll('_', ' ')}` })));
     setSecretarias(s.map((x: any) => ({ id: x.id, label: x.titulo })));
     setFornecedores(f.map((x: any) => ({ id: x.id, label: `${x.razaoSocial} (${x.cnpjCpf})` })));
     setDotacoesDisponiveis(d.map((x: any) => ({ id: x.id, label: `${x.gestaoUnidade}.${x.fonteRecursos}.${x.programaTrabalho}` })));
     setUnidadesExecutoras(u.map((x: any) => ({ id: x.id, label: `${x.razaoSocial} (${x.cnpj})` })));
-
-    const orgaosPorAta = await Promise.all(a.map(async (ata: AtaOpcao) => {
-      const detalhe = await api.get(`/atas/${ata.id}`);
-      return (detalhe.orgaos ?? []).map((o: any) => ({ ataId: ata.id, orgaoId: o.id, label: `${ata.numeroArp} — ${o.secretaria.titulo}` }));
-    }));
-    setOrgaosParaFiltro(orgaosPorAta.flat());
   }
 
   useEffect(() => { carregarOpcoes(); }, []);
-  useEffect(() => { carregarListaBase(); }, [fNumero, fLicitacaoId, fOrigemFiltro, fSecretariaId, fFornecedorId]);
+  useEffect(() => { carregarListaBase(); }, [fNumero, fLicitacaoId, fContratoId, fSecretariaId, fFornecedorId]);
 
   // KPI "Ordens emitidas" clicável no contrato traz o painel já filtrado —
   // chip removível acima da lista, ver briefing_fornecedores_ordens.md seção 2.
@@ -127,23 +107,18 @@ export function PainelOrdens() {
   useEffect(() => {
     if (contratoIdFiltro) {
       setAba('BUSCAR');
-      setFOrigemFiltro(`contrato:${contratoIdFiltro}`);
+      setFContratoId(contratoIdFiltro);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contratoIdFiltro]);
 
   function removerFiltroContrato() {
-    setFOrigemFiltro('');
+    setFContratoId('');
     const proximos = new URLSearchParams(searchParams);
     proximos.delete('contratoId');
     setSearchParams(proximos);
   }
   const contratoFiltroNumero = contratos.find((c) => c.id === contratoIdFiltro)?.numero;
-
-  useEffect(() => {
-    if (!ataId) { setOrgaosDaAta([]); return; }
-    api.get(`/atas/${ataId}`).then((a) => setOrgaosDaAta(a.orgaos ?? []));
-  }, [ataId]);
 
   const contadores = useMemo(() => ({
     REQUISICAO: ordens.filter((o) => o.status === 'REQUISICAO').length,
@@ -153,12 +128,11 @@ export function PainelOrdens() {
 
   const ordensVisiveis = aba === 'BUSCAR' || aba === 'CONTRATOS' ? ordens : ordens.filter((o) => o.status === aba);
 
-  const gruposPorOrigem = useMemo(() => {
-    const mapa = new Map<string, { chave: OrigemKey; label: string; fornecedor: string; qtd: number; total: number; ultima: string }>();
+  const gruposPorContrato = useMemo(() => {
+    const mapa = new Map<string, { contratoId: string; label: string; fornecedor: string; qtd: number; total: number; ultima: string }>();
     for (const o of ordens) {
-      const chave: OrigemKey | null = o.contrato ? { tipo: 'contrato', id: o.contrato.id } : o.ataOrgao ? { tipo: 'ata', id: o.ataOrgao.id } : null;
-      if (!chave) continue;
-      const k = `${chave.tipo}:${chave.id}`;
+      if (!o.contrato) continue;
+      const k = o.contrato.id;
       const total = o.itens.reduce((acc, it) => acc + Number(it.precoTotal), 0);
       const existente = mapa.get(k);
       if (existente) {
@@ -167,9 +141,9 @@ export function PainelOrdens() {
         if (o.createdAt > existente.ultima) existente.ultima = o.createdAt;
       } else {
         mapa.set(k, {
-          chave,
-          label: o.contrato ? `Contrato ${o.contrato.numero}` : o.ataOrgao!.ata.numeroArp,
-          fornecedor: o.contrato?.fornecedor?.razaoSocial ?? o.ataOrgao?.ata.detentorPrincipal?.razaoSocial ?? '—',
+          contratoId: k,
+          label: `Contrato ${o.contrato.numero}`,
+          fornecedor: o.contrato.fornecedor?.razaoSocial ?? '—',
           qtd: 1, total, ultima: o.createdAt,
         });
       }
@@ -177,17 +151,15 @@ export function PainelOrdens() {
     return Array.from(mapa.values()).sort((a, b) => (a.ultima < b.ultima ? 1 : -1));
   }, [ordens]);
 
-  const ordensDaOrigem = useMemo(() => {
-    if (!origemAberta) return [];
-    return ordens.filter((o) => (origemAberta.tipo === 'contrato' ? o.contrato?.id === origemAberta.id : o.ataOrgao?.id === origemAberta.id));
-  }, [ordens, origemAberta]);
+  const ordensDoContrato = useMemo(() => {
+    if (!contratoAberto) return [];
+    return ordens.filter((o) => o.contrato?.id === contratoAberto);
+  }, [ordens, contratoAberto]);
 
   const contratoSelecionado = contratos.find((c) => c.id === contratoId);
-  const orgaoSelecionado = orgaosDaAta.find((o) => o.id === ataOrgaoId);
-  const ataSelecionadaNumero = atas.find((a) => a.id === ataId)?.numeroArp;
 
   function resetWizard() {
-    setPasso(1); setOrigem('CONTRATO'); setContratoId(''); setAtaId(''); setAtaOrgaoId('');
+    setPasso(1); setContratoId('');
     setItens([]); setQuantidades({}); setDotacoesForm([{ dotacaoId: '', valorRateado: '' }]); setUnidadeExecutoraId(''); setEmitirAgora(true); setErro(null);
     setEditandoOrdemId(null); setItensOrdemIdPorItem({});
   }
@@ -200,21 +172,11 @@ export function PainelOrdens() {
     setMenuAbertoId(null);
     const mapa: Record<string, string> = {};
     if (detalhe.contrato) {
-      setOrigem('CONTRATO');
       setContratoId(detalhe.contrato.id);
       const dados = await api.get(`/contratos/${detalhe.contrato.id}/itens`);
       setItens(dados);
       const q: Record<string, string> = {};
       for (const it of detalhe.itens) if (it.itemContratoId) { q[it.itemContratoId] = it.quantidade; mapa[it.itemContratoId] = it.id; }
-      setQuantidades(q);
-    } else if (detalhe.ataOrgao) {
-      setOrigem('ATA');
-      setAtaId(detalhe.ataOrgao.ata.id);
-      setAtaOrgaoId(detalhe.ataOrgao.id);
-      const dados = await api.get(`/atas/${detalhe.ataOrgao.ata.id}/orgaos/${detalhe.ataOrgao.id}/itens`);
-      setItens(dados.map((it: any) => ({ id: it.id, numero: it.numeroItem, descricao: it.descricao, unidade: it.unidade, valorUnitario: it.valorUnitario, quantidadeDisponivel: it.quantidadeDisponivel })));
-      const q: Record<string, string> = {};
-      for (const it of detalhe.itens) if (it.ataItemId) { q[it.ataItemId] = it.quantidade; mapa[it.ataItemId] = it.id; }
       setQuantidades(q);
     }
     setItensOrdemIdPorItem(mapa);
@@ -243,29 +205,15 @@ export function PainelOrdens() {
   }
 
   async function irParaPasso2() {
-    if (origem === 'CONTRATO') {
-      if (!contratoId) return;
-      const dados = await api.get(`/contratos/${contratoId}/itens`);
-      setItens(dados);
-    } else {
-      if (!ataOrgaoId) return;
-      const dados = await api.get(`/atas/${ataId}/orgaos/${ataOrgaoId}/itens`);
-      setItens(dados.map((it: any) => ({ id: it.id, numero: it.numeroItem, descricao: it.descricao, unidade: it.unidade, valorUnitario: it.valorUnitario, quantidadeDisponivel: it.quantidadeDisponivel })));
-    }
+    if (!contratoId) return;
+    const dados = await api.get(`/contratos/${contratoId}/itens`);
+    setItens(dados);
     setPasso(2);
   }
 
-  function abrirWizardParaOrigem(chave: OrigemKey) {
+  function abrirWizardParaContrato(id: string) {
     resetWizard();
-    if (chave.tipo === 'contrato') {
-      setOrigem('CONTRATO');
-      setContratoId(chave.id);
-    } else {
-      setOrigem('ATA');
-      const orgao = ordens.find((o) => o.ataOrgao?.id === chave.id)?.ataOrgao;
-      if (orgao) setAtaId(orgao.ata.id);
-      setAtaOrgaoId(chave.id);
-    }
+    setContratoId(id);
     setMostrarWizard(true);
   }
 
@@ -275,21 +223,11 @@ export function PainelOrdens() {
     setMostrarWizard(true);
     setMenuAbertoId(null);
     if (detalhe.contrato) {
-      setOrigem('CONTRATO');
       setContratoId(detalhe.contrato.id);
       const dados = await api.get(`/contratos/${detalhe.contrato.id}/itens`);
       setItens(dados);
       const q: Record<string, string> = {};
       for (const it of detalhe.itens) if (it.itemContratoId) q[it.itemContratoId] = it.quantidade;
-      setQuantidades(q);
-    } else if (detalhe.ataOrgao) {
-      setOrigem('ATA');
-      setAtaId(detalhe.ataOrgao.ata.id);
-      setAtaOrgaoId(detalhe.ataOrgao.id);
-      const dados = await api.get(`/atas/${detalhe.ataOrgao.ata.id}/orgaos/${detalhe.ataOrgao.id}/itens`);
-      setItens(dados.map((it: any) => ({ id: it.id, numero: it.numeroItem, descricao: it.descricao, unidade: it.unidade, valorUnitario: it.valorUnitario, quantidadeDisponivel: it.quantidadeDisponivel })));
-      const q: Record<string, string> = {};
-      for (const it of detalhe.itens) if (it.ataItemId) q[it.ataItemId] = it.quantidade;
       setQuantidades(q);
     }
     if (detalhe.unidadeExecutora) setUnidadeExecutoraId(detalhe.unidadeExecutora.id);
@@ -309,17 +247,15 @@ export function PainelOrdens() {
     setErro(null);
     setSalvando(true);
     try {
-      const chaveItem = origem === 'CONTRATO' ? 'itemContratoId' : 'ataItemId';
       const itensPayload = itens
         .filter((it) => Number(quantidades[it.id]) > 0)
-        .map((it) => ({ [chaveItem]: it.id, quantidade: Number(quantidades[it.id]) }));
+        .map((it) => ({ itemContratoId: it.id, quantidade: Number(quantidades[it.id]) }));
       if (!itensPayload.length) throw new Error('Selecione ao menos um item');
       const dotacoesPayload = dotacoesForm
         .filter((d) => d.dotacaoId)
         .map((d) => ({ dotacaoId: d.dotacaoId, valorRateado: d.valorRateado ? Number(d.valorRateado) : undefined }));
-      const origemBody = origem === 'CONTRATO' ? { contratoId } : { ataOrgaoId };
       await api.post('/ordens', {
-        ...origemBody,
+        contratoId,
         unidadeExecutoraId: unidadeExecutoraId || undefined,
         emitirAgora,
         itens: itensPayload,
@@ -358,9 +294,8 @@ export function PainelOrdens() {
 
   function linhaOrdem(o: OrdemRow) {
     const total = o.itens.reduce((acc, it) => acc + Number(it.precoTotal), 0);
-    const contratoArp = o.contrato ? `Contrato ${o.contrato.numero}` : o.ataOrgao ? o.ataOrgao.ata.numeroArp : '—';
-    const orgaoTxt = o.ataOrgao ? o.ataOrgao.secretaria.titulo : '—';
-    const fornecedor = o.contrato?.fornecedor?.razaoSocial ?? o.ataOrgao?.ata.detentorPrincipal?.razaoSocial ?? '—';
+    const contratoNumero = o.contrato ? `Contrato ${o.contrato.numero}` : '—';
+    const fornecedor = o.contrato?.fornecedor?.razaoSocial ?? '—';
     return (
       <tr key={o.id} style={{ position: 'relative' }}>
         <td>
@@ -415,8 +350,7 @@ export function PainelOrdens() {
         <td className="num" style={{ fontFamily: 'var(--font-heading)', fontWeight: 500 }}>{o.numeroExibicao ?? String(o.numero).padStart(3, '0')}</td>
         <td style={{ fontSize: 12.5, color: 'color-mix(in srgb, var(--color-text) 65%, transparent)' }}>{STATUS_ASSINATURAS_LABEL[o.statusAssinaturas] ?? o.statusAssinaturas}</td>
         <td style={{ fontSize: 13, color: 'color-mix(in srgb, var(--color-text) 70%, transparent)' }}>{fornecedor}</td>
-        <td className="num" style={{ fontSize: 12.5 }}>{contratoArp}</td>
-        <td style={{ fontSize: 12, color: 'color-mix(in srgb, var(--color-text) 58%, transparent)' }}>{orgaoTxt}</td>
+        <td className="num" style={{ fontSize: 12.5 }}>{contratoNumero}</td>
         <td className="num" style={{ textAlign: 'right' }}>R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
         <td className="num" style={{ fontSize: 12.5, color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>{new Date(o.createdAt).toLocaleDateString('pt-BR')}</td>
         <td><span className={STATUS_TAG[o.status] ?? 'tag tag-neutral'}>{STATUS_LABEL[o.status] ?? o.status}</span></td>
@@ -460,49 +394,24 @@ export function PainelOrdens() {
           )}
           {passo === 1 && (
             <div>
-              <h4 style={{ fontSize: 15, marginBottom: 12 }}>1. Selecione a origem</h4>
-              <div className="seg" style={{ marginBottom: 14 }}>
-                <label className="seg-opt"><input type="radio" checked={origem === 'CONTRATO'} onChange={() => { setOrigem('CONTRATO'); setAtaId(''); setAtaOrgaoId(''); }} />Contrato</label>
-                <label className="seg-opt"><input type="radio" checked={origem === 'ATA'} onChange={() => { setOrigem('ATA'); setContratoId(''); }} />Ata / Credenciamento</label>
-              </div>
+              <h4 style={{ fontSize: 15, marginBottom: 12 }}>1. Selecione o contrato</h4>
+              <select className="input" style={{ marginBottom: 16 }} value={contratoId} onChange={(e) => setContratoId(e.target.value)}>
+                <option value="">Nº do contrato ou fornecedor</option>
+                {contratos.map((c) => <option key={c.id} value={c.id}>{c.numero} — {c.fornecedor.razaoSocial}</option>)}
+              </select>
 
-              {origem === 'CONTRATO' ? (
-                <select className="input" style={{ marginBottom: 16 }} value={contratoId} onChange={(e) => setContratoId(e.target.value)}>
-                  <option value="">Nº do contrato ou fornecedor</option>
-                  {contratos.map((c) => <option key={c.id} value={c.id}>{c.numero} — {c.fornecedor.razaoSocial}</option>)}
-                </select>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <select className="input" value={ataId} onChange={(e) => { setAtaId(e.target.value); setAtaOrgaoId(''); }}>
-                    <option value="">Selecione a ata</option>
-                    {atas.map((a) => <option key={a.id} value={a.id}>{a.numeroArp}</option>)}
-                  </select>
-                  <select className="input" value={ataOrgaoId} onChange={(e) => setAtaOrgaoId(e.target.value)} disabled={!ataId}>
-                    <option value="">Selecione o órgão</option>
-                    {orgaosDaAta.map((o) => <option key={o.id} value={o.id}>{o.secretaria.titulo} ({o.perfil === 'GERENCIADOR' ? 'Gerenciador' : 'Participante'})</option>)}
-                  </select>
-                </div>
-              )}
-
-              <button className="btn btn-primary" onClick={irParaPasso2} disabled={origem === 'CONTRATO' ? !contratoId : !ataOrgaoId}>
+              <button className="btn btn-primary" onClick={irParaPasso2} disabled={!contratoId}>
                 Selecionar itens<i className="ph ph-arrow-right" />
               </button>
             </div>
           )}
           {passo === 2 && (
             <div>
-              {origem === 'CONTRATO' && contratoSelecionado && (
+              {contratoSelecionado && (
                 <div style={{ borderRadius: 8, background: 'color-mix(in srgb, var(--color-text) 5%, transparent)', padding: 12, marginBottom: 16, fontSize: 13 }}>
                   <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 500 }}>Contrato {contratoSelecionado.numero} — {contratoSelecionado.fornecedor.razaoSocial}</div>
                   <div className="text-muted">{contratoSelecionado.objeto}</div>
                   <div style={{ color: 'var(--color-accent-300)', marginTop: 4 }}>Saldo disponível: R$ {contratoSelecionado.saldoDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                </div>
-              )}
-              {origem === 'ATA' && orgaoSelecionado && (
-                <div style={{ borderRadius: 8, background: 'color-mix(in srgb, var(--color-text) 5%, transparent)', padding: 12, marginBottom: 16, fontSize: 13 }}>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 500 }}>{ataSelecionadaNumero} — {orgaoSelecionado.secretaria.titulo}</div>
-                  <div className="text-muted">{orgaoSelecionado.perfil === 'GERENCIADOR' ? 'Órgão Gerenciador' : 'Órgão Participante'}</div>
-                  <div style={{ color: 'var(--color-accent-300)', marginTop: 4 }}>Saldo disponível: R$ {orgaoSelecionado.saldoDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
                 </div>
               )}
 
@@ -581,18 +490,18 @@ export function PainelOrdens() {
 
       <div style={{ display: 'flex', gap: 22, margin: '6px 0 20px', boxShadow: 'inset 0 -1px 0 var(--color-divider)' }}>
         {ABAS_STATUS.map((a) => (
-          <button key={a.key} className={`tabbtn${aba === a.key ? ' active' : ''}`} onClick={() => { setAba(a.key); setOrigemAberta(null); }}>
+          <button key={a.key} className={`tabbtn${aba === a.key ? ' active' : ''}`} onClick={() => { setAba(a.key); setContratoAberto(null); }}>
             {a.label}{a.key !== 'BUSCAR' && a.key !== 'CONTRATOS' && ` (${contadores[a.key as 'REQUISICAO' | 'EMITIDA' | 'CANCELADA']})`}
           </button>
         ))}
       </div>
 
-      {aba === 'CONTRATOS' && !origemAberta && (
+      {aba === 'CONTRATOS' && !contratoAberto && (
         <table className="table">
-          <thead><tr><th style={{ width: 110 }}>Contrato/ARP</th><th>Fornecedor</th><th style={{ width: 100, textAlign: 'right' }}>Ordens</th><th style={{ width: 150, textAlign: 'right' }}>Valor total</th><th style={{ width: 120 }}>Última ordem</th><th style={{ width: 40 }}></th></tr></thead>
+          <thead><tr><th style={{ width: 110 }}>Contrato</th><th>Fornecedor</th><th style={{ width: 100, textAlign: 'right' }}>Ordens</th><th style={{ width: 150, textAlign: 'right' }}>Valor total</th><th style={{ width: 120 }}>Última ordem</th><th style={{ width: 40 }}></th></tr></thead>
           <tbody>
-            {gruposPorOrigem.map((g) => (
-              <tr key={`${g.chave.tipo}:${g.chave.id}`} style={{ cursor: 'pointer' }} onClick={() => setOrigemAberta(g.chave)}>
+            {gruposPorContrato.map((g) => (
+              <tr key={g.contratoId} style={{ cursor: 'pointer' }} onClick={() => setContratoAberto(g.contratoId)}>
                 <td className="num" style={{ fontFamily: 'var(--font-heading)', fontWeight: 500 }}>{g.label}</td>
                 <td style={{ fontSize: 13, color: 'color-mix(in srgb, var(--color-text) 70%, transparent)' }}>{g.fornecedor}</td>
                 <td className="num" style={{ textAlign: 'right' }}>{g.qtd}</td>
@@ -605,23 +514,23 @@ export function PainelOrdens() {
                 </td>
               </tr>
             ))}
-            {!gruposPorOrigem.length && <tr><td colSpan={6} style={{ padding: '24px 0', textAlign: 'center' }} className="text-muted">Nenhuma ordem emitida</td></tr>}
+            {!gruposPorContrato.length && <tr><td colSpan={6} style={{ padding: '24px 0', textAlign: 'center' }} className="text-muted">Nenhuma ordem emitida</td></tr>}
           </tbody>
         </table>
       )}
 
-      {aba === 'CONTRATOS' && origemAberta && (
+      {aba === 'CONTRATOS' && contratoAberto && (
         <div>
-          <div onClick={() => setOrigemAberta(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--color-accent)', cursor: 'pointer', marginBottom: 16 }}>
+          <div onClick={() => setContratoAberto(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--color-accent)', cursor: 'pointer', marginBottom: 16 }}>
             <i className="ph ph-arrow-left" style={{ fontSize: 14 }} />Painel de ordens
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, marginBottom: 18 }}>
-            <h3 style={{ fontSize: 22, margin: 0 }}>{gruposPorOrigem.find((g) => g.chave.id === origemAberta.id)?.label}</h3>
-            <button className="btn btn-primary" onClick={() => abrirWizardParaOrigem(origemAberta)}><i className="ph ph-plus" />Nova ordem</button>
+            <h3 style={{ fontSize: 22, margin: 0 }}>{gruposPorContrato.find((g) => g.contratoId === contratoAberto)?.label}</h3>
+            <button className="btn btn-primary" onClick={() => abrirWizardParaContrato(contratoAberto)}><i className="ph ph-plus" />Nova ordem</button>
           </div>
           <table className="table">
-            <thead><tr><th></th><th style={{ width: 96 }}>Ordem</th><th>Assinaturas</th><th>Fornecedor</th><th>Contrato/ARP</th><th>Órgão</th><th style={{ textAlign: 'right' }}>Valor</th><th>Data</th><th>Status</th></tr></thead>
-            <tbody>{ordensDaOrigem.map(linhaOrdem)}</tbody>
+            <thead><tr><th></th><th style={{ width: 96 }}>Ordem</th><th>Assinaturas</th><th>Fornecedor</th><th>Contrato</th><th style={{ textAlign: 'right' }}>Valor</th><th>Data</th><th>Status</th></tr></thead>
+            <tbody>{ordensDoContrato.map(linhaOrdem)}</tbody>
           </table>
         </div>
       )}
@@ -649,10 +558,9 @@ export function PainelOrdens() {
                   <option value="">Licitação</option>
                   {licitacoes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
-                <select className="input" value={fOrigemFiltro} onChange={(e) => setFOrigemFiltro(e.target.value)}>
-                  <option value="">Contrato / ARP</option>
-                  {contratos.map((c) => <option key={c.id} value={`contrato:${c.id}`}>Contrato {c.numero}</option>)}
-                  {orgaosParaFiltro.map((o) => <option key={o.orgaoId} value={`ata:${o.orgaoId}`}>{o.label}</option>)}
+                <select className="input" value={fContratoId} onChange={(e) => setFContratoId(e.target.value)}>
+                  <option value="">Contrato</option>
+                  {contratos.map((c) => <option key={c.id} value={c.id}>Contrato {c.numero}</option>)}
                 </select>
                 <select className="input" value={fSecretariaId} onChange={(e) => setFSecretariaId(e.target.value)}>
                   <option value="">Órgão</option>
@@ -667,11 +575,11 @@ export function PainelOrdens() {
           </div>
 
           <div className="table-wrap">
-            <table className="table" style={{ minWidth: 920 }}>
-              <thead><tr><th></th><th style={{ width: 96 }}>Ordem</th><th>Assinaturas</th><th>Fornecedor</th><th>Contrato/ARP</th><th>Órgão</th><th style={{ textAlign: 'right' }}>Valor total</th><th>Data</th><th>Status</th></tr></thead>
+            <table className="table" style={{ minWidth: 860 }}>
+              <thead><tr><th></th><th style={{ width: 96 }}>Ordem</th><th>Assinaturas</th><th>Fornecedor</th><th>Contrato</th><th style={{ textAlign: 'right' }}>Valor total</th><th>Data</th><th>Status</th></tr></thead>
               <tbody>
                 {ordensVisiveis.map(linhaOrdem)}
-                {!ordensVisiveis.length && <tr><td colSpan={9} style={{ padding: '24px 0', textAlign: 'center' }} className="text-muted">Nenhuma ordem encontrada</td></tr>}
+                {!ordensVisiveis.length && <tr><td colSpan={8} style={{ padding: '24px 0', textAlign: 'center' }} className="text-muted">Nenhuma ordem encontrada</td></tr>}
               </tbody>
             </table>
           </div>

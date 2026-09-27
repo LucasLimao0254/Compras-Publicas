@@ -4,7 +4,6 @@ import { api } from '../lib/api';
 interface Config {
   proximoNumeroOrdem: number;
   permitirOrdemContratoVencido: boolean;
-  permitirOrdemDiretoAta: boolean;
   dotacaoObrigatoria: boolean;
 }
 
@@ -75,18 +74,6 @@ export function ConfiguracoesCompras() {
               </p>
             </div>
             <Toggle checked={config.permitirOrdemContratoVencido} onChange={(v) => patch({ permitirOrdemContratoVencido: v })} />
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: 20, boxShadow: config.permitirOrdemDiretoAta ? 'inset 0 0 0 1px var(--color-accent)' : undefined }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-            <div>
-              <div className="card-title" style={{ marginBottom: 4 }}>Ordens direto de uma ata</div>
-              <p className="text-muted" style={{ fontSize: 12.5, margin: 0 }}>
-                Desligado (padrão), a ordem só existe a partir de um contrato. Ligado, aparece o botão "Criar ordem" nos detalhes da ata e o consumo é abatido do saldo da ata, por órgão. A numeração é a mesma série das ordens de contrato.
-              </p>
-            </div>
-            <Toggle checked={config.permitirOrdemDiretoAta} onChange={(v) => patch({ permitirOrdemDiretoAta: v })} />
           </div>
         </div>
 
