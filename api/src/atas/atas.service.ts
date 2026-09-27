@@ -18,24 +18,10 @@ import {
   licitacoes,
   secretarias,
 } from '../db/schema';
+import { paraNumeroPlanilha } from '../common/numero-planilha';
 import { quantidadeConsumidaDoTeto, SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { ContratosService } from '../contratos/contratos.service';
 import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
-
-// Números de planilha podem vir como texto formatado em padrão BR ("1.234,56")
-// OU como célula numérica comum do Excel, que o SheetJS (com raw:false)
-// renderiza sem separador de milhar ("10.5") — nesses casos o ponto É o
-// separador decimal. Remover todo ponto incondicionalmente (como o parser
-// original fazia) transforma "10.5" em 105: um erro silencioso de 10x a
-// 1000x. A vírgula é o sinal inequívoco de formatação BR — só stripa pontos
-// quando ela está presente.
-function paraNumeroPlanilha(valor: unknown): number | null {
-  if (valor == null) return null;
-  const texto = String(valor).trim().replace(/^R\$\s*/i, '');
-  if (!texto || texto === '-') return null;
-  const numero = texto.includes(',') ? Number(texto.replace(/\./g, '').replace(',', '.')) : Number(texto);
-  return Number.isFinite(numero) ? numero : null;
-}
 
 @Injectable()
 export class AtasService {
@@ -475,7 +461,8 @@ export class AtasService {
     }
     const nomeAba = workbook.SheetNames[0];
     if (!nomeAba) throw new BadRequestException('A planilha não tem nenhuma aba');
-    const linhas: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, raw: false, defval: '' });
+    // raw: true — célula numérica chega como number (ver common/numero-planilha.ts).
+    const linhas: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, raw: true, defval: '' });
 
     const existentes = await this.db.select({ numeroItem: ataItens.numeroItem }).from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
     let proximoNumero = existentes.length + 1;
@@ -488,7 +475,7 @@ export class AtasService {
       const [, descricao, unidade, quantidadeStr, precoStr] = linha;
       const descricaoTexto = String(descricao ?? '').trim();
       const unidadeTexto = String(unidade ?? '').trim();
-      if (!descricaoTexto && !unidadeTexto && !quantidadeStr && !precoStr) continue; // linha em branco
+      if (!descricaoTexto && !unidadeTexto && quantidadeStr === '' && precoStr === '') continue; // linha em branco
 
       const quantidade = paraNumeroPlanilha(quantidadeStr);
       const precoUnitario = paraNumeroPlanilha(precoStr);

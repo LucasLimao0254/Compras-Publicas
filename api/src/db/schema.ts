@@ -34,7 +34,10 @@ export const perfilOrgaoAtaEnum = pgEnum('perfil_orgao_ata', ['GERENCIADOR', 'PA
 // teto próprio de 50%, pool inteiramente separado do teto de 25% compartilhado
 // entre VALOR/QUANTIDADE (ver AditivosService.somaAcrescimos).
 export const tipoAditivoEnum = pgEnum('tipo_aditivo', ['VALOR', 'PRAZO', 'QUANTIDADE', 'SUPRESSAO', 'ACRESCIMO_ESPECIAL']);
-export const homologacaoStatusEnum = pgEnum('homologacao_status', ['processando', 'pronto_para_revisao', 'revisado', 'erro']);
+// 'substituido': revisão anterior de uma licitação que recebeu um reenvio
+// corrigido, concluído depois — deixa de valer como teto (só uma homologação
+// revisada por licitação vale por vez; ver LicitacoesHomologacaoService.concluirRevisao).
+export const homologacaoStatusEnum = pgEnum('homologacao_status', ['processando', 'pronto_para_revisao', 'revisado', 'erro', 'substituido']);
 export const confiancaExtracaoEnum = pgEnum('confianca_extracao', ['alta', 'media', 'baixa']);
 // Apostilamento (Lei 14.133/2021, art. 136): registro formal sem efeito de
 // saldo — ao contrário de aditivo, nunca altera quantidade/valor de item.

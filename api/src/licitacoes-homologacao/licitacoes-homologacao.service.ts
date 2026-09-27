@@ -1,8 +1,10 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { readFile } from 'fs/promises';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import {
+  atas,
+  contratos,
   fornecedores,
   homologacaoFornecedores,
   homologacaoItens,
@@ -38,6 +40,9 @@ export class LicitacoesHomologacaoService {
   private exigirNaoRevisado(homologacao: { status: string }) {
     if (homologacao.status === 'revisado') {
       throw new BadRequestException('Esta homologação já foi revisada — edição bloqueada');
+    }
+    if (homologacao.status === 'substituido') {
+      throw new BadRequestException('Esta homologação foi substituída por um reenvio — edição bloqueada');
     }
   }
 
@@ -93,8 +98,13 @@ export class LicitacoesHomologacaoService {
     try {
       const buffer = await readFile(file.path);
       const extraido = await this.extracao.extrair(buffer);
-      await this.gravarExtracao(tenantId, homologacao.id, extraido);
-      await this.db.update(licitacaoHomologacoes).set({ status: 'pronto_para_revisao' }).where(and(eq(licitacaoHomologacoes.id, homologacao.id), eq(licitacaoHomologacoes.tenantId, tenantId)));
+      // Numa transação só: se qualquer insert falhar no meio (ex.: valor fora
+      // da precisão da coluna), nenhum fornecedor/item fica gravado pela
+      // metade numa homologação marcada como 'erro'.
+      await this.db.transaction(async (tx) => {
+        await this.gravarExtracao(tx as unknown as DrizzleDB, tenantId, homologacao.id, extraido);
+        await tx.update(licitacaoHomologacoes).set({ status: 'pronto_para_revisao' }).where(and(eq(licitacaoHomologacoes.id, homologacao.id), eq(licitacaoHomologacoes.tenantId, tenantId)));
+      });
     } catch (err) {
       const detalhe = err instanceof Error ? err.message : 'Erro desconhecido na extração';
       await this.db.update(licitacaoHomologacoes).set({ status: 'erro', erroDetalhe: detalhe }).where(and(eq(licitacaoHomologacoes.id, homologacao.id), eq(licitacaoHomologacoes.tenantId, tenantId)));
@@ -103,9 +113,9 @@ export class LicitacoesHomologacaoService {
     return this.detalhe(tenantId, homologacao.id);
   }
 
-  private async gravarExtracao(tenantId: string, homologacaoId: string, extraido: ExtracaoHomologacao) {
+  private async gravarExtracao(tx: DrizzleDB, tenantId: string, homologacaoId: string, extraido: ExtracaoHomologacao) {
     for (const forn of extraido.fornecedores) {
-      const [fRow] = await this.db
+      const [fRow] = await tx
         .insert(homologacaoFornecedores)
         .values({
           tenantId,
@@ -116,7 +126,7 @@ export class LicitacoesHomologacaoService {
         .returning();
 
       if (!forn.itens.length) continue;
-      await this.db.insert(homologacaoItens).values(
+      await tx.insert(homologacaoItens).values(
         forn.itens.map((it) => {
           const unidade = it.unidade ?? null;
           const quantidade = it.quantidade ?? null;
@@ -216,7 +226,10 @@ export class LicitacoesHomologacaoService {
   }
 
   async concluirRevisao(tenantId: string, homologacaoId: string) {
-    await this.getHomologacao(tenantId, homologacaoId);
+    const homologacao = await this.getHomologacao(tenantId, homologacaoId);
+    if (homologacao.status !== 'pronto_para_revisao') {
+      throw new BadRequestException('Só é possível concluir a revisão de uma homologação pronta para revisão');
+    }
     const detalhe = await this.detalhe(tenantId, homologacaoId);
 
     if (!detalhe.fornecedores.length) {
@@ -233,10 +246,47 @@ export class LicitacoesHomologacaoService {
         if (!it.descricao || !it.unidade || it.quantidade == null || it.valorUnitario == null) {
           throw new BadRequestException(`Preencha descrição, unidade, quantidade e valor unitário de todos os itens de "${f.nomeExtraido}" antes de concluir a revisão`);
         }
+        if (Number(it.quantidade) <= 0 || Number(it.valorUnitario) <= 0) {
+          throw new BadRequestException(`O item "${it.descricao}" de "${f.nomeExtraido}" precisa ter quantidade e valor unitário maiores que zero`);
+        }
       }
     }
 
-    await this.db.update(licitacaoHomologacoes).set({ status: 'revisado' }).where(and(eq(licitacaoHomologacoes.id, homologacaoId), eq(licitacaoHomologacoes.tenantId, tenantId)));
+    // Só uma homologação revisada vale por licitação (MODELO.md, invariante 3:
+    // teto fixo). Antes, concluir um reenvio deixava as duas valendo e o teto
+    // de cada fornecedor+item ficava duplicado. O reenvio substitui a
+    // anterior só enquanto ela não foi usada por nenhuma ata/contrato; depois
+    // disso o teto já está em uso e não pode ser trocado por baixo.
+    await this.db.transaction(async (tx) => {
+      const anteriores = await tx
+        .select({ id: licitacaoHomologacoes.id })
+        .from(licitacaoHomologacoes)
+        .where(and(
+          eq(licitacaoHomologacoes.tenantId, tenantId),
+          eq(licitacaoHomologacoes.licitacaoId, homologacao.licitacaoId),
+          eq(licitacaoHomologacoes.status, 'revisado'),
+          ne(licitacaoHomologacoes.id, homologacaoId),
+        ))
+        .for('update');
+
+      if (anteriores.length) {
+        const fornecedoresAnteriores = await tx
+          .select({ id: homologacaoFornecedores.id })
+          .from(homologacaoFornecedores)
+          .where(inArray(homologacaoFornecedores.homologacaoId, anteriores.map((h) => h.id)));
+        const ids = fornecedoresAnteriores.map((f) => f.id);
+        if (ids.length) {
+          const [ataEmUso] = await tx.select({ id: atas.id }).from(atas).where(and(eq(atas.tenantId, tenantId), inArray(atas.homologacaoFornecedorId, ids)));
+          const [contratoEmUso] = await tx.select({ id: contratos.id }).from(contratos).where(and(eq(contratos.tenantId, tenantId), inArray(contratos.homologacaoFornecedorId, ids)));
+          if (ataEmUso || contratoEmUso) {
+            throw new BadRequestException('Esta licitação já tem uma homologação revisada em uso por ata ou contrato — o teto homologado é fixo e não pode ser substituído por um reenvio');
+          }
+        }
+        await tx.update(licitacaoHomologacoes).set({ status: 'substituido' }).where(inArray(licitacaoHomologacoes.id, anteriores.map((h) => h.id)));
+      }
+
+      await tx.update(licitacaoHomologacoes).set({ status: 'revisado' }).where(and(eq(licitacaoHomologacoes.id, homologacaoId), eq(licitacaoHomologacoes.tenantId, tenantId)));
+    });
     return this.detalhe(tenantId, homologacaoId);
   }
 
@@ -276,11 +326,16 @@ export class LicitacoesHomologacaoService {
     const homologacoesRevisadas = await this.db.query.licitacaoHomologacoes.findMany({
       where: and(eq(licitacaoHomologacoes.tenantId, tenantId), eq(licitacaoHomologacoes.licitacaoId, licitacaoId), eq(licitacaoHomologacoes.status, 'revisado')),
       with: { fornecedores: { with: { fornecedor: true } } },
+      orderBy: (h, { desc: descOrder }) => [descOrder(h.enviadoEm)],
     });
+    // Mais recente primeiro e o primeiro visto vence — mesma escolha de
+    // itensParaImportar. Sem ordem definida, o homologacaoFornecedorId podia
+    // vir de uma homologação e os itens de outra, e o contrato era recusado
+    // com "Item não pertence ao fornecedor deste contrato".
     const porId = new Map<string, { id: string; razaoSocial: string; cnpjCpf: string; homologacaoFornecedorId: string }>();
     for (const hom of homologacoesRevisadas) {
       for (const f of hom.fornecedores) {
-        if (f.fornecedor) porId.set(f.fornecedor.id, { ...f.fornecedor, homologacaoFornecedorId: f.id });
+        if (f.fornecedor && !porId.has(f.fornecedor.id)) porId.set(f.fornecedor.id, { ...f.fornecedor, homologacaoFornecedorId: f.id });
       }
     }
     return [...porId.values()];

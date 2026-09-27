@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { z } from 'zod';
+import { paraNumeroPlanilha } from '../common/numero-planilha';
 
 const itemExtraidoSchema = z.object({
   numeroItem: z.union([z.number(), z.string()]).nullish(),
@@ -36,19 +37,6 @@ function paraTexto(valor: unknown): string {
   return valor == null ? '' : String(valor).trim();
 }
 
-// Números vêm formatados como "R$ 8.495,91" ou "9,00" (padrão BR: ponto milhar,
-// vírgula decimal) — ou "-" quando a célula está vazia de propósito. Só
-// stripa ponto de milhar quando há vírgula decimal no texto: sem essa
-// checagem, uma célula numérica comum do Excel ("10.5", sem formatação BR)
-// tinha o ponto removido e virava 105 — erro silencioso de 10x a 1000x (ver
-// o mesmo bug corrigido em AtasService.paraNumeroPlanilha).
-function paraNumeroBR(valor: unknown): number | null {
-  const texto = paraTexto(valor).replace(/^R\$\s*/i, '');
-  if (!texto || texto === '-') return null;
-  const numero = texto.includes(',') ? Number(texto.replace(/\./g, '').replace(',', '.')) : Number(texto);
-  return Number.isFinite(numero) ? numero : null;
-}
-
 @Injectable()
 export class ExtracaoHomologacaoService {
   // Síncrono e determinístico — sem chamada externa, sem custo por
@@ -66,7 +54,8 @@ export class ExtracaoHomologacaoService {
     const nomeAba = workbook.SheetNames[0];
     if (!nomeAba) throw new Error('A planilha não tem nenhuma aba');
     const planilha = workbook.Sheets[nomeAba];
-    const linhas: unknown[][] = XLSX.utils.sheet_to_json(planilha, { header: 1, raw: false, defval: '' });
+    // raw: true — célula numérica chega como number (ver common/numero-planilha.ts).
+    const linhas: unknown[][] = XLSX.utils.sheet_to_json(planilha, { header: 1, raw: true, defval: '' });
 
     const fornecedores: { nome: string; cnpj: string | null; itens: { numeroItem: string | null; descricao: string; unidade: string | null; quantidade: number | null; valorUnitario: number | null }[] }[] = [];
     let atual: (typeof fornecedores)[number] | null = null;
@@ -91,8 +80,8 @@ export class ExtracaoHomologacaoService {
         numeroItem: paraTexto(linha[0]) || null,
         descricao,
         unidade: paraTexto(linha[2]) || null,
-        quantidade: paraNumeroBR(linha[1]),
-        valorUnitario: paraNumeroBR(linha[6]), // coluna "UNITÁRIO ADJUDICADO" — o preço realmente homologado, não o orçado
+        quantidade: paraNumeroPlanilha(linha[1]),
+        valorUnitario: paraNumeroPlanilha(linha[6]), // coluna "UNITÁRIO ADJUDICADO" — o preço realmente homologado, não o orçado
       });
     }
 
