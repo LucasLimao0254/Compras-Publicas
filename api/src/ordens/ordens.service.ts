@@ -11,6 +11,7 @@ import {
   ordemDotacoes,
   ordemHistorico,
   ordens,
+  statusOrdemEnum,
   unidadesExecutoras,
 } from '../db/schema';
 import { CreateOrdemDto, UpdateOrdemDto } from './dto/ordem.dto';
@@ -47,6 +48,14 @@ export class OrdensService {
   constructor(@Inject(DRIZZLE) private db: DrizzleDB, private configuracoes: ConfiguracoesService) {}
 
   async list(tenantId: string, filtro: ListaOrdensFiltro = {}) {
+    // Filtro inválido é 400 com mensagem — antes ia direto para o Postgres
+    // (valor fora do enum, número NaN) e voltava 500.
+    if (filtro.status && !statusOrdemEnum.enumValues.includes(filtro.status as any)) {
+      throw new BadRequestException(`Status inválido: ${filtro.status}`);
+    }
+    if (filtro.numero && !/^\d+$/.test(filtro.numero)) {
+      throw new BadRequestException('O número da ordem precisa ser um inteiro');
+    }
     const condicoes = [eq(ordens.tenantId, tenantId)];
     if (filtro.status) condicoes.push(eq(ordens.status, filtro.status as any));
     if (filtro.numero) condicoes.push(eq(ordens.numero, Number(filtro.numero)));

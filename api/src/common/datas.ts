@@ -35,3 +35,8 @@ export function formatarInstanteBR(data: Date | string | null | undefined): stri
   if (!data) return '';
   return new Date(data).toLocaleDateString('pt-BR', { timeZone: FUSO_NEGOCIO });
 }
+
+// Período de vigência coerente: início não pode ser depois do fim.
+export function periodoValido(inicio: Date | string, fim: Date | string): boolean {
+  return diaDaData(inicio) <= diaDaData(fim);
+}

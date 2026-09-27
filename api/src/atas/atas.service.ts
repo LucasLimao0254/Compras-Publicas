@@ -19,6 +19,7 @@ import {
   secretarias,
 } from '../db/schema';
 import { paraNumeroPlanilha } from '../common/numero-planilha';
+import { periodoValido } from '../common/datas';
 import { quantidadeConsumidaDoTeto, SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { ContratosService } from '../contratos/contratos.service';
 import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
@@ -37,7 +38,9 @@ export class AtasService {
       with: { licitacao: true, detentorPrincipal: true, orgaos: { with: { itens: true } } },
       orderBy: (a, { desc }) => [desc(a.createdAt)],
     });
-    return Promise.all(rows.map((r) => this.comSaldoResumo(r)));
+    // Uma consulta de consumo para todas as atas (antes, uma por ata).
+    const contratadas = await this.quantidadeContratadaPorItens(this.db, rows.flatMap((r) => r.orgaos.flatMap((o) => o.itens.map((i) => i.id))));
+    return rows.map((r) => this.comSaldoResumo(r, contratadas));
   }
 
   async get(tenantId: string, id: string) {
@@ -71,13 +74,11 @@ export class AtasService {
   }
 
   // Resumo usado na listagem: mesmo cálculo de saldo, sem detalhar por órgão.
-  private async comSaldoResumo<T extends { orgaos: { itens: { quantidadeContratada: string; valorUnitario: string; id: string }[] }[] }>(ata: T) {
-    const ataItemIds = ata.orgaos.flatMap((o) => o.itens.map((i) => i.id));
+  private comSaldoResumo<T extends { orgaos: { itens: { quantidadeContratada: string; valorUnitario: string; id: string }[] }[] }>(ata: T, contratadas: Map<string, number>) {
     const valorTotal = ata.orgaos.reduce(
       (acc, o) => acc + o.itens.reduce((a2, it) => a2 + Number(it.quantidadeContratada) * Number(it.valorUnitario), 0),
       0,
     );
-    const contratadas = await this.quantidadeContratadaPorItens(this.db, ataItemIds);
     const utilizado = this.valorContratado(ata.orgaos.flatMap((o) => o.itens), contratadas);
     const { orgaos, ...rest } = ata;
     return {
@@ -134,6 +135,9 @@ export class AtasService {
 
     const [licitacao] = await this.db.select({ id: licitacoes.id }).from(licitacoes).where(and(eq(licitacoes.id, dto.licitacaoId), eq(licitacoes.tenantId, tenantId)));
     if (!licitacao) throw new BadRequestException('Licitação não encontrada para este tenant');
+    if (!periodoValido(dto.vigenciaInicial, dto.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
 
     const [detentor] = await this.db.select({ id: fornecedores.id }).from(fornecedores).where(and(eq(fornecedores.id, dto.detentorPrincipalId), eq(fornecedores.tenantId, tenantId)));
     if (!detentor) throw new BadRequestException('Detentor principal não encontrado para este tenant');
@@ -198,7 +202,10 @@ export class AtasService {
   }
 
   async update(tenantId: string, id: string, dto: UpdateAtaDto) {
-    await this.get(tenantId, id);
+    const ata = await this.get(tenantId, id);
+    if (dto.vigenciaInicial !== undefined && !periodoValido(dto.vigenciaInicial, ata.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
     const patch: Record<string, unknown> = {};
     if (dto.numeroArp !== undefined) patch.numeroArp = dto.numeroArp;
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);
@@ -246,6 +253,14 @@ export class AtasService {
     return item;
   }
 
+  // O lote informado precisa ser desta mesma ata — sem isso um item podia
+  // apontar para o lote de outra ata (ou de outro tenant).
+  private async validarLote(dbOrTx: DrizzleDB, tenantId: string, ataId: string, loteId: string | undefined) {
+    if (!loteId) return;
+    const [lote] = await dbOrTx.select({ id: ataLotes.id }).from(ataLotes).where(and(eq(ataLotes.id, loteId), eq(ataLotes.ataId, ataId), eq(ataLotes.tenantId, tenantId)));
+    if (!lote) throw new BadRequestException('Lote não encontrado nesta ata');
+  }
+
   private async homologacaoFornecedorDaAta(dbOrTx: DrizzleDB, tenantId: string, ataId: string) {
     const [ata] = await dbOrTx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(atas).where(and(eq(atas.id, ataId), eq(atas.tenantId, tenantId)));
     return ata?.homologacaoFornecedorId ?? null;
@@ -253,6 +268,7 @@ export class AtasService {
 
   async addItem(tenantId: string, ataId: string, ataOrgaoId: string, dto: ItemAtaInput) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    await this.validarLote(this.db, tenantId, ataId, dto.loteId);
 
     if (!dto.homologacaoItemId) {
       if (await this.homologacaoFornecedorDaAta(this.db, tenantId, ataId)) {
@@ -324,6 +340,7 @@ export class AtasService {
   // compararia contra si mesmo e nunca deixaria editar pra cima.
   async editarItem(tenantId: string, ataId: string, ataOrgaoId: string, itemId: string, dto: ItemAtaInput) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    await this.validarLote(this.db, tenantId, ataId, dto.loteId);
 
     return this.db.transaction(async (tx) => {
       const [existente] = await tx

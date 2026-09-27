@@ -21,6 +21,7 @@ import {
 } from '../db/schema';
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { centavos, centavosDoTotal, decimal2, reais } from '../common/dinheiro';
+import { periodoValido } from '../common/datas';
 import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/contrato.dto';
 
 // Valor total (itens + aditivos de valor), utilizado e saldo de um contrato.
@@ -31,27 +32,44 @@ import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/c
 // zeravam o saldo. Supressão com itens já reduziu a quantidade dos itens,
 // então só a supressão antiga por percentual (sem itens) entra aqui.
 export async function calcularSaldoContrato(tx: DrizzleDB, contratoId: string) {
-  const itens = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
-  const valorItens = itens.reduce((acc, it) => acc + centavosDoTotal(it.quantidade, it.valorUnitario), 0);
+  return (await calcularSaldosContratos(tx, [contratoId])).get(contratoId)!;
+}
 
-  const [aditivosRow] = await tx
-    .select({ total: sql<string>`coalesce(sum(case when ${aditivos.tipo} = 'SUPRESSAO' then -${aditivos.valorAcrescimo} else ${aditivos.valorAcrescimo} end), 0)` })
+// Mesma conta para vários contratos de uma vez — três consultas no total, em
+// vez de três por contrato (listagem e dashboard).
+export async function calcularSaldosContratos(tx: DrizzleDB, contratoIds: string[]) {
+  const resultado = new Map<string, { valorTotal: number; saldoDisponivel: number; valorUtilizado: number }>();
+  if (!contratoIds.length) return resultado;
+
+  const itens = await tx.select().from(itensContrato).where(inArray(itensContrato.contratoId, contratoIds));
+  const valorItens = new Map<string, number>();
+  for (const it of itens) valorItens.set(it.contratoId, (valorItens.get(it.contratoId) ?? 0) + centavosDoTotal(it.quantidade, it.valorUnitario));
+
+  const aditivosRows = await tx
+    .select({ contratoId: aditivos.contratoId, total: sql<string>`coalesce(sum(case when ${aditivos.tipo} = 'SUPRESSAO' then -${aditivos.valorAcrescimo} else ${aditivos.valorAcrescimo} end), 0)` })
     .from(aditivos)
     .where(and(
-      eq(aditivos.contratoId, contratoId),
+      inArray(aditivos.contratoId, contratoIds),
       sql`${aditivos.tipo} in ('VALOR', 'SUPRESSAO', 'ACRESCIMO_ESPECIAL')`,
       sql`not exists (select 1 from aditivo_itens ai where ai.aditivo_id = ${aditivos.id})`,
-    ));
-  const valorTotal = valorItens + centavos(aditivosRow?.total);
+    ))
+    .groupBy(aditivos.contratoId);
+  const valorAditivos = new Map(aditivosRows.map((r) => [r.contratoId, centavos(r.total)]));
 
-  const [utilizadoRow] = await tx
-    .select({ total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
+  const utilizadoRows = await tx
+    .select({ contratoId: ordens.contratoId, total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
     .from(itensOrdem)
     .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
-    .where(and(eq(ordens.contratoId, contratoId), eq(ordens.status, 'EMITIDA')));
+    .where(and(inArray(ordens.contratoId, contratoIds), eq(ordens.status, 'EMITIDA')))
+    .groupBy(ordens.contratoId);
+  const utilizadoPor = new Map(utilizadoRows.map((r) => [r.contratoId, centavos(r.total)]));
 
-  const utilizado = centavos(utilizadoRow?.total);
-  return { valorTotal: reais(valorTotal), saldoDisponivel: reais(valorTotal - utilizado), valorUtilizado: reais(utilizado) };
+  for (const id of contratoIds) {
+    const valorTotal = (valorItens.get(id) ?? 0) + (valorAditivos.get(id) ?? 0);
+    const utilizado = utilizadoPor.get(id) ?? 0;
+    resultado.set(id, { valorTotal: reais(valorTotal), saldoDisponivel: reais(valorTotal - utilizado), valorUtilizado: reais(utilizado) });
+  }
+  return resultado;
 }
 
 @Injectable()
@@ -66,7 +84,8 @@ export class ContratosService {
       where: eq(contratos.tenantId, tenantId),
       with: { licitacao: true, orgaoGerenciador: true, fornecedor: true },
     });
-    return Promise.all(rows.map((r) => this.comSaldo(r)));
+    const saldos = await calcularSaldosContratos(this.db, rows.map((r) => r.id));
+    return rows.map((r) => ({ ...r, ...saldos.get(r.id)! }));
   }
 
   async get(tenantId: string, id: string) {
@@ -294,6 +313,9 @@ export class ContratosService {
 
     await this.validarFksDoTenant(tenantId, dto);
     this.validarItensEntrada(dto.itens ?? []);
+    if (!periodoValido(dto.vigenciaInicial, dto.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
 
     if (dto.ataOrgaoId && dto.homologacaoFornecedorId) {
       throw new BadRequestException('Informe no máximo uma origem de saldo: ataOrgaoId ou homologacaoFornecedorId, não os dois');
@@ -373,6 +395,9 @@ export class ContratosService {
   async update(tenantId: string, id: string, dto: UpdateContratoDto) {
     const contrato = await this.get(tenantId, id);
     this.validarFormaControleSaldo(dto.formaControleSaldo, contrato.ataOrgaoId, contrato.homologacaoFornecedorId);
+    if (!periodoValido(dto.vigenciaInicial ?? contrato.vigenciaInicial, dto.vigenciaFinal ?? contrato.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
 
     const patch: Record<string, unknown> = {};
     if (dto.objeto !== undefined) patch.objeto = dto.objeto;

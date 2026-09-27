@@ -116,16 +116,46 @@ ordens)`. There is intentionally no `saldo` column anywhere. If you're tempted t
 or denormalize this for performance, first check `ContratosService.itensComSaldo` and
 `.comSaldo` (used by the order-creation wizard to know what's still available) — those
 call sites need the same on-demand computation to stay consistent with what an order is
-about to consume.
+about to consume. The money math lives in `calcularSaldosContratos` (batched; used by the
+contract list, the dashboard and the `{{valor_total}}` minuta marker) — reuse it instead of
+re-deriving a contract's value somewhere else.
+
+**Money is always two decimals, in integer cents** (`src/common/dinheiro.ts`): round each
+line (`quantidade × valorUnitario`) to cents *before* summing, exactly like the
+`precoTotal` stored on each order line. Summing floats with 4-decimal unit prices left
+fractions of a cent that never reached zero. "Is this contract exhausted?" is answered by
+quantity per item (`ContratosService.itensComSaldoRestante`), not by the R$ balance —
+per-order rounding can legitimately leave ±R$ 0,01.
+
+**Calendar dates** (vigência, assinatura) arrive as `AAAA-MM-DD` and are stored as UTC
+midnight: compare and format them by day with `src/common/datas.ts` (`vencida`,
+`formatarDiaBR`; `web/src/lib/datas.ts` on the frontend). A contract is still valid on its
+last day. `new Date(vigenciaFinal) < new Date()` and a plain `toLocaleDateString()` are
+both one day off in Brasília time.
+
+**Aditivos vs. teto**: quantity added by a `QUANTIDADE` aditivo is outside the
+ata/homologação ceiling (MODELO.md invariant 6) — ceiling consumption uses
+`quantidadeConsumidaDoTeto` (`saldo-ceiling.service.ts`), never a raw
+`sum(itensContrato.quantidade)`. `SUPRESSAO` takes items + quantities and lowers
+`itensContrato.quantidade` (never below what orders already consumed); only a "Valor
+global" contract suppresses by percentage.
 
 ### Order creation is a single transaction (`OrdensService.create`)
 
 Validates saldo per line item, allocates the next sequential order number for the tenant
-(`contadores` table, read-then-increment inside the same transaction), inserts the order
+(`contadores` table, atomic `UPDATE ... SET x = x + 1 RETURNING` — a read-then-write let
+concurrent emissions take the same number), inserts the order
 and its items — all inside one `db.transaction()`. Anything read inside that transaction
 that needs to see the not-yet-committed rows must query via the `tx` handle, not the
 outer `this.db` (a separate connection can't see uncommitted writes — this bit us once
 during development; see the `findDetalhada(dbOrTx, ...)` helper pattern used to avoid it).
+
+### Postgres errors come wrapped
+
+drizzle-orm 0.45 wraps driver errors in `DrizzleQueryError`; the SQLSTATE is on
+`err.cause.code`, not `err.code`. Use `codigoPostgres(err)`
+(`src/common/postgres-exception.filter.ts`) — the global filter maps `23505` (unique) and
+`23503` (foreign key) to 409 through it.
 
 ### Backend module layout
 
@@ -176,6 +206,16 @@ valores) numa licitação, extraída e depois importada para os itens de uma Ata
   nos fornecedores/itens — sem isso, um `UPDATE` (ex.: salvar um campo na tela de revisão)
   pode fazer o Postgres devolver a linha em outra posição na próxima leitura, e a tela
   "pula" itens de lugar a cada edição.
+- **Uma homologação revisada por licitação.** Concluir a revisão de um reenvio marca a
+  anterior como `'substituido'` — ou é recusado se a anterior já está em uso por ata ou
+  contrato (o teto é fixo). Duas `'revisado'` ao mesmo tempo duplicariam o teto.
+- **Números de planilha**: toda leitura de `.xlsx` usa `sheet_to_json(..., { raw: true })` +
+  `paraNumeroPlanilha` (`src/common/numero-planilha.ts`; cópia em
+  `web/src/lib/planilhaDemanda.ts`). Com `raw: false` o SheetJS devolve o texto no formato
+  americano (`1,500`) e ele era lido como padrão BR (1,5).
+- Ata vinculada a homologação e contrato com origem só aceitam itens com
+  `homologacaoItemId`; descrição, unidade e valor unitário vêm da homologação, nunca do
+  cliente (MODELO.md, invariante 2).
 
 ### Minutas → geração de documento por marcador de texto (`src/minutas/`)
 
@@ -194,9 +234,10 @@ na geração pelos dados reais da entidade. Ver MODELO.md, seção 8.
   arquivo como zip (`JSZip.loadAsync`) *antes* de gravar, para rejeitar um `.docx` corrompido
   sem nunca chegar a escrever no disco — por isso `enviarModelo()` recebe `{ originalname,
   buffer }`, não um path.
-- Substituição é regex sobre `word/document.xml` dentro do `.docx` (que é um zip) — troca
-  `{{chave}}` pelo valor resolvido, com escape de XML (`&`, `<`, `>`, aspas) no valor, porque
-  o texto vem de campos livres (razão social, objeto etc.) que podem conter esses caracteres.
+- Substituição (`substituirMarcadores`) em `word/document.xml` e nos cabeçalhos/rodapés,
+  parágrafo a parágrafo sobre o texto contínuo dos `<w:t>` — o Word costuma quebrar um
+  marcador em vários trechos (`{{numero_` + `contrato}}`), que uma regex sobre o XML bruto
+  não enxerga. Valor com escape de XML (`&`, `<`, `>`, aspas), porque vem de campos livres.
 - Upload restrito ao Administrador do tenant — checado dentro do `MinutasService`, não só no
   `@RequirePermission` do controller.
 - `gerar()` não exige uma permissão própria no controller: é chamado a partir de telas já
