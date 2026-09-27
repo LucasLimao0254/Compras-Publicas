@@ -242,7 +242,7 @@ export function ContratoDetalhe() {
                     <td className="num" style={{ fontFamily: 'var(--font-heading)', fontWeight: 500 }}>{o.numeroExibicao ?? o.numero ?? '—'}</td>
                     <td className="num text-muted" style={{ fontSize: 12.5 }}>{new Date(o.createdAt).toLocaleDateString('pt-BR')}</td>
                     <td className="num" style={{ textAlign: 'right' }}>R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                    <td><span className={o.status === 'EMITIDA' ? 'tag tag-accent' : o.status === 'CANCELADA' ? 'tag tag-neutral' : 'tag tag-outline'}>{o.status === 'EMITIDA' ? 'Emitida' : o.status === 'CANCELADA' ? 'Cancelada' : 'Requisição'}</span></td>
+                    <td><span className={o.status === 'EMITIDA' ? 'tag tag-accent' : o.status === 'CANCELADA' ? 'tag tag-neutral' : 'tag tag-outline'}>{o.status === 'EMITIDA' ? 'Emitida' : o.status === 'CANCELADA' ? 'Cancelada' : 'Rascunho'}</span></td>
                   </tr>
                 );
               })}

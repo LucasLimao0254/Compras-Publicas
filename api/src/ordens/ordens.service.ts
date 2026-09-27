@@ -145,7 +145,7 @@ export class OrdensService {
   // MODELO.md, seção 2): valida saldo item a item, obtém o próximo número
   // sequencial do tenant e grava tudo em uma transação — ou fecha por
   // completo, ou não decrementa saldo nenhum. Se emitirAgora=false, a ordem
-  // nasce como REQUISICAO (rascunho): os preços dos itens já são calculados,
+  // nasce como RASCUNHO: os preços dos itens já são calculados,
   // mas a checagem/decremento de saldo só acontece em emitir().
   async create(tenantId: string, usuarioId: string, dto: CreateOrdemDto) {
     const config = await this.configuracoes.getOuCriar(tenantId);
@@ -167,7 +167,7 @@ export class OrdensService {
 
       const [ordem] = await tx
         .insert(ordens)
-        .values({ tenantId, numero, unidadeExecutoraId: dto.unidadeExecutoraId, status: emitirAgora ? 'EMITIDA' : 'REQUISICAO', contratoId: dto.contratoId })
+        .values({ tenantId, numero, unidadeExecutoraId: dto.unidadeExecutoraId, status: emitirAgora ? 'EMITIDA' : 'RASCUNHO', contratoId: dto.contratoId })
         .returning();
 
       await tx.insert(itensOrdem).values(itensCalculados.map((it) => ({ ordemId: ordem.id, ...it })));
@@ -222,8 +222,8 @@ export class OrdensService {
     for (const [itemContratoId, quantidade] of quantidadePorItem) {
       // SELECT ... FOR UPDATE trava a linha do item pelo resto da transação:
       // duas emissões concorrentes para o mesmo item serializam aqui em vez de
-      // ambas lerem o mesmo saldo disponível e passarem na validação. Uma
-      // requisição (validarSaldo=false) não consome nada ainda, então não
+      // ambas lerem o mesmo saldo disponível e passarem na validação. Um
+      // rascunho (validarSaldo=false) não consome nada ainda, então não
       // precisa da trava.
       const [item] = validarSaldo
         ? await tx.select().from(itensContrato).where(eq(itensContrato.id, itemContratoId)).for('update')
@@ -260,15 +260,15 @@ export class OrdensService {
     return { itensCalculados };
   }
 
-  // Efetiva uma ordem em REQUISICAO: só agora a checagem/decremento de saldo
+  // Efetiva uma ordem em RASCUNHO: só agora a checagem/decremento de saldo
   // roda de fato, contra as quantidades já gravadas na criação do rascunho.
   async emitir(tenantId: string, usuarioId: string, id: string) {
     const config = await this.configuracoes.getOuCriar(tenantId);
     return this.db.transaction(async (tx) => {
       const [ordem] = await tx.select().from(ordens).where(and(eq(ordens.tenantId, tenantId), eq(ordens.id, id)));
       if (!ordem) throw new NotFoundException('Ordem não encontrada');
-      if (ordem.status !== 'REQUISICAO') {
-        throw new BadRequestException('Somente uma ordem em requisição pode ser emitida');
+      if (ordem.status !== 'RASCUNHO') {
+        throw new BadRequestException('Somente uma ordem em rascunho pode ser emitida');
       }
 
       const linhas = await tx.select().from(itensOrdem).where(eq(itensOrdem.ordemId, id));
@@ -378,7 +378,7 @@ export class OrdensService {
     });
   }
 
-  // Cancela uma ordem (emitida ou em requisição) e grava o evento no
+  // Cancela uma ordem (emitida ou em rascunho) e grava o evento no
   // histórico. Não existe decremento a "desfazer" explicitamente: o saldo é
   // sempre derivado filtrando status='EMITIDA', então uma ordem cancelada
   // simplesmente para de contar — o saldo volta sozinho.

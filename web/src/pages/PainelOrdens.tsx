@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { HistoricoOrdemModal } from '../components/HistoricoOrdemModal';
 import { ImportarPlanilhaDemandaButton } from '../components/ImportarPlanilhaDemandaButton';
 
-type Aba = 'CONTRATOS' | 'BUSCAR' | 'REQUISICAO' | 'EMITIDA' | 'CANCELADA';
+type Aba = 'CONTRATOS' | 'BUSCAR' | 'RASCUNHO' | 'EMITIDA' | 'CANCELADA';
 
 interface Opcao { id: string; label: string; }
 interface ContratoOpcao { id: string; numero: string; objeto: string; fornecedor: { razaoSocial: string }; saldoDisponivel: number; situacao: string; }
@@ -21,7 +21,7 @@ interface OrdemRow {
 const ABAS_STATUS: { key: Aba; label: string }[] = [
   { key: 'CONTRATOS', label: 'Por contrato' },
   { key: 'BUSCAR', label: 'Buscar' },
-  { key: 'REQUISICAO', label: 'Requisições' },
+  { key: 'RASCUNHO', label: 'Rascunhos' },
   { key: 'EMITIDA', label: 'Emitido' },
   { key: 'CANCELADA', label: 'Cancelado' },
 ];
@@ -29,8 +29,8 @@ const ABAS_STATUS: { key: Aba; label: string }[] = [
 const STATUS_ASSINATURAS_LABEL: Record<string, string> = {
   nao_iniciado: 'Não iniciado', em_andamento: 'Em andamento', concluido: 'Concluído',
 };
-const STATUS_TAG: Record<string, string> = { EMITIDA: 'tag tag-accent', CANCELADA: 'tag tag-neutral', REQUISICAO: 'tag tag-outline' };
-const STATUS_LABEL: Record<string, string> = { EMITIDA: 'Emitida', CANCELADA: 'Cancelada', REQUISICAO: 'Requisição' };
+const STATUS_TAG: Record<string, string> = { EMITIDA: 'tag tag-accent', CANCELADA: 'tag tag-neutral', RASCUNHO: 'tag tag-outline' };
+const STATUS_LABEL: Record<string, string> = { EMITIDA: 'Emitida', CANCELADA: 'Cancelada', RASCUNHO: 'Rascunho' };
 
 export function PainelOrdens() {
   const { usuario } = useAuth();
@@ -121,7 +121,7 @@ export function PainelOrdens() {
   const contratoFiltroNumero = contratos.find((c) => c.id === contratoIdFiltro)?.numero;
 
   const contadores = useMemo(() => ({
-    REQUISICAO: ordens.filter((o) => o.status === 'REQUISICAO').length,
+    RASCUNHO: ordens.filter((o) => o.status === 'RASCUNHO').length,
     EMITIDA: ordens.filter((o) => o.status === 'EMITIDA').length,
     CANCELADA: ordens.filter((o) => o.status === 'CANCELADA').length,
   }), [ordens]);
@@ -304,14 +304,14 @@ export function PainelOrdens() {
           {menuAbertoId === o.id && (
             <div style={{ position: 'absolute', zIndex: 10, marginTop: 4, background: 'var(--color-surface)', boxShadow: 'var(--shadow-md)', borderRadius: 8, padding: 6, minWidth: 170 }}>
               <div onClick={() => copiarOrdem(o)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer' }}>Copiar ordem</div>
-              {o.status === 'REQUISICAO' && (
+              {o.status === 'RASCUNHO' && (
                 <div onClick={() => emitirOrdemExistente(o.id)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer', color: 'var(--color-accent)' }}>Emitir ordem</div>
               )}
-              {/* Requisição (rascunho) — qualquer usuário pode descartar. Ordem já
-                  emitida — editar/excluir fica restrito a Administrador do tenant;
-                  os demais só têm ações de leitura/impressão nela (ver
+              {/* Rascunho — qualquer usuário pode descartar. Ordem já emitida —
+                  editar/excluir fica restrito a Administrador do tenant; os
+                  demais só têm ações de leitura/impressão nela (ver
                   briefing_fornecedores_ordens.md seção 3). */}
-              {o.status === 'REQUISICAO' && (
+              {o.status === 'RASCUNHO' && (
                 confirmandoCancelar === o.id ? (
                   <div style={{ padding: '8px 10px' }}>
                     <div className="text-muted" style={{ fontSize: 11.5, marginBottom: 4 }}>Confirma cancelar?</div>
@@ -466,7 +466,7 @@ export function PainelOrdens() {
               {!editandoOrdemId && (
                 <label className="radio" style={{ marginBottom: 16, fontSize: 13 }}>
                   <input type="checkbox" checked={emitirAgora} onChange={(e) => setEmitirAgora(e.target.checked)} /><span className="dot" />
-                  Emitir agora (desmarque para salvar como requisição/rascunho, sem consumir saldo ainda)
+                  Emitir agora (desmarque para salvar como rascunho, sem consumir saldo ainda)
                 </label>
               )}
 
@@ -480,7 +480,7 @@ export function PainelOrdens() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button className="btn btn-secondary" onClick={() => { if (editandoOrdemId) { setMostrarWizard(false); resetWizard(); } else { setPasso(1); } }}>{editandoOrdemId ? 'Cancelar' : 'Voltar'}</button>
                 <button className="btn btn-primary" onClick={editandoOrdemId ? salvarEdicaoOrdem : emitirWizard} disabled={salvando}>
-                  {salvando ? 'Salvando...' : editandoOrdemId ? 'Salvar edição' : emitirAgora ? 'Emitir ordem' : 'Salvar como requisição'}
+                  {salvando ? 'Salvando...' : editandoOrdemId ? 'Salvar edição' : emitirAgora ? 'Emitir ordem' : 'Salvar como rascunho'}
                 </button>
               </div>
             </div>
@@ -491,7 +491,7 @@ export function PainelOrdens() {
       <div style={{ display: 'flex', gap: 22, margin: '6px 0 20px', boxShadow: 'inset 0 -1px 0 var(--color-divider)' }}>
         {ABAS_STATUS.map((a) => (
           <button key={a.key} className={`tabbtn${aba === a.key ? ' active' : ''}`} onClick={() => { setAba(a.key); setContratoAberto(null); }}>
-            {a.label}{a.key !== 'BUSCAR' && a.key !== 'CONTRATOS' && ` (${contadores[a.key as 'REQUISICAO' | 'EMITIDA' | 'CANCELADA']})`}
+            {a.label}{a.key !== 'BUSCAR' && a.key !== 'CONTRATOS' && ` (${contadores[a.key as 'RASCUNHO' | 'EMITIDA' | 'CANCELADA']})`}
           </button>
         ))}
       </div>

@@ -16,8 +16,8 @@ export class DotacaoOrdemInput {
 export class CreateOrdemDto {
   @IsString() contratoId: string;
   @IsOptional() @IsString() unidadeExecutoraId?: string;
-  // false cria a ordem como REQUISICAO (rascunho, não valida/decrementa
-  // saldo ainda) — default true preserva o comportamento anterior do wizard.
+  // false cria a ordem como RASCUNHO (não valida/decrementa saldo ainda) —
+  // default true preserva o comportamento anterior do wizard.
   @IsOptional() @IsBoolean() emitirAgora?: boolean;
   @IsOptional()
   @IsArray()

@@ -19,9 +19,12 @@ export const modalidadeLicitacaoEnum = pgEnum('modalidade_licitacao', [
   'PREGAO_PRESENCIAL', 'CONCORRENCIA_PUBLICA', 'DISPENSA', 'INEXIGIBILIDADE', 'CARTA_CONVITE',
   'PREGAO_ELETRONICO', 'CHAMAMENTO_PUBLICO', 'LEILAO', 'CONCURSO', 'ADESAO_ATA', 'RDC_PRESENCIAL', 'DIALOGO_COMPETITIVO',
 ]);
-// REQUISICAO é um rascunho: ainda não valida/decrementa saldo — só EMITIDA
-// (seja direto em create() ou depois via POST /ordens/:id/emitir) consome.
-export const statusOrdemEnum = pgEnum('status_ordem', ['REQUISICAO', 'EMITIDA', 'CANCELADA']);
+// RASCUNHO ainda não valida/decrementa saldo — só EMITIDA (seja direto em
+// create() ou depois via POST /ordens/:id/emitir) consome. Chamado de
+// RASCUNHO, não "requisição": não existe requisição como documento ou
+// entidade separada (MODELO.md, seção 6) — esse nome antigo do valor do
+// enum convidava a confundir os dois.
+export const statusOrdemEnum = pgEnum('status_ordem', ['RASCUNHO', 'EMITIDA', 'CANCELADA']);
 export const statusAssinaturasEnum = pgEnum('status_assinaturas', ['nao_iniciado', 'em_andamento', 'concluido']);
 export const tipoEventoHistoricoEnum = pgEnum('tipo_evento_historico', ['cadastrou', 'emitiu_ordem', 'assinatura_concluida', 'cancelou', 'editou_ordem']);
 export const tipoAtaEnum = pgEnum('tipo_ata', ['ATAS', 'CREDENCIAMENTO']);
