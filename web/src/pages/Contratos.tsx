@@ -173,7 +173,12 @@ export function Contratos() {
                 {temHomologacao && (
                   <button type="button" onClick={() => setMostrarImportar(true)} className="btn btn-ghost"><i className="ph ph-file-arrow-down" />importar da homologação</button>
                 )}
-                <button type="button" onClick={addItemRow} className="btn btn-ghost"><i className="ph ph-plus" />adicionar item</button>
+                {/* Contrato com origem na homologação/ata só aceita itens
+                    homologados (MODELO.md, invariante 2) — o backend rejeita
+                    linha digitada à mão nesse caso. */}
+                {!homologacaoFornecedorId && (
+                  <button type="button" onClick={addItemRow} className="btn btn-ghost"><i className="ph ph-plus" />adicionar item</button>
+                )}
               </div>
             </div>
             <table className="table">
@@ -181,10 +186,10 @@ export function Contratos() {
               <tbody>
                 {itens.map((it, idx) => (
                   <tr key={idx}>
-                    <td><input className="input" placeholder="Descrição do item" value={it.descricao} onChange={(e) => updateItem(idx, { descricao: e.target.value })} /></td>
-                    <td><input className="input" placeholder="Un." value={it.unidade} onChange={(e) => updateItem(idx, { unidade: e.target.value })} /></td>
+                    <td><input className="input" placeholder="Descrição do item" value={it.descricao} onChange={(e) => updateItem(idx, { descricao: e.target.value })} disabled={!!it.homologacaoItemId} /></td>
+                    <td><input className="input" placeholder="Un." value={it.unidade} onChange={(e) => updateItem(idx, { unidade: e.target.value })} disabled={!!it.homologacaoItemId} /></td>
                     <td><input className="input num" type="number" placeholder="0" value={it.quantidade} onChange={(e) => updateItem(idx, { quantidade: e.target.value })} /></td>
-                    <td><input className="input num" type="number" step="0.01" placeholder="0,00" value={it.valorUnitario} onChange={(e) => updateItem(idx, { valorUnitario: e.target.value })} /></td>
+                    <td><input className="input num" type="number" step="0.0001" placeholder="0,00" value={it.valorUnitario} onChange={(e) => updateItem(idx, { valorUnitario: e.target.value })} disabled={!!it.homologacaoItemId} /></td>
                     <td style={{ width: 36 }}><i className="ph ph-trash" onClick={() => removeItem(idx)} style={{ fontSize: 15, cursor: 'pointer', color: 'color-mix(in srgb, var(--color-text) 45%, transparent)' }} /></td>
                   </tr>
                 ))}

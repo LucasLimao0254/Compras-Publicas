@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import {
   aditivos,
@@ -7,6 +7,7 @@ import {
   atas,
   contratoDotacoes,
   contratos,
+  dotacoes,
   fornecedores,
   homologacaoFornecedores,
   homologacaoItens,
@@ -19,7 +20,57 @@ import {
   usuarios,
 } from '../db/schema';
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
+import { centavos, centavosDoTotal, decimal2, reais } from '../common/dinheiro';
+import { periodoValido } from '../common/datas';
 import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/contrato.dto';
+
+// Valor total (itens + aditivos de valor), utilizado e saldo de um contrato.
+// Exportado para quem precisa do mesmo número fora deste service (minuta).
+// Dinheiro em centavos inteiros (duas casas, ver common/dinheiro.ts): cada
+// item arredondado para centavos antes de somar, igual ao precoTotal
+// gravado nas ordens — sem isso sobravam frações de centavo que nunca
+// zeravam o saldo. Supressão com itens já reduziu a quantidade dos itens,
+// então só a supressão antiga por percentual (sem itens) entra aqui.
+export async function calcularSaldoContrato(tx: DrizzleDB, contratoId: string) {
+  return (await calcularSaldosContratos(tx, [contratoId])).get(contratoId)!;
+}
+
+// Mesma conta para vários contratos de uma vez — três consultas no total, em
+// vez de três por contrato (listagem e dashboard).
+export async function calcularSaldosContratos(tx: DrizzleDB, contratoIds: string[]) {
+  const resultado = new Map<string, { valorTotal: number; saldoDisponivel: number; valorUtilizado: number }>();
+  if (!contratoIds.length) return resultado;
+
+  const itens = await tx.select().from(itensContrato).where(inArray(itensContrato.contratoId, contratoIds));
+  const valorItens = new Map<string, number>();
+  for (const it of itens) valorItens.set(it.contratoId, (valorItens.get(it.contratoId) ?? 0) + centavosDoTotal(it.quantidade, it.valorUnitario));
+
+  const aditivosRows = await tx
+    .select({ contratoId: aditivos.contratoId, total: sql<string>`coalesce(sum(case when ${aditivos.tipo} = 'SUPRESSAO' then -${aditivos.valorAcrescimo} else ${aditivos.valorAcrescimo} end), 0)` })
+    .from(aditivos)
+    .where(and(
+      inArray(aditivos.contratoId, contratoIds),
+      sql`${aditivos.tipo} in ('VALOR', 'SUPRESSAO', 'ACRESCIMO_ESPECIAL')`,
+      sql`not exists (select 1 from aditivo_itens ai where ai.aditivo_id = ${aditivos.id})`,
+    ))
+    .groupBy(aditivos.contratoId);
+  const valorAditivos = new Map(aditivosRows.map((r) => [r.contratoId, centavos(r.total)]));
+
+  const utilizadoRows = await tx
+    .select({ contratoId: ordens.contratoId, total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
+    .from(itensOrdem)
+    .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
+    .where(and(inArray(ordens.contratoId, contratoIds), eq(ordens.status, 'EMITIDA')))
+    .groupBy(ordens.contratoId);
+  const utilizadoPor = new Map(utilizadoRows.map((r) => [r.contratoId, centavos(r.total)]));
+
+  for (const id of contratoIds) {
+    const valorTotal = (valorItens.get(id) ?? 0) + (valorAditivos.get(id) ?? 0);
+    const utilizado = utilizadoPor.get(id) ?? 0;
+    resultado.set(id, { valorTotal: reais(valorTotal), saldoDisponivel: reais(valorTotal - utilizado), valorUtilizado: reais(utilizado) });
+  }
+  return resultado;
+}
 
 @Injectable()
 export class ContratosService {
@@ -33,7 +84,8 @@ export class ContratosService {
       where: eq(contratos.tenantId, tenantId),
       with: { licitacao: true, orgaoGerenciador: true, fornecedor: true },
     });
-    return Promise.all(rows.map((r) => this.comSaldo(r)));
+    const saldos = await calcularSaldosContratos(this.db, rows.map((r) => r.id));
+    return rows.map((r) => ({ ...r, ...saldos.get(r.id)! }));
   }
 
   async get(tenantId: string, id: string) {
@@ -62,25 +114,8 @@ export class ContratosService {
   // transação (leituras normais, via this.db) quanto dentro de uma (o
   // pré-check de 3 níveis de AditivosService, que precisa ver o mesmo lock
   // que o resto daquela transação já tomou).
-  private async calcularSaldo(tx: DrizzleDB, contratoId: string) {
-    const itens = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
-    const valorItens = itens.reduce((acc, it) => acc + Number(it.quantidade) * Number(it.valorUnitario), 0);
-
-    const [aditivosRow] = await tx
-      .select({ total: sql<string>`coalesce(sum(case when ${aditivos.tipo} = 'SUPRESSAO' then -${aditivos.valorAcrescimo} else ${aditivos.valorAcrescimo} end), 0)` })
-      .from(aditivos)
-      .where(and(eq(aditivos.contratoId, contratoId), sql`${aditivos.tipo} in ('VALOR', 'SUPRESSAO')`));
-    const valorAditivos = Number(aditivosRow?.total ?? 0);
-    const valorTotal = valorItens + valorAditivos;
-
-    const [utilizadoRow] = await tx
-      .select({ total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
-      .from(itensOrdem)
-      .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
-      .where(and(eq(ordens.contratoId, contratoId), eq(ordens.status, 'EMITIDA')));
-
-    const utilizado = Number(utilizadoRow?.total ?? 0);
-    return { valorTotal, saldoDisponivel: valorTotal - utilizado, valorUtilizado: utilizado };
+  private calcularSaldo(tx: DrizzleDB, contratoId: string) {
+    return calcularSaldoContrato(tx, contratoId);
   }
 
   private async comSaldo<T extends { id: string }>(row: T) {
@@ -89,10 +124,27 @@ export class ContratosService {
   }
 
   // Usado pelo pré-check de 3 níveis de AditivosService — sempre dentro da
-  // transação de quem chama, nunca via this.db.
+  // transação de quem chama, nunca via this.db. Quantidade (não dinheiro):
+  // contrato com origem controla saldo por item (invariante 8), e o
+  // arredondamento de cada ordem para centavos faz o saldo em R$ poder
+  // sobrar ou faltar 1 centavo mesmo com todo item consumido.
   async saldoDisponivel(tx: DrizzleDB, contratoId: string): Promise<number> {
     const { saldoDisponivel } = await this.calcularSaldo(tx, contratoId);
     return saldoDisponivel;
+  }
+
+  async itensComSaldoRestante(tx: DrizzleDB, contratoId: string) {
+    const itens = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
+    const usados = await tx
+      .select({ itemContratoId: itensOrdem.itemContratoId, total: sql<string>`coalesce(sum(${itensOrdem.quantidade}), 0)` })
+      .from(itensOrdem)
+      .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
+      .where(and(eq(ordens.contratoId, contratoId), eq(ordens.status, 'EMITIDA')))
+      .groupBy(itensOrdem.itemContratoId);
+    const usadoPorItem = new Map(usados.map((u) => [u.itemContratoId, Number(u.total)]));
+    return itens
+      .map((it) => ({ item: it, disponivel: Number(it.quantidade) - (usadoPorItem.get(it.id) ?? 0) }))
+      .filter((r) => r.disponivel > 0);
   }
 
   // Garante que cada FK do contrato pertence ao mesmo tenant de quem está
@@ -111,6 +163,27 @@ export class ContratosService {
     if (dto.fiscalId) {
       const [fiscal] = await this.db.select({ id: usuarios.id }).from(usuarios).where(and(eq(usuarios.id, dto.fiscalId), eq(usuarios.tenantId, tenantId)));
       if (!fiscal) throw new BadRequestException('Fiscal não encontrado para este tenant');
+    }
+
+    if (dto.dotacaoIds?.length) {
+      const ids = [...new Set(dto.dotacaoIds)];
+      const encontradas = await this.db.select({ id: dotacoes.id }).from(dotacoes).where(and(inArray(dotacoes.id, ids), eq(dotacoes.tenantId, tenantId)));
+      if (encontradas.length !== ids.length) throw new BadRequestException('Dotação orçamentária não encontrada para este tenant');
+    }
+  }
+
+  // Mesma regra do DTO (quantidade e valor unitário positivos e finitos),
+  // repetida aqui porque o service também é chamado sem passar pelo
+  // ValidationPipe (testes, outros services) — uma quantidade negativa com
+  // homologacaoItemId reduziria o consumo do teto da ata/homologação.
+  private validarItensEntrada(itens: ItemContratoInput[]) {
+    for (const it of itens) {
+      if (!Number.isFinite(it.quantidade) || it.quantidade <= 0) {
+        throw new BadRequestException(`Item "${it.descricao}": quantidade precisa ser maior que zero`);
+      }
+      if (!Number.isFinite(it.valorUnitario) || it.valorUnitario <= 0) {
+        throw new BadRequestException(`Item "${it.descricao}": valor unitário precisa ser maior que zero`);
+      }
     }
   }
 
@@ -149,10 +222,13 @@ export class ContratosService {
     if (ataExistente) throw new BadRequestException('Este fornecedor já tem uma ata para esta homologação — use ataOrgaoId em vez de homologacaoFornecedorId');
   }
 
-  private async validarItemPertenceAoFornecedor(tx: DrizzleDB, tenantId: string, homologacaoItemId: string, homologacaoFornecedorEsperado: string, descricao: string) {
-    const [row] = await tx.select({ homologacaoFornecedorId: homologacaoItens.homologacaoFornecedorId }).from(homologacaoItens).where(and(eq(homologacaoItens.id, homologacaoItemId), eq(homologacaoItens.tenantId, tenantId)));
+  // Devolve o item homologado (já confirmado como do fornecedor esperado) —
+  // é dele que saem descrição, unidade e valor unitário do item do contrato.
+  private async itemHomologadoDoFornecedor(tx: DrizzleDB, tenantId: string, homologacaoItemId: string, homologacaoFornecedorEsperado: string, descricao: string) {
+    const [row] = await tx.select().from(homologacaoItens).where(and(eq(homologacaoItens.id, homologacaoItemId), eq(homologacaoItens.tenantId, tenantId)));
     if (!row) throw new BadRequestException(`Item homologado referenciado por "${descricao}" não encontrado`);
     if (row.homologacaoFornecedorId !== homologacaoFornecedorEsperado) throw new BadRequestException(`Item "${descricao}" não pertence ao fornecedor deste contrato`);
+    return row;
   }
 
   // Contrato derivado de homologação ou de ata controla saldo por item —
@@ -166,36 +242,69 @@ export class ContratosService {
     }
   }
 
-  // Valida e, se ok, retorna nada — lança BadRequestException citando o item
-  // e o saldo restante quando a quantidade pedida excede o disponível.
-  private async validarTetoItens(
+  // Normaliza e valida os itens de um contrato contra a origem de saldo:
+  // - origem que resolve para uma homologação (homologacaoFornecedorId, ou
+  //   ata vinculada a uma homologação): todo item PRECISA referenciar um
+  //   item homologado, e descrição/unidade/valor unitário vêm dele, nunca do
+  //   que o cliente digitou (MODELO.md, invariante 2). Sem isso, um item
+  //   "digitado à mão" num contrato com origem escapava do teto por completo.
+  // - o mesmo item homologado não pode aparecer duas vezes no contrato — duas
+  //   linhas passavam na checagem de teto uma a uma e juntas a estouravam.
+  // - quantidade pedida ≤ saldo da ata (órgão) ou da homologação.
+  // Contrato sem origem (ou de ata comum, sem homologação) segue livre.
+  private async normalizarItensDaOrigem(
     tx: DrizzleDB,
     tenantId: string,
     itens: ItemContratoInput[],
     origem: { ataOrgaoId?: string; homologacaoFornecedorId?: string; ataHomologacaoFornecedorId?: string | null },
-  ) {
+    homologacaoItemIdsJaNoContrato: (string | null)[] = [],
+  ): Promise<ItemContratoInput[]> {
+    const homologacaoFornecedorDaOrigem = origem.ataOrgaoId ? origem.ataHomologacaoFornecedorId : origem.homologacaoFornecedorId;
+    const vistos = new Set(homologacaoItemIdsJaNoContrato.filter((v): v is string => !!v));
+    const normalizados: ItemContratoInput[] = [];
+
     for (const item of itens) {
-      if (!item.homologacaoItemId) continue;
+      if (!item.homologacaoItemId) {
+        if (homologacaoFornecedorDaOrigem) {
+          throw new BadRequestException(`Item "${item.descricao}" precisa referenciar um item da homologação — contratos com origem em ata/homologação não aceitam itens digitados à mão`);
+        }
+        normalizados.push(item);
+        continue;
+      }
       if (!origem.ataOrgaoId && !origem.homologacaoFornecedorId) {
         throw new BadRequestException(`Item "${item.descricao}" referencia homologação, mas o contrato não indica de onde puxa saldo (ataOrgaoId/homologacaoFornecedorId)`);
       }
+      if (!homologacaoFornecedorDaOrigem) {
+        throw new BadRequestException(`Item "${item.descricao}" referencia homologação, mas a ata deste contrato não está vinculada a uma homologação`);
+      }
+      if (vistos.has(item.homologacaoItemId)) {
+        throw new BadRequestException(`Item "${item.descricao}" aparece mais de uma vez neste contrato — informe a quantidade total numa única linha`);
+      }
+      vistos.add(item.homologacaoItemId);
+
+      const homologado = await this.itemHomologadoDoFornecedor(tx, tenantId, item.homologacaoItemId, homologacaoFornecedorDaOrigem, item.descricao);
+      const normalizado: ItemContratoInput = {
+        descricao: homologado.descricao,
+        unidade: homologado.unidade ?? item.unidade,
+        quantidade: item.quantidade,
+        valorUnitario: Number(homologado.valorUnitario),
+        homologacaoItemId: homologado.id,
+      };
+
       if (origem.ataOrgaoId) {
-        if (!origem.ataHomologacaoFornecedorId) {
-          throw new BadRequestException(`Item "${item.descricao}" referencia homologação, mas a ata deste contrato não está vinculada a uma homologação`);
+        const { disponivel } = await this.saldoCeiling.ataItemSaldoDisponivel(tx, tenantId, origem.ataOrgaoId, homologado.id);
+        if (normalizado.quantidade > disponivel) {
+          throw new BadRequestException(`Item "${normalizado.descricao}": quantidade (${normalizado.quantidade}) excede o saldo disponível na ata (${disponivel})`);
         }
-        await this.validarItemPertenceAoFornecedor(tx, tenantId, item.homologacaoItemId, origem.ataHomologacaoFornecedorId, item.descricao);
-        const { disponivel } = await this.saldoCeiling.ataItemSaldoDisponivel(tx, tenantId, origem.ataOrgaoId, item.homologacaoItemId);
-        if (item.quantidade > disponivel) {
-          throw new BadRequestException(`Item "${item.descricao}": quantidade (${item.quantidade}) excede o saldo disponível na ata (${disponivel})`);
-        }
-      } else if (origem.homologacaoFornecedorId) {
-        await this.validarItemPertenceAoFornecedor(tx, tenantId, item.homologacaoItemId, origem.homologacaoFornecedorId, item.descricao);
-        const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, item.homologacaoItemId);
-        if (item.quantidade > disponivel) {
-          throw new BadRequestException(`Item "${item.descricao}": quantidade (${item.quantidade}) excede o saldo homologado restante (${disponivel})`);
+      } else {
+        const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, homologado.id);
+        if (normalizado.quantidade > disponivel) {
+          throw new BadRequestException(`Item "${normalizado.descricao}": quantidade (${normalizado.quantidade}) excede o saldo homologado restante (${disponivel})`);
         }
       }
+      normalizados.push(normalizado);
     }
+    return normalizados;
   }
 
   async create(tenantId: string, dto: CreateContratoDto) {
@@ -203,16 +312,15 @@ export class ContratosService {
     if (dup.length) throw new ConflictException('Já existe um contrato com este número');
 
     await this.validarFksDoTenant(tenantId, dto);
+    this.validarItensEntrada(dto.itens ?? []);
+    if (!periodoValido(dto.vigenciaInicial, dto.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
 
     if (dto.ataOrgaoId && dto.homologacaoFornecedorId) {
       throw new BadRequestException('Informe no máximo uma origem de saldo: ataOrgaoId ou homologacaoFornecedorId, não os dois');
     }
     this.validarFormaControleSaldo(dto.formaControleSaldo, dto.ataOrgaoId, dto.homologacaoFornecedorId);
-
-    // Snapshot do valor original — base para o limite de 25%/50% do art. 125
-    // da Lei 14.133/2021 nos aditivos de valor (AditivosService), que nunca
-    // muda mesmo depois de aditivos aumentarem o valor corrente do contrato.
-    const valorOriginal = (dto.itens ?? []).reduce((acc, it) => acc + it.quantidade * it.valorUnitario, 0);
 
     const contratoId = await this.db.transaction(async (tx) => {
       let ataHomologacaoFornecedorId: string | null = null;
@@ -224,11 +332,16 @@ export class ContratosService {
         await this.validarHomologacaoFornecedorDireto(tx, tenantId, dto.homologacaoFornecedorId, dto.licitacaoId, dto.fornecedorId);
       }
 
-      await this.validarTetoItens(tx, tenantId, dto.itens ?? [], {
+      const itens = await this.normalizarItensDaOrigem(tx, tenantId, dto.itens ?? [], {
         ataOrgaoId: dto.ataOrgaoId,
         homologacaoFornecedorId: dto.homologacaoFornecedorId,
         ataHomologacaoFornecedorId,
       });
+
+      // Snapshot do valor original — base para o limite de 25%/50% do art. 125
+      // da Lei 14.133/2021 nos aditivos de valor (AditivosService), que nunca
+      // muda mesmo depois de aditivos aumentarem o valor corrente do contrato.
+      const valorOriginal = itens.reduce((acc, it) => acc + centavosDoTotal(it.quantidade, it.valorUnitario), 0);
 
       const [created] = await tx
         .insert(contratos)
@@ -249,13 +362,13 @@ export class ContratosService {
           formaFaturamento: dto.formaFaturamento as any,
           formaControleSaldo: (dto.formaControleSaldo as any) ?? 'NORMAL',
           situacao: (dto.situacao as any) ?? 'MINUTA',
-          valorOriginal: valorOriginal.toFixed(2),
+          valorOriginal: decimal2(valorOriginal),
         })
         .returning();
 
-      if (dto.itens?.length) {
+      if (itens.length) {
         await tx.insert(itensContrato).values(
-          dto.itens.map((it, idx) => ({
+          itens.map((it, idx) => ({
             contratoId: created.id,
             numero: idx + 1,
             descricao: it.descricao,
@@ -269,7 +382,7 @@ export class ContratosService {
 
       if (dto.dotacaoIds?.length) {
         await tx.insert(contratoDotacoes).values(
-          dto.dotacaoIds.map((dotacaoId) => ({ contratoId: created.id, dotacaoId })),
+          [...new Set(dto.dotacaoIds)].map((dotacaoId) => ({ contratoId: created.id, dotacaoId })),
         );
       }
 
@@ -282,6 +395,9 @@ export class ContratosService {
   async update(tenantId: string, id: string, dto: UpdateContratoDto) {
     const contrato = await this.get(tenantId, id);
     this.validarFormaControleSaldo(dto.formaControleSaldo, contrato.ataOrgaoId, contrato.homologacaoFornecedorId);
+    if (!periodoValido(dto.vigenciaInicial ?? contrato.vigenciaInicial, dto.vigenciaFinal ?? contrato.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
 
     const patch: Record<string, unknown> = {};
     if (dto.objeto !== undefined) patch.objeto = dto.objeto;
@@ -297,33 +413,47 @@ export class ContratosService {
 
   async addItem(tenantId: string, contratoId: string, item: ItemContratoInput) {
     const contrato = await this.get(tenantId, contratoId);
+    this.validarItensEntrada([item]);
 
     return this.db.transaction(async (tx) => {
+      // valorOriginal é a base do limite de 25%/50% dos aditivos: um item
+      // incluído antes do primeiro aditivo faz parte do valor original (antes
+      // ficava de fora — contrato criado vazio e montado por addItem tinha
+      // valorOriginal 0 e nenhum aditivo de valor passava). Depois de haver
+      // aditivo, incluir item seria um acréscimo sem termo aditivo.
+      const [travado] = await tx.select({ valorOriginal: contratos.valorOriginal }).from(contratos).where(eq(contratos.id, contratoId)).for('update');
+      const [temAditivo] = await tx.select({ id: aditivos.id }).from(aditivos).where(eq(aditivos.contratoId, contratoId)).limit(1);
+      if (temAditivo) {
+        throw new BadRequestException('Este contrato já tem aditivos — acréscimos de itens ou quantidades precisam ser feitos por termo aditivo');
+      }
+
       let ataHomologacaoFornecedorId: string | null = null;
       if (contrato.ataOrgaoId) {
         const [ata] = await tx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(ataOrgaos).innerJoin(atas, eq(ataOrgaos.ataId, atas.id)).where(eq(ataOrgaos.id, contrato.ataOrgaoId));
         ataHomologacaoFornecedorId = ata?.homologacaoFornecedorId ?? null;
       }
-      await this.validarTetoItens(tx, tenantId, [item], {
+      const existentes = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
+      const [normalizado] = await this.normalizarItensDaOrigem(tx, tenantId, [item], {
         ataOrgaoId: contrato.ataOrgaoId ?? undefined,
         homologacaoFornecedorId: contrato.homologacaoFornecedorId ?? undefined,
         ataHomologacaoFornecedorId,
-      });
+      }, existentes.map((e) => e.homologacaoItemId));
 
-      const existentes = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
       const proximoNumero = existentes.length + 1;
       const [row] = await tx
         .insert(itensContrato)
         .values({
           contratoId,
           numero: proximoNumero,
-          descricao: item.descricao,
-          unidade: item.unidade,
-          quantidade: String(item.quantidade),
-          valorUnitario: String(item.valorUnitario),
-          homologacaoItemId: item.homologacaoItemId,
+          descricao: normalizado.descricao,
+          unidade: normalizado.unidade,
+          quantidade: String(normalizado.quantidade),
+          valorUnitario: String(normalizado.valorUnitario),
+          homologacaoItemId: normalizado.homologacaoItemId,
         })
         .returning();
+      const novoValorOriginal = centavos(travado.valorOriginal) + centavosDoTotal(normalizado.quantidade, normalizado.valorUnitario);
+      await tx.update(contratos).set({ valorOriginal: decimal2(novoValorOriginal) }).where(eq(contratos.id, contratoId));
       return row;
     });
   }

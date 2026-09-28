@@ -18,24 +18,11 @@ import {
   licitacoes,
   secretarias,
 } from '../db/schema';
-import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
+import { paraNumeroPlanilha } from '../common/numero-planilha';
+import { periodoValido } from '../common/datas';
+import { quantidadeConsumidaDoTeto, SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { ContratosService } from '../contratos/contratos.service';
 import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
-
-// Números de planilha podem vir como texto formatado em padrão BR ("1.234,56")
-// OU como célula numérica comum do Excel, que o SheetJS (com raw:false)
-// renderiza sem separador de milhar ("10.5") — nesses casos o ponto É o
-// separador decimal. Remover todo ponto incondicionalmente (como o parser
-// original fazia) transforma "10.5" em 105: um erro silencioso de 10x a
-// 1000x. A vírgula é o sinal inequívoco de formatação BR — só stripa pontos
-// quando ela está presente.
-function paraNumeroPlanilha(valor: unknown): number | null {
-  if (valor == null) return null;
-  const texto = String(valor).trim().replace(/^R\$\s*/i, '');
-  if (!texto || texto === '-') return null;
-  const numero = texto.includes(',') ? Number(texto.replace(/\./g, '').replace(',', '.')) : Number(texto);
-  return Number.isFinite(numero) ? numero : null;
-}
 
 @Injectable()
 export class AtasService {
@@ -51,7 +38,9 @@ export class AtasService {
       with: { licitacao: true, detentorPrincipal: true, orgaos: { with: { itens: true } } },
       orderBy: (a, { desc }) => [desc(a.createdAt)],
     });
-    return Promise.all(rows.map((r) => this.comSaldoResumo(r)));
+    // Uma consulta de consumo para todas as atas (antes, uma por ata).
+    const contratadas = await this.quantidadeContratadaPorItens(this.db, rows.flatMap((r) => r.orgaos.flatMap((o) => o.itens.map((i) => i.id))));
+    return rows.map((r) => this.comSaldoResumo(r, contratadas));
   }
 
   async get(tenantId: string, id: string) {
@@ -85,13 +74,11 @@ export class AtasService {
   }
 
   // Resumo usado na listagem: mesmo cálculo de saldo, sem detalhar por órgão.
-  private async comSaldoResumo<T extends { orgaos: { itens: { quantidadeContratada: string; valorUnitario: string; id: string }[] }[] }>(ata: T) {
-    const ataItemIds = ata.orgaos.flatMap((o) => o.itens.map((i) => i.id));
+  private comSaldoResumo<T extends { orgaos: { itens: { quantidadeContratada: string; valorUnitario: string; id: string }[] }[] }>(ata: T, contratadas: Map<string, number>) {
     const valorTotal = ata.orgaos.reduce(
       (acc, o) => acc + o.itens.reduce((a2, it) => a2 + Number(it.quantidadeContratada) * Number(it.valorUnitario), 0),
       0,
     );
-    const contratadas = await this.quantidadeContratadaPorItens(this.db, ataItemIds);
     const utilizado = this.valorContratado(ata.orgaos.flatMap((o) => o.itens), contratadas);
     const { orgaos, ...rest } = ata;
     return {
@@ -110,7 +97,7 @@ export class AtasService {
   private async quantidadeContratadaPorItens(dbOrTx: DrizzleDB, ataItemIds: string[]) {
     if (!ataItemIds.length) return new Map<string, number>();
     const rows = await dbOrTx
-      .select({ ataItemId: ataItens.id, total: sql<string>`coalesce(sum(${itensContrato.quantidade}), 0)` })
+      .select({ ataItemId: ataItens.id, total: sql<string>`coalesce(sum(${quantidadeConsumidaDoTeto}), 0)` })
       .from(ataItens)
       .innerJoin(itensContrato, eq(itensContrato.homologacaoItemId, ataItens.homologacaoItemId))
       .innerJoin(contratos, and(eq(itensContrato.contratoId, contratos.id), eq(contratos.ataOrgaoId, ataItens.ataOrgaoId)))
@@ -148,6 +135,9 @@ export class AtasService {
 
     const [licitacao] = await this.db.select({ id: licitacoes.id }).from(licitacoes).where(and(eq(licitacoes.id, dto.licitacaoId), eq(licitacoes.tenantId, tenantId)));
     if (!licitacao) throw new BadRequestException('Licitação não encontrada para este tenant');
+    if (!periodoValido(dto.vigenciaInicial, dto.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
 
     const [detentor] = await this.db.select({ id: fornecedores.id }).from(fornecedores).where(and(eq(fornecedores.id, dto.detentorPrincipalId), eq(fornecedores.tenantId, tenantId)));
     if (!detentor) throw new BadRequestException('Detentor principal não encontrado para este tenant');
@@ -212,7 +202,10 @@ export class AtasService {
   }
 
   async update(tenantId: string, id: string, dto: UpdateAtaDto) {
-    await this.get(tenantId, id);
+    const ata = await this.get(tenantId, id);
+    if (dto.vigenciaInicial !== undefined && !periodoValido(dto.vigenciaInicial, ata.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
     const patch: Record<string, unknown> = {};
     if (dto.numeroArp !== undefined) patch.numeroArp = dto.numeroArp;
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);
@@ -244,10 +237,43 @@ export class AtasService {
     });
   }
 
+  // Ata vinculada a uma homologação só aceita itens que referenciam um item
+  // homologado do próprio fornecedor, com descrição/unidade/valor unitário
+  // tirados da homologação (MODELO.md, invariante 2) — nunca do que o
+  // cliente digitou. Ata comum (sem homologação) segue aceitando item livre.
+  private async itemHomologadoDaAta(tx: DrizzleDB, tenantId: string, ataHomologacaoFornecedorId: string | null, homologacaoItemId: string) {
+    const [item] = await tx
+      .select()
+      .from(homologacaoItens)
+      .where(and(eq(homologacaoItens.id, homologacaoItemId), eq(homologacaoItens.tenantId, tenantId)));
+    if (!item) throw new BadRequestException('Item homologado não encontrado');
+    if (!ataHomologacaoFornecedorId || item.homologacaoFornecedorId !== ataHomologacaoFornecedorId) {
+      throw new BadRequestException('Este item homologado não pertence ao fornecedor desta ata');
+    }
+    return item;
+  }
+
+  // O lote informado precisa ser desta mesma ata — sem isso um item podia
+  // apontar para o lote de outra ata (ou de outro tenant).
+  private async validarLote(dbOrTx: DrizzleDB, tenantId: string, ataId: string, loteId: string | undefined) {
+    if (!loteId) return;
+    const [lote] = await dbOrTx.select({ id: ataLotes.id }).from(ataLotes).where(and(eq(ataLotes.id, loteId), eq(ataLotes.ataId, ataId), eq(ataLotes.tenantId, tenantId)));
+    if (!lote) throw new BadRequestException('Lote não encontrado nesta ata');
+  }
+
+  private async homologacaoFornecedorDaAta(dbOrTx: DrizzleDB, tenantId: string, ataId: string) {
+    const [ata] = await dbOrTx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(atas).where(and(eq(atas.id, ataId), eq(atas.tenantId, tenantId)));
+    return ata?.homologacaoFornecedorId ?? null;
+  }
+
   async addItem(tenantId: string, ataId: string, ataOrgaoId: string, dto: ItemAtaInput) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    await this.validarLote(this.db, tenantId, ataId, dto.loteId);
 
     if (!dto.homologacaoItemId) {
+      if (await this.homologacaoFornecedorDaAta(this.db, tenantId, ataId)) {
+        throw new BadRequestException('Esta ata está vinculada a uma homologação — selecione um item homologado em vez de digitar o item');
+      }
       const existentes = await this.db.select().from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
       const numeroItem = existentes.length + 1;
       const [row] = await this.db
@@ -267,17 +293,22 @@ export class AtasService {
     }
 
     return this.db.transaction(async (tx) => {
-      const [ata] = await tx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(atas).where(eq(atas.id, ataId));
-      const [item] = await tx
-        .select({ homologacaoFornecedorId: homologacaoItens.homologacaoFornecedorId, quantidade: homologacaoItens.quantidade })
-        .from(homologacaoItens)
-        .where(and(eq(homologacaoItens.id, dto.homologacaoItemId!), eq(homologacaoItens.tenantId, tenantId)));
-      if (!item) throw new BadRequestException('Item homologado não encontrado');
-      if (!ata?.homologacaoFornecedorId || item.homologacaoFornecedorId !== ata.homologacaoFornecedorId) {
-        throw new BadRequestException('Este item homologado não pertence ao fornecedor desta ata');
+      const ataHomologacaoFornecedorId = await this.homologacaoFornecedorDaAta(tx, tenantId, ataId);
+      const item = await this.itemHomologadoDaAta(tx, tenantId, ataHomologacaoFornecedorId, dto.homologacaoItemId!);
+
+      // Um item homologado aparece uma única vez por órgão —
+      // SaldoCeilingService.ataItemSaldoDisponivel exige exatamente 1 linha
+      // por (ataOrgaoId, homologacaoItemId), e não existe endpoint para apagar
+      // item: a duplicata travaria todo contrato contra esse item.
+      const [duplicado] = await tx
+        .select({ id: ataItens.id })
+        .from(ataItens)
+        .where(and(eq(ataItens.ataOrgaoId, ataOrgaoId), eq(ataItens.homologacaoItemId, item.id)));
+      if (duplicado) {
+        throw new BadRequestException('Este item homologado já está neste órgão — edite a quantidade do item existente');
       }
 
-      const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, dto.homologacaoItemId!);
+      const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, item.id);
       if (dto.quantidade > disponivel) {
         throw new BadRequestException(`Quantidade (${dto.quantidade}) excede o saldo homologado restante para este item (${disponivel})`);
       }
@@ -290,12 +321,12 @@ export class AtasService {
           tenantId,
           ataOrgaoId,
           numeroItem,
-          descricao: dto.descricao,
-          unidade: dto.unidade,
+          descricao: item.descricao,
+          unidade: item.unidade ?? dto.unidade,
           loteId: dto.loteId,
           quantidadeContratada: String(dto.quantidade),
-          valorUnitario: String(dto.valorUnitario),
-          homologacaoItemId: dto.homologacaoItemId,
+          valorUnitario: String(item.valorUnitario),
+          homologacaoItemId: item.id,
         })
         .returning();
       return row;
@@ -309,6 +340,7 @@ export class AtasService {
   // compararia contra si mesmo e nunca deixaria editar pra cima.
   async editarItem(tenantId: string, ataId: string, ataOrgaoId: string, itemId: string, dto: ItemAtaInput) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    await this.validarLote(this.db, tenantId, ataId, dto.loteId);
 
     return this.db.transaction(async (tx) => {
       const [existente] = await tx
@@ -327,8 +359,12 @@ export class AtasService {
       }
 
       const homologacaoItemId = dto.homologacaoItemId ?? existente.homologacaoItemId ?? undefined;
+      const ataHomologacaoFornecedorId = await this.homologacaoFornecedorDaAta(tx, tenantId, ataId);
 
       if (!homologacaoItemId) {
+        if (ataHomologacaoFornecedorId) {
+          throw new BadRequestException('Esta ata está vinculada a uma homologação — o item precisa referenciar um item homologado');
+        }
         const [row] = await tx
           .update(ataItens)
           .set({ descricao: dto.descricao, unidade: dto.unidade, loteId: dto.loteId, quantidadeContratada: String(dto.quantidade), valorUnitario: String(dto.valorUnitario), homologacaoItemId: null })
@@ -351,12 +387,7 @@ export class AtasService {
         throw new BadRequestException('Já existe outro item deste órgão vinculado ao mesmo item homologado');
       }
 
-      const [ata] = await tx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(atas).where(eq(atas.id, ataId));
-      const [item] = await tx.select({ homologacaoFornecedorId: homologacaoItens.homologacaoFornecedorId }).from(homologacaoItens).where(and(eq(homologacaoItens.id, homologacaoItemId), eq(homologacaoItens.tenantId, tenantId)));
-      if (!item) throw new BadRequestException('Item homologado não encontrado');
-      if (!ata?.homologacaoFornecedorId || item.homologacaoFornecedorId !== ata.homologacaoFornecedorId) {
-        throw new BadRequestException('Este item homologado não pertence ao fornecedor desta ata');
-      }
+      const item = await this.itemHomologadoDaAta(tx, tenantId, ataHomologacaoFornecedorId, homologacaoItemId);
 
       const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, homologacaoItemId);
       const quantidadeAntigaMesmoItem = existente.homologacaoItemId === homologacaoItemId ? Number(existente.quantidadeContratada) : 0;
@@ -367,7 +398,7 @@ export class AtasService {
 
       const [row] = await tx
         .update(ataItens)
-        .set({ descricao: dto.descricao, unidade: dto.unidade, loteId: dto.loteId, quantidadeContratada: String(dto.quantidade), valorUnitario: String(dto.valorUnitario), homologacaoItemId })
+        .set({ descricao: item.descricao, unidade: item.unidade ?? dto.unidade, loteId: dto.loteId, quantidadeContratada: String(dto.quantidade), valorUnitario: String(item.valorUnitario), homologacaoItemId })
         .where(and(eq(ataItens.id, itemId), eq(ataItens.tenantId, tenantId)))
         .returning();
       return row;
@@ -433,6 +464,11 @@ export class AtasService {
   // homologação, ver ExtracaoHomologacaoService).
   async importarItens(tenantId: string, ataId: string, ataOrgaoId: string, buffer: Buffer) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    // Esta planilha cadastra itens livres (descrição/preço digitados) — numa
+    // ata vinculada a homologação o item só pode vir da homologação.
+    if (await this.homologacaoFornecedorDaAta(this.db, tenantId, ataId)) {
+      throw new BadRequestException('Esta ata está vinculada a uma homologação — os itens vêm da homologação, não de planilha');
+    }
 
     let workbook: XLSX.WorkBook;
     try {
@@ -442,7 +478,8 @@ export class AtasService {
     }
     const nomeAba = workbook.SheetNames[0];
     if (!nomeAba) throw new BadRequestException('A planilha não tem nenhuma aba');
-    const linhas: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, raw: false, defval: '' });
+    // raw: true — célula numérica chega como number (ver common/numero-planilha.ts).
+    const linhas: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, raw: true, defval: '' });
 
     const existentes = await this.db.select({ numeroItem: ataItens.numeroItem }).from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
     let proximoNumero = existentes.length + 1;
@@ -455,7 +492,7 @@ export class AtasService {
       const [, descricao, unidade, quantidadeStr, precoStr] = linha;
       const descricaoTexto = String(descricao ?? '').trim();
       const unidadeTexto = String(unidade ?? '').trim();
-      if (!descricaoTexto && !unidadeTexto && !quantidadeStr && !precoStr) continue; // linha em branco
+      if (!descricaoTexto && !unidadeTexto && quantidadeStr === '' && precoStr === '') continue; // linha em branco
 
       const quantidade = paraNumeroPlanilha(quantidadeStr);
       const precoUnitario = paraNumeroPlanilha(precoStr);

@@ -8,9 +8,10 @@ import { GerenciarLotesModal } from '../components/GerenciarLotesModal';
 import { ItemHistoricoModal } from '../components/ItemHistoricoModal';
 import { ImportarItensAtaModal } from '../components/ImportarItensAtaModal';
 import { GerarMinutaButton } from '../components/GerarMinutaButton';
+import { formatarDia } from '../lib/datas';
 
 interface Orgao { id: string; perfil: string; quantidadeItens: number; valorTotal: number; valorUtilizado: number; saldoDisponivel: number; secretaria: { titulo: string }; }
-interface Item { id: string; numeroItem: number; descricao: string; unidade: string; quantidadeContratada: string; valorUnitario: string; quantidadeUtilizada: number; quantidadeDisponivel: number; }
+interface Item { id: string; numeroItem: number; descricao: string; unidade: string; quantidadeContratada: string; valorUnitario: string; quantidadeUtilizada: number; quantidadeDisponivel: number; homologacaoItemId: string | null; }
 interface ContratoDaAta { id: string; numero: string; saldoDisponivel: number; valorTotal: number; fornecedor: { razaoSocial: string }; }
 
 export function AtaDetalhe() {
@@ -26,6 +27,7 @@ export function AtaDetalhe() {
   const [valorUnitario, setValorUnitario] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [temHomologacao, setTemHomologacao] = useState(false);
+  const ataVinculada = !!ata?.homologacaoFornecedorId;
   const [importarParaOrgao, setImportarParaOrgao] = useState<string | null>(null);
   const [importando, setImportando] = useState(false);
   const [mostrarLotes, setMostrarLotes] = useState(false);
@@ -173,7 +175,7 @@ export function AtaDetalhe() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <span className="tag tag-neutral">{ata.tipo === 'ATAS' ? 'Ata de Registro de Preços' : 'Credenciamento'}</span>
               <span className="tag tag-outline">{ata.situacao}</span>
-              <span className="tag tag-outline">{new Date(ata.vigenciaInicial).toLocaleDateString('pt-BR')} – {new Date(ata.vigenciaFinal).toLocaleDateString('pt-BR')}</span>
+              <span className="tag tag-outline">{formatarDia(ata.vigenciaInicial)} – {formatarDia(ata.vigenciaFinal)}</span>
             </div>
           </div>
         </div>
@@ -226,22 +228,29 @@ export function AtaDetalhe() {
                     {ata.atasComLotes && (
                       <button className="btn btn-ghost" onClick={() => setMostrarLotes(true)}>Gerenciar lotes</button>
                     )}
-                    <button className="btn btn-ghost" onClick={() => setImportarPlanilhaOrgao(o.id)}><i className="ph ph-upload-simple" />Importar</button>
+                    {/* Ata vinculada a uma homologação só aceita itens da homologação
+                        (MODELO.md, invariante 2) — planilha e item digitado à mão
+                        ficam só para ata comum. */}
+                    {!ataVinculada && (
+                      <button className="btn btn-ghost" onClick={() => setImportarPlanilhaOrgao(o.id)}><i className="ph ph-upload-simple" />Importar</button>
+                    )}
                     {temHomologacao && (
                       <button className="btn btn-ghost" onClick={() => setImportarParaOrgao(o.id)}><i className="ph ph-file-arrow-down" />importar da homologação</button>
                     )}
-                    <button className="btn btn-ghost" onClick={() => { setItemEditando(null); setDescricao(''); setUnidade(''); setQuantidade(''); setValorUnitario(''); setMostrarFormItem(mostrarFormItem === o.id ? null : o.id); }}>
-                      {mostrarFormItem === o.id ? 'Cancelar' : (<><i className="ph ph-plus" />adicionar item</>)}
-                    </button>
+                    {!ataVinculada && (
+                      <button className="btn btn-ghost" onClick={() => { setItemEditando(null); setDescricao(''); setUnidade(''); setQuantidade(''); setValorUnitario(''); setMostrarFormItem(mostrarFormItem === o.id ? null : o.id); }}>
+                        {mostrarFormItem === o.id ? 'Cancelar' : (<><i className="ph ph-plus" />adicionar item</>)}
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 {(mostrarFormItem === o.id || itemEditando) && (
                   <form onSubmit={(e) => (itemEditando ? onSubmitEdicaoItem(e, o.id) : onSubmitItem(e, o.id))} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 120px 60px', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-                    <input className="input" placeholder="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} required />
-                    <input className="input" placeholder="Unidade" value={unidade} onChange={(e) => setUnidade(e.target.value)} required />
+                    <input className="input" placeholder="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} disabled={!!itemEditando?.homologacaoItemId} required />
+                    <input className="input" placeholder="Unidade" value={unidade} onChange={(e) => setUnidade(e.target.value)} disabled={!!itemEditando?.homologacaoItemId} required />
                     <input className="input num" placeholder="Qtd." type="number" step="0.001" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} required />
-                    <input className="input num" placeholder="Valor unit." type="number" step="0.0001" value={valorUnitario} onChange={(e) => setValorUnitario(e.target.value)} required />
+                    <input className="input num" placeholder="Valor unit." type="number" step="0.0001" value={valorUnitario} onChange={(e) => setValorUnitario(e.target.value)} disabled={!!itemEditando?.homologacaoItemId} required />
                     <button className="btn btn-primary">{itemEditando ? 'Salvar' : 'OK'}</button>
                   </form>
                 )}

@@ -1,4 +1,5 @@
-import { IsArray, IsDateString, IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsDateString, IsIn, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
 const FORMAS_FATURAMENTO = ['MENSAL','POR_MEDICAO','POR_ETAPA','POR_ENTREGA','SOB_DEMANDA','PARCELA_UNICA','PAGAMENTO_ANTECIPADO'];
 const FORMAS_SALDO = ['NORMAL', 'APENAS_VALOR_TOTAL', 'QTD_VALOR_VARIAVEL'];
@@ -7,8 +8,8 @@ const SITUACOES = ['MINUTA', 'VIGENTE', 'ARQUIVADO'];
 export class ItemContratoInput {
   @IsString() descricao: string;
   @IsString() unidade: string;
-  @IsNumber() quantidade: number;
-  @IsNumber() valorUnitario: number;
+  @IsNumber() @IsPositive() quantidade: number;
+  @IsNumber() @IsPositive() valorUnitario: number;
   // Item-mestre da homologação de onde esta linha abate saldo — ver
   // SaldoCeilingService. Só válido quando o contrato tem ataOrgaoId ou
   // homologacaoFornecedorId preenchido.
@@ -34,8 +35,14 @@ export class CreateContratoDto {
   @IsIn(FORMAS_FATURAMENTO) formaFaturamento: string;
   @IsOptional() @IsIn(FORMAS_SALDO) formaControleSaldo?: string;
   @IsOptional() @IsIn(SITUACOES) situacao?: string;
-  @IsOptional() @IsArray() itens?: ItemContratoInput[];
-  @IsOptional() @IsArray() dotacaoIds?: string[];
+  // Sem @ValidateNested/@Type, o ValidationPipe não valida nada dentro de
+  // cada item — quantidade negativa passava e reduzia o consumo do teto.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ItemContratoInput)
+  itens?: ItemContratoInput[];
+  @IsOptional() @IsArray() @IsString({ each: true }) dotacaoIds?: string[];
 }
 
 export class UpdateContratoDto {

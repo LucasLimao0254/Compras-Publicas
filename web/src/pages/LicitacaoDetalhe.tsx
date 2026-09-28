@@ -8,7 +8,7 @@ interface AtaResumo { id: string; numeroArp: string; situacao: string; valorTota
 interface ContratoResumo { id: string; numero: string; situacao: string; valorTotal: number; saldoDisponivel: number; fornecedor: { razaoSocial: string }; }
 
 const STATUS_HOMOLOGACAO_LABEL: Record<string, string> = {
-  processando: 'Processando', pronto_para_revisao: 'Pronto para revisão', revisado: 'Revisado', erro: 'Erro na extração',
+  processando: 'Processando', pronto_para_revisao: 'Pronto para revisão', revisado: 'Revisado', erro: 'Erro na extração', substituido: 'Substituída por reenvio',
 };
 
 export function LicitacaoDetalhe() {
