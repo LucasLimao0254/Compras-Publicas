@@ -54,6 +54,9 @@ npm run teste:interno    # abre em http://localhost:5174/login
 
 Usuários, dados do cenário e roteiro de testes: [`TESTE_INTERNO.md`](TESTE_INTERNO.md).
 
+Para hospedar esse mesmo ambiente e só mandar um link aos testadores, use o `render.yaml`
+(passo a passo em [`TESTE_INTERNO.md`](TESTE_INTERNO.md#ambiente-hospedado-um-link-para-os-testadores)).
+
 ## Como rodar
 
 ### 1. Banco de dados

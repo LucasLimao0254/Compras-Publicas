@@ -4,7 +4,34 @@ Um comando sobe banco, API e frontend com dados de cenário prontos e deixa o si
 parado na **tela de login**. O ambiente é separado do de desenvolvimento: outro banco,
 outras portas. Dá para rodar os dois ao mesmo tempo.
 
-## Subir
+## Ambiente hospedado (um link para os testadores)
+
+O `render.yaml` na raiz publica o sistema no [Render](https://render.com) como **um serviço
+só**: tela, API (em `/api`) e arquivos de exemplo (em `/arquivos-teste/`) no mesmo endereço,
+mais um banco Postgres. Os testadores só precisam do link.
+
+1. No Render: **New → Blueprint**, conecte o GitHub e escolha o repositório
+   `LucasLimao0254/Compras-Publicas` e a branch `claude/gallant-edison-vgapep` (ou a principal,
+   depois do merge). Clique em **Apply**. O build leva alguns minutos.
+2. Quando o serviço `compras-teste` ficar no ar, copie o endereço dele
+   (algo como `https://compras-teste.onrender.com`).
+3. Na página do roteiro compartilhado, cole esse endereço no campo **Endereço do sistema** e
+   salve. Todos passam a ver o botão **Abrir o sistema de teste** e os links dos arquivos.
+
+Como o ambiente hospedado se comporta:
+
+- Na primeira subida, o serviço cria o banco e aplica o mesmo cenário do ambiente local
+  (`api/scripts/iniciar-demo.js`). Reinícios **mantêm** o que os testadores fizeram.
+- Para recomeçar do zero, mude a variável `RESETAR_DADOS` do serviço para `true`, reinicie, e
+  depois volte para `false`. Senão, cada reinício apaga tudo de novo.
+- "Vence hoje" e "venceu ontem" (contratos 004 e 005) valem para o dia em que os dados foram
+  criados. Para os casos E2, F1 e H1, recrie os dados no dia do teste.
+- No plano gratuito, o serviço dorme depois de um tempo sem uso, e a primeira abertura leva cerca
+  de um minuto. O banco gratuito do Render tem prazo de validade: confira no painel.
+- As senhas de teste são públicas (`demo123`). Use só os dados fictícios do cenário, nunca
+  dados reais.
+
+## Subir na própria máquina
 
 Na raiz do repositório, depois de `npm install`:
 

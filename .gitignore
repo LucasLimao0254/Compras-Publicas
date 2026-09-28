@@ -7,3 +7,5 @@ api/uploads/
 web/token.txt
 .pgdata-teste/
 .ambiente-teste/
+api/arquivos-teste/
+/uploads/
