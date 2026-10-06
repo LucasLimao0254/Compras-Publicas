@@ -1,5 +1,5 @@
 import { DashboardService } from '../../src/dashboard/dashboard.service';
-import { Ctx, criarAta, criarCenario, criarContrato, criarCtx, dadosAditivo, encerrarCtx, rejeicao } from '../helpers';
+import { Ctx, criarAta, criarCenario, criarContrato, criarCtx, dadosAditivo, encerrarCtx, esgotarContrato, rejeicao } from '../helpers';
 
 // Grupo 4 da revisão de bugs (itens de gravidade baixa).
 describe('Grupo 4', () => {
@@ -56,12 +56,14 @@ describe('Grupo 4', () => {
   it('dashboard: inclui aditivos de valor e deixa arquivados fora do ranking', async () => {
     const c = await criarCenario(ctx);
     const contrato = await criarContrato(ctx, c, { origem: 'nenhuma', itens: [{ item: 'item1', quantidade: 10 }] }); // R$ 100
+    await esgotarContrato(ctx, c, contrato.id); // R$ 100 utilizados; aditivo exige saldo zerado
     await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'VALOR', percentual: 10 }) as any); // + R$ 10
     await criarContrato(ctx, c, { origem: 'nenhuma', itens: [{ item: 'item2', quantidade: 50 }], situacao: 'ARQUIVADO' }); // R$ 1.000, arquivado
 
     const resumo = await new DashboardService(ctx.db).resumo(c.tenantId);
     expect(resumo.valorTotalContratado).toBe(110);
-    expect(resumo.saldoDisponivelTotal).toBe(110);
+    expect(resumo.valorUtilizadoTotal).toBe(100);
+    expect(resumo.saldoDisponivelTotal).toBe(10);
     expect(resumo.topFornecedores).toEqual([{ fornecedor: 'Fornecedor Teste Ltda', valor: 110 }]);
     expect(resumo.situacaoContratos.arquivados).toBe(1);
   });

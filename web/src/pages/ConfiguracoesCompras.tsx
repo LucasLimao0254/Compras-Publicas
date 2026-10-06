@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 
 interface Config {
   proximoNumeroOrdem: number;
+  ultimoNumeroEmitido: number | null;
   permitirOrdemContratoVencido: boolean;
   dotacaoObrigatoria: boolean;
 }
@@ -25,12 +26,23 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
+function Retorno({ campo, mensagem }: { campo: string; mensagem: { campo: string; erro: boolean; texto: string } | null }) {
+  if (!mensagem || mensagem.campo !== campo) return null;
+  return (
+    <p role={mensagem.erro ? 'alert' : 'status'} style={{ fontSize: 12.5, margin: '10px 0 0', color: mensagem.erro ? 'var(--color-critical)' : 'var(--color-accent)' }}>
+      {mensagem.texto}
+    </p>
+  );
+}
+
 export function ConfiguracoesCompras() {
   const { usuario } = useAuth();
   const [config, setConfig] = useState<Config | null>(null);
   const [numeroInput, setNumeroInput] = useState('');
   const [salvando, setSalvando] = useState(false);
-  const [mensagem, setMensagem] = useState<string | null>(null);
+  // Resposta de cada ajuste aparece junto do próprio ajuste — antes ia para o
+  // fim da página, em cinza, e quem salvava o sequencial não via o erro.
+  const [mensagem, setMensagem] = useState<{ campo: string; erro: boolean; texto: string } | null>(null);
 
   const [modelosMinuta, setModelosMinuta] = useState<ModelosMinuta | null>(null);
   const [marcadores, setMarcadores] = useState<Record<TipoMinuta, Marcador[]> | null>(null);
@@ -51,15 +63,16 @@ export function ConfiguracoesCompras() {
   useEffect(() => { carregar(); carregarMinutas(); }, []);
 
   async function patch(body: Partial<Config>) {
+    const campo = Object.keys(body)[0];
     setSalvando(true);
     setMensagem(null);
     try {
       const atualizado = await api.patch('/configuracoes/compras', body);
       setConfig(atualizado);
       setNumeroInput(String(atualizado.proximoNumeroOrdem));
-      setMensagem('Salvo.');
+      setMensagem({ campo, erro: false, texto: 'Salvo.' });
     } catch (err) {
-      setMensagem(err instanceof Error ? err.message : 'Erro ao salvar');
+      setMensagem({ campo, erro: true, texto: err instanceof Error ? err.message : 'Erro ao salvar' });
     } finally {
       setSalvando(false);
     }
@@ -99,7 +112,11 @@ export function ConfiguracoesCompras() {
             <button className="btn btn-primary" onClick={() => patch({ proximoNumeroOrdem: Number(numeroInput) })} disabled={salvando || Number(numeroInput) === config.proximoNumeroOrdem}>
               Salvar
             </button>
+            <span className="text-muted" style={{ fontSize: 12.5 }}>
+              {config.ultimoNumeroEmitido != null ? `Último número emitido: ${config.ultimoNumeroEmitido} — o próximo precisa ser maior.` : 'Nenhuma ordem emitida ainda.'}
+            </span>
           </div>
+          <Retorno campo="proximoNumeroOrdem" mensagem={mensagem} />
         </div>
 
         <div className="card" style={{ padding: 20 }}>
@@ -112,6 +129,7 @@ export function ConfiguracoesCompras() {
             </div>
             <Toggle checked={config.permitirOrdemContratoVencido} onChange={(v) => patch({ permitirOrdemContratoVencido: v })} />
           </div>
+          <Retorno campo="permitirOrdemContratoVencido" mensagem={mensagem} />
         </div>
 
         <div className="card" style={{ padding: 20 }}>
@@ -124,6 +142,7 @@ export function ConfiguracoesCompras() {
             </div>
             <Toggle checked={config.dotacaoObrigatoria} onChange={(v) => patch({ dotacaoObrigatoria: v })} />
           </div>
+          <Retorno campo="dotacaoObrigatoria" mensagem={mensagem} />
         </div>
 
         <div className="card" style={{ padding: 20 }}>
@@ -189,7 +208,6 @@ export function ConfiguracoesCompras() {
           )}
         </div>
 
-        {mensagem && <p className="text-muted" style={{ fontSize: 13 }}>{mensagem}</p>}
       </div>
     </div>
   );

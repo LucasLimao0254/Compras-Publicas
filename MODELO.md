@@ -42,7 +42,10 @@ uma deve virar teste.
    homologação. Não é possível emitir ordem de item não contratado ou sem saldo no contrato.
 6. **Aditivo só com os três saldos zerados.** Contrato, ata (quando houver) e homologação
    precisam estar simultaneamente em saldo zero — sem tolerância percentual. A quantidade do
-   aditivo é acrescida **fora** do teto da homologação.
+   aditivo é acrescida **fora** do teto da homologação. Vale para os aditivos que acrescentam
+   valor ou quantidade, em todo contrato (com origem ou manual — no manual, só o saldo do
+   próprio contrato). **Prorrogação de prazo e supressão não têm essa trava**: prorrogar serve
+   justamente para consumir o saldo restante, e suprimir só se aplica a saldo não consumido.
 7. **Apostilamento não tem trava de saldo** e nunca altera quantidade.
 8. **Contrato derivado de homologação ou ata controla saldo por item.** O modo "Valor global"
    fica indisponível nesses casos.
@@ -109,8 +112,9 @@ Tipos: acréscimo até 25%, supressão até 25%, acréscimo até 50%, prorrogaç
 reequilíbrio econômico-financeiro.
 
 Regra própria deste projeto (não é da lei): a quantidade do aditivo entra **fora** do teto da
-homologação, e o aditivo só pode ser criado quando os três saldos — contrato, ata e
-homologação — estão zerados.
+homologação, e o aditivo que acrescenta valor ou quantidade só pode ser criado quando os três
+saldos — contrato, ata e homologação — estão zerados (prorrogação e supressão ficam de fora;
+ver invariante 6).
 
 ### 5.2 Apostilamentos
 

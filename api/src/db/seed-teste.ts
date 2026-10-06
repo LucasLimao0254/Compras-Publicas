@@ -4,7 +4,6 @@ import { eq } from 'drizzle-orm';
 import * as bcrypt from 'bcryptjs';
 import * as schema from './schema';
 import { DrizzleDB } from './db.module';
-import { AditivosService } from '../aditivos/aditivos.service';
 import { AtasService } from '../atas/atas.service';
 import { ConfiguracoesService } from '../configuracoes/configuracoes.service';
 import { ContratosService } from '../contratos/contratos.service';
@@ -45,7 +44,6 @@ async function main() {
   const configuracoes = new ConfiguracoesService(db);
   const contratos = new ContratosService(db, saldo);
   const atas = new AtasService(db, saldo, contratos);
-  const aditivos = new AditivosService(db, contratos, saldo);
   const ordens = new OrdensService(db, configuracoes);
 
   const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.codigo, 1));
@@ -145,9 +143,8 @@ async function main() {
   // venceu ONTEM (emissão bloqueada, salvo configuração).
   const [licManual] = await db.select().from(schema.licitacoes).where(eq(schema.licitacoes.numero, '001/2026'));
   const manual = { numeroProcesso: 'PA-001/2026', licitacaoId: licManual.id, orgaoGerenciadorId: administracao.id, fornecedorId: limpaTudo.id, formaFaturamento: 'SOB_DEMANDA', situacao: 'VIGENTE', vigenciaInicial: '2026-01-01' };
-  const ctrHoje: any = await contratos.create(tenantId, { ...manual, numero: '004/2026', objeto: 'Contrato que vence hoje (último dia de vigência)', vigenciaFinal: diaRelativo(0), itens: [{ descricao: 'Copo descartável 200 ml (pacote)', unidade: 'PCT', quantidade: 100, valorUnitario: 4.5 }] } as any);
+  await contratos.create(tenantId, { ...manual, numero: '004/2026', objeto: 'Contrato que vence hoje (último dia de vigência)', vigenciaFinal: diaRelativo(0), itens: [{ descricao: 'Copo descartável 200 ml (pacote)', unidade: 'PCT', quantidade: 100, valorUnitario: 4.5 }] } as any);
   await contratos.create(tenantId, { ...manual, numero: '005/2026', objeto: 'Contrato vencido ontem', vigenciaFinal: diaRelativo(-1), itens: [{ descricao: 'Guardanapo (pacote)', unidade: 'PCT', quantidade: 100, valorUnitario: 3.2 }] } as any);
-  await aditivos.create(tenantId, ctrHoje.id, { tipo: 'VALOR', numero: '1º TA 004/2026', dataAssinatura: hoje(), percentual: 10, fundamentoLegal: 'Art. 125, Lei 14.133/2021', justificativa: 'Aditivo de exemplo do ambiente de teste' } as any);
 
   // ---------- licitação 003/2026, homologação aguardando revisão ----------
   const [licAlimentos] = await db.insert(schema.licitacoes).values({

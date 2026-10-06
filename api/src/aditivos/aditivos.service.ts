@@ -43,17 +43,14 @@ export class AditivosService {
     return centavos(row?.total);
   }
 
-  // Pré-requisito adicional, só para contratos vindos de ata/homologação:
-  // antes de aumentar consumo via aditivo, exige que o saldo do próprio
-  // contrato, o da ata (se houver) e o da homologação já estejam esgotados —
-  // caso contrário a resposta certa é abrir um novo contrato ou ampliar a
-  // alocação na ata, não um aditivo que desvincula o valor do contrato do
-  // teto que o resto do sistema enxerga (ver plano/briefing do usuário).
-  // Contratos manuais/legados (sem ataOrgaoId nem homologacaoFornecedorId)
-  // não passam por esta checagem — comportamento inalterado para eles.
+  // MODELO.md, invariante 6: aditivo que acrescenta valor ou quantidade só
+  // com os saldos zerados — o do próprio contrato SEMPRE (contrato manual
+  // inclusive: antes ele pulava a checagem inteira e aceitava aditivo com
+  // saldo), e o da ata (se houver) e da homologação quando o contrato vem
+  // dessa cadeia. Prazo e supressão não passam por aqui: prorrogar é
+  // justamente para consumir o saldo restante, e suprimir só faz sentido
+  // sobre saldo ainda não consumido.
   private async verificarTetoEsgotado(tx: DrizzleDB, tenantId: string, contrato: typeof contratos.$inferSelect) {
-    if (!contrato.ataOrgaoId && !contrato.homologacaoFornecedorId) return;
-
     // Por quantidade, item a item — ver ContratosService.itensComSaldoRestante
     // para por que não comparar o saldo em R$ aqui.
     const [comSaldo] = await this.contratosService.itensComSaldoRestante(tx, contrato.id);
@@ -63,6 +60,7 @@ export class AditivosService {
         `Ainda há saldo disponível neste contrato (${brl(centavos(saldoEmReais))} — o item "${comSaldo.item.descricao}" tem ${comSaldo.disponivel} disponível) — esgote-o antes de abrir um aditivo`,
       );
     }
+    if (!contrato.ataOrgaoId && !contrato.homologacaoFornecedorId) return;
 
     const itens = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contrato.id));
     for (const item of itens) {

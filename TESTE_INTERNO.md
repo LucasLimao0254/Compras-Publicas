@@ -83,7 +83,7 @@ Todos com senha **`demo123`**. Município (campo "código") **1**, exceto o últ
   Valor **R$ 1.593,68**, saldo **R$ 1.296,05**. Tem 2 ordens emitidas e 1 rascunho.
 - **Contrato 003/2026**: direto da homologação (Protege), com as 300 luvas **totalmente
   consumidas**. Os tetos estão zerados, pronto para aditivo.
-- **Contrato 004/2026**: **vence hoje**, com um aditivo de valor de 10%.
+- **Contrato 004/2026**: **vence hoje**.
 - **Contrato 005/2026**: **venceu ontem**.
 - **Licitação 003/2026**: homologação **aguardando revisão**. O fornecedor não está vinculado
   e o item "Feijão" está sem unidade.
@@ -146,6 +146,7 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | E5 | **002/2026**: aditivo de Quantidade | Recusado: *"Ainda há saldo disponível neste contrato (R$ 1.296,05 — o item … tem 249 disponível)"* |
 | E6 | **002/2026**: aditivo de **Supressão** | O formulário pede **itens e quantidades**, sem percentual. Suprimir 20 sabões dá −R$ 178,00 e o valor total cai para R$ 1.415,68 |
 | E7 | **002/2026**: tentar suprimir mais sabão do que o disponível | Recusado: *"só é possível suprimir até …"* |
+| E8 | **001/2026** (contrato manual, com saldo): aditivo de **Valor**. Depois, aditivo de **Prazo** no mesmo contrato | O de valor é recusado: *"Ainda há saldo disponível neste contrato…"*. O de prazo é aceito |
 
 ### F. Ordens [2C, 3]
 
@@ -164,7 +165,7 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 |---|---|---|
 | G1 | Como admin, pôr o **sequencial da próxima ordem** abaixo do último emitido | Recusado: *"precisa ser maior que o último já emitido"* |
 | G2 | Enviar os 4 `modelo_*.docx` de `.ambiente-teste/arquivos/` | Indicador **"4 de 4 modelos carregados"** |
-| G3 | No **004/2026**, aba Minutas, gerar o contrato | O .docx sai com todos os campos preenchidos, inclusive "CONTRATO Nº 004/2026". Esse marcador está quebrado em dois trechos no modelo, como o Word faz. O valor total inclui o aditivo de 10% |
+| G3 | No **004/2026**, aba Minutas, gerar o contrato | O .docx sai com todos os campos preenchidos, inclusive "CONTRATO Nº 004/2026". Esse marcador está quebrado em dois trechos no modelo, como o Word faz. Valor total R$ 450,00 |
 
 ### H. Visão geral
 

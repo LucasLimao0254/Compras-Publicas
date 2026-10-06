@@ -32,6 +32,7 @@ describe('Numeração sequencial de ordens', () => {
       await ctx.ordens.create(c.tenantId, c.usuarioId, { contratoId: contrato.id, itens: [{ itemContratoId, quantidade: 1 }] } as any);
     }
 
+    expect((await ctx.configuracoes.getOuCriar(c.tenantId)).ultimoNumeroEmitido).toBe(3); // a tela mostra ao lado do campo
     expect(await rejeicao(ctx.configuracoes.update(c.tenantId, { proximoNumeroOrdem: 2 }))).toMatch(/maior que o último já emitido \(3\)/);
 
     await ctx.configuracoes.update(c.tenantId, { proximoNumeroOrdem: 100 });

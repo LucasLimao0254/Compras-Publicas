@@ -7,7 +7,7 @@ import { diaDaData, formatarDiaBR, hoje, vencida } from '../../src/common/datas'
 import { codigoPostgres } from '../../src/common/postgres-exception.filter';
 import { MinutasService, substituirMarcadores } from '../../src/minutas/minutas.service';
 import { UsuariosService } from '../../src/usuarios/usuarios.service';
-import { Ctx, criarCenario, criarContrato, criarCtx, dadosAditivo, encerrarCtx, rejeicao } from '../helpers';
+import { Ctx, criarCenario, criarContrato, criarCtx, dadosAditivo, encerrarCtx, esgotarContrato, rejeicao } from '../helpers';
 
 // Grupo 3 da revisão de bugs (itens de gravidade média).
 describe('Grupo 3', () => {
@@ -64,6 +64,8 @@ describe('Grupo 3', () => {
       await s.enviarModelo(c.tenantId, c.usuarioId, 'ADMIN', 'CONTRATO', { originalname: 'm.docx', buffer: await zip.generateAsync({ type: 'nodebuffer' }) });
 
       // valor total ATUAL: 10 × R$ 10 = 100, + aditivo de valor 10% do original = 110
+      // (o aditivo exige o saldo zerado: consome o contrato antes)
+      await esgotarContrato(ctx, c, contrato.id);
       await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'VALOR', percentual: 10 }) as any);
 
       const gerado = await JSZip.loadAsync(await s.gerar(c.tenantId, 'CONTRATO', contrato.id));

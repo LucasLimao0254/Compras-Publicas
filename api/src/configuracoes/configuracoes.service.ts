@@ -19,7 +19,14 @@ export class ConfiguracoesService {
       [row] = await this.db.insert(configuracoesCompras).values({ tenantId }).returning();
     }
     const [contador] = await this.db.select().from(contadores).where(eq(contadores.tenantId, tenantId));
-    return { ...row, proximoNumeroOrdem: contador?.proximaOrdem ?? 1 };
+    return { ...row, proximoNumeroOrdem: contador?.proximaOrdem ?? 1, ultimoNumeroEmitido: await this.ultimoNumeroEmitido(tenantId) };
+  }
+
+  // Maior número de ordem já usado — a tela mostra ao lado do sequencial, já
+  // que o próximo precisa ser maior que ele.
+  private async ultimoNumeroEmitido(tenantId: string): Promise<number | null> {
+    const [{ maior }] = await this.db.select({ maior: sql<number | null>`max(${ordens.numero})` }).from(ordens).where(eq(ordens.tenantId, tenantId));
+    return maior == null ? null : Number(maior);
   }
 
   async update(tenantId: string, dto: UpdateConfiguracoesComprasDto) {
@@ -29,8 +36,8 @@ export class ConfiguracoesService {
     // um número já usado — a próxima emissão bateria na UNIQUE (tenant,
     // numero) e ninguém conseguiria emitir ordem até alguém corrigir.
     if (dto.proximoNumeroOrdem !== undefined) {
-      const [{ maior }] = await this.db.select({ maior: sql<number | null>`max(${ordens.numero})` }).from(ordens).where(eq(ordens.tenantId, tenantId));
-      if (maior != null && dto.proximoNumeroOrdem <= Number(maior)) {
+      const maior = await this.ultimoNumeroEmitido(tenantId);
+      if (maior != null && dto.proximoNumeroOrdem <= maior) {
         throw new BadRequestException(`O próximo número de ordem precisa ser maior que o último já emitido (${maior})`);
       }
     }

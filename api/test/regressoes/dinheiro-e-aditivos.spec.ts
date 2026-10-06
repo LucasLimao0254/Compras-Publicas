@@ -101,8 +101,26 @@ describe('Aditivos', () => {
   it('ACRESCIMO_ESPECIAL entra no valor total do contrato', async () => {
     const c = await criarCenario(ctx);
     const contrato = await criarContrato(ctx, c, { origem: 'nenhuma', itens: [{ item: 'item1', quantidade: 100 }] });
+    await esgotarContrato(ctx, c, contrato.id); // aditivo de valor exige o saldo zerado (invariante 6)
     await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'ACRESCIMO_ESPECIAL', percentual: 40 }) as any);
     const depois: any = await ctx.contratos.get(c.tenantId, contrato.id);
     expect(depois.valorTotal).toBe(1400);
+  });
+
+  it('E4: contrato manual com saldo recusa aditivo de valor/quantidade; prazo e supressão continuam livres', async () => {
+    const c = await criarCenario(ctx);
+    const contrato = await criarContrato(ctx, c, { origem: 'nenhuma', itens: [{ item: 'item1', quantidade: 100 }] });
+    const itemId = contrato.itens[0].id;
+    expect(await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'VALOR', percentual: 10 }) as any))).toMatch(/Ainda há saldo/);
+    expect(await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'QUANTIDADE', itens: [{ itemContratoId: itemId, quantidade: 5 }] }) as any))).toMatch(/Ainda há saldo/);
+    expect(await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'ACRESCIMO_ESPECIAL', percentual: 10 }) as any))).toMatch(/Ainda há saldo/);
+    // prorrogar é justamente para consumir o saldo restante
+    await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'PRAZO', diasProrrogacao: 30 }) as any);
+    await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'SUPRESSAO', itens: [{ itemContratoId: itemId, quantidade: 10 }] }) as any);
+
+    // depois de um aditivo de quantidade (com saldo zerado), o acréscimo vira saldo — um segundo é recusado
+    await esgotarContrato(ctx, c, contrato.id);
+    await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'QUANTIDADE', itens: [{ itemContratoId: itemId, quantidade: 5 }] }) as any);
+    expect(await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'QUANTIDADE', itens: [{ itemContratoId: itemId, quantidade: 5 }] }) as any))).toMatch(/Ainda há saldo/);
   });
 });
