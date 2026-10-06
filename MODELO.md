@@ -172,9 +172,13 @@ Nome, Cargo e Portaria.
   antes de qualquer operação. Quatro tipos obrigatórios: **ARP, Contrato, Aditivo e
   Apostilamento**. Arquivo .docx com **marcadores de texto** no corpo (`{{numero_contrato}}`,
   `{{fornecedor_razao_social}}`, etc.); a tela de upload lista os marcadores disponíveis para
-  cada tipo. Faltando o modelo de um tipo, o botão de gerar documento daquele tipo fica
-  desabilitado, com a razão dita na tela. Indicador de prontidão no topo ("4 de 4 modelos
-  carregados").
+  cada tipo. **Cada tipo aceita vários modelos** (ex.: um contrato para pregão, outro para
+  dispensa), cada um com nome e, opcionalmente, as **modalidades de licitação** a que se aplica.
+  Ao gerar, o sistema **sugere** o modelo da modalidade da licitação de origem (sem modelo
+  daquela modalidade, um sem modalidade marcada; sem esse, o mais antigo), mostra qual será
+  usado e deixa escolher outro. Faltando qualquer modelo de um tipo, o botão de gerar documento
+  daquele tipo fica desabilitado, com a razão dita na tela. Indicador de prontidão no topo
+  ("4 de 4 tipos com modelo" — basta um por tipo).
 - **Modelo de dotação orçamentária** — colunas configuráveis por tenant: rótulo editável,
   ordem por arraste, e por coluna os toggles *Múltiplos* e *Obrigatório*. Padrão:
   Gestão/Unidade, Fonte de Recursos, Programa de Trabalho, Elemento de despesa. Mais um toggle

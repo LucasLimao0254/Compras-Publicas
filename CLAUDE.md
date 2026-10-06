@@ -236,11 +236,22 @@ valores) numa licitação, extraída e depois importada para os itens de uma Ata
 
 ### Minutas → geração de documento por marcador de texto (`src/minutas/`)
 
-Upload de um modelo `.docx` por tenant e por tipo (`ARP`, `CONTRATO`, `ADITIVO`,
-`APOSTILAMENTO` — `minutaModelos`, UNIQUE em `tenantId`+`tipo`; reenviar substitui, nunca
-acumula versões), com marcadores de texto (`{{numero_contrato}}` etc.) no corpo, substituídos
-na geração pelos dados reais da entidade. Ver MODELO.md, seção 8.
+Upload de modelos `.docx` por tenant e por tipo (`ARP`, `CONTRATO`, `ADITIVO`,
+`APOSTILAMENTO` — `minutaModelos`), **vários por tipo**, cada um com `nome` e `modalidades`
+(jsonb, lista de `modalidadeLicitacaoEnum`; vazia = serve para qualquer uma), com marcadores de
+texto (`{{numero_contrato}}` etc.) no corpo, substituídos na geração pelos dados reais da
+entidade. Ver MODELO.md, seção 8.
 
+- **Escolha do modelo**: `GET /minutas/:tipo/:entidadeId/modelos` devolve os modelos do tipo e
+  o `sugeridoId` (`MinutasService.sugerir`: modalidade da licitação da entidade → modelo sem
+  modalidade → o mais antigo); `GET /minutas/:tipo/:entidadeId?modeloId=` gera com o escolhido
+  (sem `modeloId`, o sugerido). `GerarMinutaButton` mostra o modelo e a modalidade e, com mais de
+  um, um seletor com o sugerido pré-selecionado. "Substituir arquivo" (`substituirId` no upload)
+  troca o arquivo de um modelo sem criar outro.
+- **Bancos existentes**: `api/scripts/migrar.js` leva um banco antigo ao schema atual com SQL
+  idempotente (`IF EXISTS`/`IF NOT EXISTS`) e roda a cada subida do ambiente hospedado
+  (`iniciar-demo.js`). Ao mudar `schema.ts` de forma que um banco já criado precise de ajuste,
+  acrescente o SQL equivalente ali.
 - **Sem modelo cadastrado para um tipo, o documento daquele tipo não é gerado** — sem
   fallback, sem modelo de sistema. `MinutasService.gerar()` rejeita explicitamente; o
   frontend desabilita o botão de gerar com a razão dita ao lado

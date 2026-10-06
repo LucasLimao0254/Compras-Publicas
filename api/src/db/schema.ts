@@ -462,13 +462,14 @@ export const configuracoesCompras = pgTable('configuracoes_compras', {
   dotacaoObrigatoria: boolean('dotacao_obrigatoria').notNull().default(true),
 });
 
-// Um modelo .docx por tenant+tipo — reenviar substitui o anterior (UPSERT em
-// MinutasService.enviarModelo), nunca acumula histórico de versões. Mesmo
-// padrão de upload de licitacaoHomologacoes: nome gerado por randomUUID() no
-// disco (diretório configurável e gitignored via MINUTAS_UPLOADS_DIR), nome
-// original só em coluna, para exibição. Sem linha para um tipo = "sem
-// modelo cadastrado" = documento daquele tipo não é gerado (MODELO.md,
-// seção 8) — nunca um fallback ou modelo de sistema.
+// Modelos .docx de minuta por tenant e tipo — VÁRIOS por tipo (ex.: um
+// contrato de fornecimento e um de serviço), cada um com um nome e,
+// opcionalmente, as modalidades de licitação a que se aplica. Ao gerar, o
+// sistema sugere o modelo da modalidade da licitação e o usuário pode trocar
+// (ver MinutasService.gerar). Mesmo padrão de upload de licitacaoHomologacoes:
+// nome gerado por randomUUID() no disco (MINUTAS_UPLOADS_DIR), nome original
+// só em coluna. Sem nenhum modelo de um tipo, o documento daquele tipo não é
+// gerado (MODELO.md, invariante 10) — nunca fallback ou modelo de sistema.
 export const minutaModelos = pgTable('minuta_modelos', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
@@ -478,9 +479,10 @@ export const minutaModelos = pgTable('minuta_modelos', {
   tamanhoBytes: integer('tamanho_bytes').notNull(),
   enviadoPor: uuid('enviado_por').notNull().references(() => usuarios.id),
   enviadoEm: timestamp('enviado_em').defaultNow().notNull(),
-}, (t) => ({
-  uniqTipo: unique().on(t.tenantId, t.tipo),
-}));
+  nome: text('nome').notNull().default(''),
+  // valores de modalidadeLicitacaoEnum; vazio = serve para qualquer modalidade
+  modalidades: jsonb('modalidades').$type<string[]>().notNull().default([]),
+});
 
 // ---------- SETORES & MÓDULOS (catálogo de plataforma + habilitação por tenant) ----------
 // Catálogo global (não por tenant) — substitui os dois arrays hoje hardcoded

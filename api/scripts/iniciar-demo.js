@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 const { gerarArquivos } = require('./arquivos-teste');
+const { migrar } = require('./migrar');
 
 const API = path.join(__dirname, '..');
 const WEB_DIST = path.join(API, '..', 'web', 'dist');
@@ -29,7 +30,9 @@ async function prepararBanco() {
     const { rows } = await cliente.query("select to_regclass('public.tenants') as t");
     const vazio = !rows[0].t;
     if (!vazio && !resetar) {
-      console.log('Banco já preparado — mantendo os dados (RESETAR_DADOS=true recria do zero).');
+      // banco de uma versão anterior: leva ao schema atual sem apagar nada
+      await migrar(url);
+      console.log('Banco já preparado — migrações aplicadas, dados mantidos (RESETAR_DADOS=true recria do zero).');
       return;
     }
     if (resetar) {

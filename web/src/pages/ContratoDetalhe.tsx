@@ -469,7 +469,7 @@ export function ContratoDetalhe() {
             {modelosMinuta && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, fontSize: 12.5 }}>
                 <i className={`ph-fill ${modelosMinuta.prontos === modelosMinuta.total ? 'ph-check-circle' : 'ph-warning-circle'}`} style={{ fontSize: 15, color: modelosMinuta.prontos === modelosMinuta.total ? 'var(--color-accent)' : 'var(--color-warn)' }} />
-                <span>{modelosMinuta.prontos} de {modelosMinuta.total} modelos carregados —</span>
+                <span>{modelosMinuta.prontos} de {modelosMinuta.total} tipos com modelo —</span>
                 <Link to="/configuracoes" style={{ color: 'var(--color-accent)' }}>gerenciar em Configurações</Link>
               </div>
             )}

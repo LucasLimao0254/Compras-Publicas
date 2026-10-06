@@ -164,8 +164,9 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | # | Passos | Resultado esperado |
 |---|---|---|
 | G1 | Como admin, pôr o **sequencial da próxima ordem** abaixo do último emitido | Recusado: *"precisa ser maior que o último já emitido"* |
-| G2 | Enviar os 4 `modelo_*.docx` de `.ambiente-teste/arquivos/` | Indicador **"4 de 4 modelos carregados"** |
+| G2 | Enviar os 4 `modelo_*.docx` de `.ambiente-teste/arquivos/` | Indicador **"4 de 4 tipos com modelo"** |
 | G3 | No **004/2026**, aba Minutas, gerar o contrato | O .docx sai com todos os campos preenchidos, inclusive "CONTRATO Nº 004/2026". Esse marcador está quebrado em dois trechos no modelo, como o Word faz. Valor total R$ 450,00 |
+| G4 | Em Configurações → Contrato, **Adicionar modelo** duas vezes com `modelo_CONTRATO.docx`: "Contrato — dispensa" marcando *Dispensa* e "Contrato — pregão" marcando *Pregão eletrônico*. Depois, no **002/2026** (pregão eletrônico), aba Minutas | Os dois modelos aparecem com suas modalidades. No contrato, o seletor vem com **"Contrato — pregão (sugerido)"** e a frase *"licitação por pregão eletrônico"*; trocar para o de dispensa e gerar baixa o .docx |
 
 ### H. Visão geral
 

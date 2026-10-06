@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import * as JSZip from 'jszip';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
@@ -13,11 +13,14 @@ import {
   atas,
   contratoApostilamentos,
   contratos,
+  licitacoes,
   minutaModelos,
+  modalidadeLicitacaoEnum,
 } from '../db/schema';
 
 export type TipoMinuta = 'ARP' | 'CONTRATO' | 'ADITIVO' | 'APOSTILAMENTO';
 export const TIPOS_MINUTA: TipoMinuta[] = ['ARP', 'CONTRATO', 'ADITIVO', 'APOSTILAMENTO'];
+const MODALIDADES: string[] = [...modalidadeLicitacaoEnum.enumValues];
 
 type ArquivoRecebido = { originalname: string; buffer: Buffer };
 
@@ -166,24 +169,58 @@ export class MinutasService {
   }
 
   async listarModelos(tenantId: string) {
-    const rows = await this.db.select().from(minutaModelos).where(eq(minutaModelos.tenantId, tenantId));
-    const porTipo = new Map(rows.map((r) => [r.tipo, r]));
+    const rows = await this.db.select().from(minutaModelos).where(eq(minutaModelos.tenantId, tenantId)).orderBy(asc(minutaModelos.enviadoEm));
     const modelos = TIPOS_MINUTA.map((tipo) => {
-      const row = porTipo.get(tipo);
-      return { tipo, carregado: !!row, arquivoNome: row?.arquivoNome ?? null, enviadoEm: row?.enviadoEm ?? null };
+      const doTipo = rows.filter((r) => r.tipo === tipo);
+      return {
+        tipo,
+        // "pronto" = ao menos um modelo do tipo (o indicador "X de 4")
+        carregado: doTipo.length > 0,
+        arquivoNome: doTipo[0]?.arquivoNome ?? null,
+        enviadoEm: doTipo[0]?.enviadoEm ?? null,
+        itens: doTipo.map((r) => this.resumoModelo(r)),
+      };
     });
     return { modelos, prontos: modelos.filter((m) => m.carregado).length, total: TIPOS_MINUTA.length };
   }
 
+  private resumoModelo(r: typeof minutaModelos.$inferSelect) {
+    return { id: r.id, tipo: r.tipo, nome: r.nome || r.arquivoNome.replace(/\.docx$/i, ''), arquivoNome: r.arquivoNome, enviadoEm: r.enviadoEm, modalidades: r.modalidades ?? [] };
+  }
+
+  private exigirAdmin(tipoUsuario: 'ADMIN' | 'PADRAO') {
+    if (tipoUsuario !== 'ADMIN') throw new ForbiddenException('Somente o Administrador do tenant cadastra modelos de minuta');
+  }
+
+  private validarModalidades(modalidades: unknown): string[] {
+    if (modalidades == null) return [];
+    if (!Array.isArray(modalidades) || modalidades.some((m) => !MODALIDADES.includes(m))) {
+      throw new BadRequestException('Modalidade de licitação inválida no modelo');
+    }
+    return [...new Set(modalidades as string[])];
+  }
+
+  private async modeloDoTenant(tenantId: string, id: string) {
+    const [modelo] = await this.db.select().from(minutaModelos).where(and(eq(minutaModelos.id, id), eq(minutaModelos.tenantId, tenantId)));
+    if (!modelo) throw new NotFoundException('Modelo de minuta não encontrado');
+    return modelo;
+  }
+
   // Upload restrito ao Administrador do tenant (MODELO.md, seção 8) —
   // checado aqui, não só no controller, porque o teste de invariante chama
-  // este método direto. Reenviar o mesmo tipo substitui o modelo anterior
-  // (UPSERT por tenantId+tipo) — nunca acumula versões antigas no disco nem
-  // na tabela.
-  async enviarModelo(tenantId: string, usuarioId: string, tipoUsuario: 'ADMIN' | 'PADRAO', tipo: string, arquivo: ArquivoRecebido) {
-    if (tipoUsuario !== 'ADMIN') {
-      throw new ForbiddenException('Somente o Administrador do tenant cadastra modelos de minuta');
-    }
+  // este método direto. Cada envio cria um modelo novo do tipo; com
+  // `substituirId`, troca só o arquivo daquele modelo (o anterior sai do
+  // disco). Nome e modalidades são opcionais: sem nome, vale o do arquivo;
+  // sem modalidades, o modelo serve para qualquer licitação.
+  async enviarModelo(
+    tenantId: string,
+    usuarioId: string,
+    tipoUsuario: 'ADMIN' | 'PADRAO',
+    tipo: string,
+    arquivo: ArquivoRecebido,
+    opcoes: { nome?: string; modalidades?: unknown; substituirId?: string } = {},
+  ) {
+    this.exigirAdmin(tipoUsuario);
     if (!TIPOS_MINUTA.includes(tipo as TipoMinuta)) {
       throw new BadRequestException(`Tipo de minuta inválido: ${tipo}`);
     }
@@ -195,37 +232,118 @@ export class MinutasService {
     } catch {
       throw new BadRequestException('Arquivo .docx inválido ou corrompido');
     }
+    const modalidades = opcoes.modalidades !== undefined ? this.validarModalidades(opcoes.modalidades) : undefined;
+    const existente = opcoes.substituirId ? await this.modeloDoTenant(tenantId, opcoes.substituirId) : null;
+    if (existente && existente.tipo !== tipo) throw new BadRequestException('O modelo a substituir é de outro tipo');
 
     const nomeGerado = `${randomUUID()}.docx`;
     const caminho = join(this.uploadsDir(), nomeGerado);
     await writeFile(caminho, arquivo.buffer);
 
-    const [existente] = await this.db.select({ id: minutaModelos.id, arquivoPath: minutaModelos.arquivoPath }).from(minutaModelos).where(and(eq(minutaModelos.tenantId, tenantId), eq(minutaModelos.tipo, tipo as TipoMinuta)));
-    const valores = { arquivoNome: arquivo.originalname, arquivoPath: caminho, tamanhoBytes: arquivo.buffer.length, enviadoPor: usuarioId, enviadoEm: new Date() };
+    const arquivoCampos = { arquivoNome: arquivo.originalname, arquivoPath: caminho, tamanhoBytes: arquivo.buffer.length, enviadoPor: usuarioId, enviadoEm: new Date() };
     if (existente) {
-      await this.db.update(minutaModelos).set(valores).where(eq(minutaModelos.id, existente.id));
+      const [row] = await this.db
+        .update(minutaModelos)
+        .set({ ...arquivoCampos, ...(opcoes.nome?.trim() ? { nome: opcoes.nome.trim() } : {}), ...(modalidades ? { modalidades } : {}) })
+        .where(eq(minutaModelos.id, existente.id))
+        .returning();
       // Substitui, não acumula: o arquivo anterior sai do disco. Falha ao
       // apagar (arquivo já removido à mão) não deve derrubar o upload.
       await unlink(existente.arquivoPath).catch(() => undefined);
-    } else {
-      await this.db.insert(minutaModelos).values({ tenantId, tipo: tipo as TipoMinuta, ...valores });
+      return this.resumoModelo(row);
     }
+    const [row] = await this.db
+      .insert(minutaModelos)
+      .values({ tenantId, tipo: tipo as TipoMinuta, ...arquivoCampos, nome: opcoes.nome?.trim() || arquivo.originalname.replace(/\.docx$/i, ''), modalidades: modalidades ?? [] })
+      .returning();
+    return this.resumoModelo(row);
+  }
+
+  async atualizarModelo(tenantId: string, tipoUsuario: 'ADMIN' | 'PADRAO', id: string, dados: { nome?: string; modalidades?: unknown }) {
+    this.exigirAdmin(tipoUsuario);
+    await this.modeloDoTenant(tenantId, id);
+    const patch: Record<string, unknown> = {};
+    if (dados.nome !== undefined) {
+      if (!dados.nome.trim()) throw new BadRequestException('Informe um nome para o modelo');
+      patch.nome = dados.nome.trim();
+    }
+    if (dados.modalidades !== undefined) patch.modalidades = this.validarModalidades(dados.modalidades);
+    const [row] = Object.keys(patch).length
+      ? await this.db.update(minutaModelos).set(patch).where(and(eq(minutaModelos.id, id), eq(minutaModelos.tenantId, tenantId))).returning()
+      : [await this.modeloDoTenant(tenantId, id)];
+    return this.resumoModelo(row);
+  }
+
+  async removerModelo(tenantId: string, tipoUsuario: 'ADMIN' | 'PADRAO', id: string) {
+    this.exigirAdmin(tipoUsuario);
+    const modelo = await this.modeloDoTenant(tenantId, id);
+    await this.db.delete(minutaModelos).where(and(eq(minutaModelos.id, id), eq(minutaModelos.tenantId, tenantId)));
+    await unlink(modelo.arquivoPath).catch(() => undefined);
+    return { ok: true };
+  }
+
+  // Modalidade da licitação de onde a entidade vem — é por ela que o modelo
+  // é sugerido. Contrato, aditivo e apostilamento: a licitação do contrato;
+  // ata: a licitação da ata.
+  private async modalidadeDaEntidade(tenantId: string, tipo: TipoMinuta, entidadeId: string): Promise<string | null> {
+    let contratoId: string | null = null;
+    if (tipo === 'ARP') {
+      const [row] = await this.db.select({ m: licitacoes.modalidade }).from(atas).innerJoin(licitacoes, eq(atas.licitacaoId, licitacoes.id)).where(and(eq(atas.id, entidadeId), eq(atas.tenantId, tenantId)));
+      return row?.m ?? null;
+    }
+    if (tipo === 'CONTRATO') contratoId = entidadeId;
+    if (tipo === 'ADITIVO') {
+      const [a] = await this.db.select({ c: aditivos.contratoId }).from(aditivos).where(and(eq(aditivos.id, entidadeId), eq(aditivos.tenantId, tenantId)));
+      contratoId = a?.c ?? null;
+    }
+    if (tipo === 'APOSTILAMENTO') {
+      const [a] = await this.db.select({ c: contratoApostilamentos.contratoId }).from(contratoApostilamentos).where(and(eq(contratoApostilamentos.id, entidadeId), eq(contratoApostilamentos.tenantId, tenantId)));
+      contratoId = a?.c ?? null;
+    }
+    if (!contratoId) return null;
+    const [row] = await this.db.select({ m: licitacoes.modalidade }).from(contratos).innerJoin(licitacoes, eq(contratos.licitacaoId, licitacoes.id)).where(and(eq(contratos.id, contratoId), eq(contratos.tenantId, tenantId)));
+    return row?.m ?? null;
+  }
+
+  // Sugestão: o primeiro modelo marcado para a modalidade; senão, o primeiro
+  // sem modalidade (genérico); senão, o mais antigo do tipo.
+  private sugerir<T extends { modalidades: string[] | null }>(modelos: T[], modalidade: string | null): T | undefined {
+    return (modalidade ? modelos.find((m) => (m.modalidades ?? []).includes(modalidade)) : undefined)
+      ?? modelos.find((m) => !(m.modalidades ?? []).length)
+      ?? modelos[0];
+  }
+
+  private async modelosDoTipo(tenantId: string, tipo: TipoMinuta) {
+    return this.db.select().from(minutaModelos).where(and(eq(minutaModelos.tenantId, tenantId), eq(minutaModelos.tipo, tipo))).orderBy(asc(minutaModelos.enviadoEm));
+  }
+
+  // O que o botão de gerar precisa: os modelos do tipo e qual sugerir para
+  // esta entidade.
+  async modelosParaEntidade(tenantId: string, tipo: string, entidadeId: string) {
+    if (!TIPOS_MINUTA.includes(tipo as TipoMinuta)) throw new BadRequestException(`Tipo de minuta inválido: ${tipo}`);
+    const modalidade = await this.modalidadeDaEntidade(tenantId, tipo as TipoMinuta, entidadeId);
+    const modelos = await this.modelosDoTipo(tenantId, tipo as TipoMinuta);
+    return { modalidade, sugeridoId: this.sugerir(modelos, modalidade)?.id ?? null, modelos: modelos.map((m) => this.resumoModelo(m)) };
   }
 
   // Gera o .docx substituindo {{marcador}} pelos dados de `entidadeId` (o id
-  // do contrato/ata/aditivo/apostilamento, conforme `tipo`). Sem modelo
-  // cadastrado para o tipo, rejeita — sem fallback, sem modelo de sistema
+  // do contrato/ata/aditivo/apostilamento, conforme `tipo`), com o modelo
+  // `modeloId` ou, sem ele, o sugerido pela modalidade da licitação. Sem
+  // nenhum modelo do tipo, rejeita — sem fallback, sem modelo de sistema
   // (MODELO.md, seção 8 / invariante 10).
-  async gerar(tenantId: string, tipo: string, entidadeId: string): Promise<Buffer> {
+  async gerar(tenantId: string, tipo: string, entidadeId: string, modeloId?: string): Promise<Buffer> {
     if (!TIPOS_MINUTA.includes(tipo as TipoMinuta)) {
       throw new BadRequestException(`Tipo de minuta inválido: ${tipo}`);
     }
-    const [modelo] = await this.db.select().from(minutaModelos).where(and(eq(minutaModelos.tenantId, tenantId), eq(minutaModelos.tipo, tipo as TipoMinuta)));
-    if (!modelo) {
+    const modelos = await this.modelosDoTipo(tenantId, tipo as TipoMinuta);
+    if (!modelos.length) {
       throw new BadRequestException(`Nenhum modelo de minuta cadastrado para o tipo ${tipo} — cadastre em Configurações antes de gerar este documento`);
     }
-
     const dados = await this.resolverDados(tenantId, tipo as TipoMinuta, entidadeId);
+    const modelo = modeloId
+      ? modelos.find((m) => m.id === modeloId)
+      : this.sugerir(modelos, await this.modalidadeDaEntidade(tenantId, tipo as TipoMinuta, entidadeId));
+    if (!modelo) throw new BadRequestException('Modelo de minuta não encontrado para este tipo');
 
     const bufferModelo = await readFile(modelo.arquivoPath);
     const zip = await JSZip.loadAsync(bufferModelo);
