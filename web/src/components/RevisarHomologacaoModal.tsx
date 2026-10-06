@@ -98,13 +98,16 @@ export function RevisarHomologacaoModal({ homologacaoId, onClose, onSaved }: { h
 
   return (
     <div className="dialog-backdrop" onClick={onClose}>
-      <div className="dialog" style={{ maxWidth: 820, maxHeight: '86vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-        <h3 className="dialog-title">Revisar homologação — {homologacao.arquivoNome}</h3>
+      <div className="dialog dialog-grande" role="dialog" aria-modal="true" aria-labelledby="titulo-revisao" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <h3 className="dialog-title" id="titulo-revisao">Revisar homologação — {homologacao.arquivoNome}</h3>
+          <button type="button" className="btn btn-ghost" onClick={onClose} aria-label="Fechar"><i className="ph ph-x" />Fechar</button>
+        </div>
         <p className="text-muted" style={{ fontSize: 12.5, margin: '-6px 0 4px' }}>
           Confira os dados extraídos da planilha antes de liberar para importação em ata/contrato. Campos com borda amarela vieram vazios ou incompletos na extração.
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div className="dialog-rolagem" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {homologacao.fornecedores.map((f) => (
             <div key={f.id} className="card" style={{ padding: 16 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 1fr', gap: 10, alignItems: 'end', marginBottom: 12 }}>
@@ -140,13 +143,15 @@ export function RevisarHomologacaoModal({ homologacaoId, onClose, onSaved }: { h
               </div>
 
               {novoFornecedorAberto === f.id ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr auto auto', gap: 8, alignItems: 'end', marginBottom: 12 }}>
-                  <input className="input num" placeholder="CNPJ/CPF" value={novoCnpj} onChange={(e) => setNovoCnpj(e.target.value)} />
-                  <input className="input" placeholder="Razão social" value={novaRazaoSocial} onChange={(e) => setNovaRazaoSocial(e.target.value)} />
-                  <button className="btn btn-primary" onClick={() => vincularNovoFornecedor(f.id)}>Cadastrar e vincular</button>
+                <div style={{ display: 'grid', gridTemplateColumns: '200px minmax(0,1fr) auto auto', gap: 8, alignItems: 'end', marginBottom: 12 }}>
+                  <div className="field"><label htmlFor={`novo-cnpj-${f.id}`}>CNPJ/CPF do novo fornecedor</label>
+                    <input id={`novo-cnpj-${f.id}`} className="input num" value={novoCnpj} onChange={(e) => setNovoCnpj(e.target.value)} /></div>
+                  <div className="field"><label htmlFor={`novo-razao-${f.id}`}>Razão social</label>
+                    <input id={`novo-razao-${f.id}`} className="input" value={novaRazaoSocial} onChange={(e) => setNovaRazaoSocial(e.target.value)} /></div>
+                  <button className="btn btn-primary" onClick={() => vincularNovoFornecedor(f.id)} disabled={!novoCnpj.trim() || !novaRazaoSocial.trim()}>Cadastrar e vincular</button>
                   <button className="btn btn-ghost" onClick={() => setNovoFornecedorAberto(null)}>Cancelar</button>
                 </div>
-              ) : (
+              ) : !f.fornecedorId && (
                 <button className="btn btn-ghost" style={{ marginBottom: 12 }} onClick={() => { setNovoFornecedorAberto(f.id); setNovoCnpj(f.cnpjExtraido ?? ''); setNovaRazaoSocial(f.nomeExtraido); }}>
                   <i className="ph ph-plus" />cadastrar como novo fornecedor
                 </button>
@@ -160,7 +165,7 @@ export function RevisarHomologacaoModal({ homologacaoId, onClose, onSaved }: { h
                   {f.itens.map((it) => (
                     <tr key={it.id}>
                       <td><input className="input num" defaultValue={it.numeroItem ?? ''} style={it.numeroItem == null ? CAMPO_INCOMPLETO : undefined} onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : null; if (v !== it.numeroItem) patchItem(it.id, { numeroItem: v }); }} /></td>
-                      <td><input className="input" defaultValue={it.descricao} style={!it.descricao ? CAMPO_INCOMPLETO : undefined} onBlur={(e) => { if (e.target.value !== it.descricao) patchItem(it.id, { descricao: e.target.value }); }} /></td>
+                      <td><textarea className="input" rows={2} defaultValue={it.descricao} style={{ resize: 'vertical', minHeight: 40, fontSize: 13, ...(!it.descricao ? CAMPO_INCOMPLETO : {}) }} onBlur={(e) => { if (e.target.value !== it.descricao) patchItem(it.id, { descricao: e.target.value }); }} /></td>
                       <td><input className="input" defaultValue={it.unidade ?? ''} style={!it.unidade ? CAMPO_INCOMPLETO : undefined} onBlur={(e) => { if (e.target.value !== (it.unidade ?? '')) patchItem(it.id, { unidade: e.target.value }); }} /></td>
                       <td><input className="input num" type="number" step="0.001" defaultValue={it.quantidade ?? ''} style={it.quantidade == null ? CAMPO_INCOMPLETO : undefined} onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : null; if (v !== (it.quantidade != null ? Number(it.quantidade) : null)) patchItem(it.id, { quantidade: v }); }} /></td>
                       <td><input className="input num" type="number" step="0.0001" defaultValue={it.valorUnitario ?? ''} style={it.valorUnitario == null ? CAMPO_INCOMPLETO : undefined} onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : null; if (v !== (it.valorUnitario != null ? Number(it.valorUnitario) : null)) patchItem(it.id, { valorUnitario: v }); }} /></td>
@@ -174,14 +179,14 @@ export function RevisarHomologacaoModal({ homologacaoId, onClose, onSaved }: { h
           {!homologacao.fornecedores.length && <p className="text-muted" style={{ fontSize: 13 }}>Nenhum fornecedor foi extraído deste documento.</p>}
         </div>
 
-        <div className="dialog-actions" style={{ justifyContent: 'flex-start', marginTop: 16 }}>
+        <div className="dialog-actions" style={{ justifyContent: 'flex-start', flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-primary" onClick={concluirRevisao} disabled={concluindo || !pronta}>
             {concluindo ? 'Concluindo...' : 'Concluir revisão'}
           </button>
           <button className="btn btn-secondary" onClick={onClose}>Fechar</button>
           {erro && <span style={{ fontSize: 12.5, color: 'var(--color-critical)' }}>{erro}</span>}
+          {!pronta && !erro && <span className="text-muted" style={{ fontSize: 11.5 }}>Vincule um fornecedor cadastrado e preencha descrição, unidade, quantidade e valor unitário de todos os itens para concluir.</span>}
         </div>
-        {!pronta && !erro && <p className="text-muted" style={{ fontSize: 11.5, marginTop: 6 }}>Vincule um fornecedor cadastrado e preencha descrição, unidade, quantidade e valor unitário de todos os itens para concluir.</p>}
       </div>
     </div>
   );

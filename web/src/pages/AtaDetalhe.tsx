@@ -9,6 +9,7 @@ import { ItemHistoricoModal } from '../components/ItemHistoricoModal';
 import { ImportarItensAtaModal } from '../components/ImportarItensAtaModal';
 import { GerarMinutaButton } from '../components/GerarMinutaButton';
 import { formatarDia } from '../lib/datas';
+import { DescricaoResumida } from '../components/DescricaoResumida';
 
 interface Orgao { id: string; perfil: string; quantidadeItens: number; valorTotal: number; valorUtilizado: number; saldoDisponivel: number; secretaria: { titulo: string }; }
 interface Item { id: string; numeroItem: number; descricao: string; unidade: string; quantidadeContratada: string; valorUnitario: string; quantidadeUtilizada: number; quantidadeDisponivel: number; homologacaoItemId: string | null; }
@@ -246,12 +247,14 @@ export function AtaDetalhe() {
                 </div>
 
                 {(mostrarFormItem === o.id || itemEditando) && (
-                  <form onSubmit={(e) => (itemEditando ? onSubmitEdicaoItem(e, o.id) : onSubmitItem(e, o.id))} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 120px 60px', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                  <form onSubmit={(e) => (itemEditando ? onSubmitEdicaoItem(e, o.id) : onSubmitItem(e, o.id))} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 100px 100px 120px auto auto', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                     <input className="input" placeholder="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} disabled={!!itemEditando?.homologacaoItemId} required />
                     <input className="input" placeholder="Unidade" value={unidade} onChange={(e) => setUnidade(e.target.value)} disabled={!!itemEditando?.homologacaoItemId} required />
                     <input className="input num" placeholder="Qtd." type="number" step="0.001" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} required />
                     <input className="input num" placeholder="Valor unit." type="number" step="0.0001" value={valorUnitario} onChange={(e) => setValorUnitario(e.target.value)} disabled={!!itemEditando?.homologacaoItemId} required />
                     <button className="btn btn-primary">{itemEditando ? 'Salvar' : 'OK'}</button>
+                    {/* D3: fechar a edição sem salvar */}
+                    <button type="button" className="btn btn-ghost" onClick={() => { setItemEditando(null); setMostrarFormItem(null); setErro(null); }}>Cancelar</button>
                   </form>
                 )}
                 {erro && <p style={{ fontSize: 12.5, color: 'var(--color-critical)', margin: '0 0 8px' }}>{erro}</p>}
@@ -264,7 +267,7 @@ export function AtaDetalhe() {
                     {(itensPorOrgao[o.id] ?? []).map((it) => (
                       <tr key={it.id}>
                         <td className="num text-muted">{it.numeroItem}</td>
-                        <td>{it.descricao}</td>
+                        <td style={{ minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
                         <td style={{ fontSize: 12.5, color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>{it.unidade}</td>
                         <td className="num" style={{ textAlign: 'right' }}>{it.quantidadeContratada}</td>
                         <td className="num" style={{ textAlign: 'right' }}>R$ {Number(it.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>

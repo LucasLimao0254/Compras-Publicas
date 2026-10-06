@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { GerarMinutaButton } from '../components/GerarMinutaButton';
 import { formatarDia } from '../lib/datas';
+import { DescricaoResumida } from '../components/DescricaoResumida';
 
 type Aba = 'itens' | 'ordens' | 'aditivos' | 'minutas';
 type TipoAditivo = 'VALOR' | 'PRAZO' | 'QUANTIDADE' | 'SUPRESSAO' | 'ACRESCIMO_ESPECIAL';
@@ -223,7 +224,7 @@ export function ContratoDetalhe() {
               {itens.map((it) => (
                 <tr key={it.id}>
                   <td className="num text-muted">{it.numero}</td>
-                  <td>{it.descricao}</td>
+                  <td style={{ minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
                   <td style={{ fontSize: 12.5, color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>{it.unidade}</td>
                   <td className="num" style={{ textAlign: 'right' }}>{it.quantidade}</td>
                   <td className="num" style={{ textAlign: 'right' }}>R$ {Number(it.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
@@ -329,7 +330,7 @@ export function ContratoDetalhe() {
                     <tbody>
                       {itens.map((it) => (
                         <tr key={it.id}>
-                          <td style={{ fontSize: 13 }}>{it.descricao}</td>
+                          <td style={{ fontSize: 13, minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
                           <td className="num" style={{ textAlign: 'right' }}>{it.quantidade}</td>
                           {tipoAditivo === 'SUPRESSAO' && <td className="num" style={{ textAlign: 'right' }}>{it.quantidadeDisponivel}</td>}
                           <td><input className="input num" type="number" min={0} max={tipoAditivo === 'SUPRESSAO' ? it.quantidadeDisponivel : undefined} placeholder="0"

@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../../src/db/schema';
 import { CreateContratoDto } from '../../src/contratos/dto/contrato.dto';
 import { UsuariosService } from '../../src/usuarios/usuarios.service';
-import { Ctx, criarCenario, criarContrato, criarCtx, encerrarCtx, rejeicao } from '../helpers';
+import { Ctx, criarCenario, criarContrato, criarCtx, encerrarCtx, gerarCpf, rejeicao } from '../helpers';
 
 // Grupo 1 da revisão de bugs: escalada de privilégio em usuários, dotações de
 // outro tenant e itens de contrato sem validação.
@@ -24,7 +24,7 @@ describe('Segurança e isolamento entre tenants', () => {
   const novoUsuarioDto = (extra: Record<string, unknown> = {}) => {
     n++;
     const sufixo = `${Date.now()}${n}`;
-    return { cpf: sufixo.slice(-11), nome: 'Fulano', email: `u${sufixo}@teste.gov.br`, senha: 'segredo123', ...extra } as any;
+    return { cpf: gerarCpf(), nome: 'Fulano', email: `u${sufixo}@teste.gov.br`, senha: 'segredo123', ...extra } as any;
   };
 
   describe('usuários: somente ADMIN concede ou mexe em ADMIN', () => {
@@ -95,6 +95,20 @@ describe('Segurança e isolamento entre tenants', () => {
       expect(await rejeicao(criarContrato(ctx, c, { origem: { homologacaoFornecedorId: c.homologacaoFornecedorId }, itens: [{ item: 'item1', quantidade: -50 }] }))).toMatch(/maior que zero/);
       const contrato = await criarContrato(ctx, c, { origem: { homologacaoFornecedorId: c.homologacaoFornecedorId }, itens: [{ item: 'item1', quantidade: 10 }] });
       expect(await rejeicao(ctx.contratos.addItem(c.tenantId, contrato.id, { descricao: 'x', unidade: 'UN', quantidade: -10, valorUnitario: 10, homologacaoItemId: c.item1 }))).toMatch(/maior que zero/);
+    });
+  });
+
+  describe('B3: CPF e nome validados', () => {
+    it('recusa CPF com letras, curto ou com dígito verificador errado e nome com números; aceita CPF formatado', async () => {
+      const c = await criarCenario(ctx);
+      for (const cpf of ['abc.def.ghi-jk', '123', '11111111111', '52998224724']) {
+        expect(await rejeicao(usuarios.create(c.tenantId, ADMIN, novoUsuarioDto({ cpf })))).toMatch(/CPF inválido/);
+      }
+      expect(await rejeicao(usuarios.create(c.tenantId, ADMIN, novoUsuarioDto({ nome: 'Fulano 2' })))).toMatch(/Nome inválido/);
+      const ok: any = await usuarios.create(c.tenantId, ADMIN, novoUsuarioDto({ cpf: '529.982.247-25', nome: '  Ana Lúcia  ' }));
+      expect(ok.cpf).toBe('52998224725');
+      expect(ok.nome).toBe('Ana Lúcia');
+      expect(await rejeicao(usuarios.update(c.tenantId, ADMIN, ok.id, { nome: 'Ana 123' }))).toMatch(/Nome inválido/);
     });
   });
 });

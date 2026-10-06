@@ -93,7 +93,7 @@ async function main() {
   const [homProtege] = await db.insert(schema.homologacaoFornecedores).values({ tenantId, homologacaoId: homLimpeza.id, nomeExtraido: protege.razaoSocial, cnpjExtraido: protege.cnpjCpf, fornecedorId: protege.id }).returning();
   const [detergente, sabao] = await db.insert(schema.homologacaoItens).values([
     // preço com 4 casas: exercita o arredondamento em centavos
-    { tenantId, homologacaoFornecedorId: homLimpaTudo.id, numeroItem: 1, descricao: 'Detergente neutro 500 ml', unidade: 'FR', quantidade: '1000', valorUnitario: '2.3456', valorTotal: '2345.60', confiancaExtracao: 'alta' },
+    { tenantId, homologacaoFornecedorId: homLimpaTudo.id, numeroItem: 1, descricao: 'Detergente neutro 500 ml, líquido, biodegradável, com tensoativo aniônico, glicerina e conservante, pH entre 6,0 e 8,0, embalagem plástica transparente com tampa dosadora e rótulo com composição, lote, data de fabricação e validade mínima de 12 meses a contar da entrega; produto notificado na Anvisa', unidade: 'FR', quantidade: '1000', valorUnitario: '2.3456', valorTotal: '2345.60', confiancaExtracao: 'alta' },
     { tenantId, homologacaoFornecedorId: homLimpaTudo.id, numeroItem: 2, descricao: 'Sabão em barra 200 g', unidade: 'UN', quantidade: '500', valorUnitario: '8.90', valorTotal: '4450.00', confiancaExtracao: 'alta' },
   ]).returning();
   const [luvas] = await db.insert(schema.homologacaoItens).values([
@@ -155,7 +155,7 @@ async function main() {
   }).returning();
   const [homAlimForn] = await db.insert(schema.homologacaoFornecedores).values({ tenantId, homologacaoId: homAlimentos.id, nomeExtraido: 'ALIMENTOS BOM PRATO LTDA', cnpjExtraido: '55.444.333/0001-22' }).returning();
   await db.insert(schema.homologacaoItens).values([
-    { tenantId, homologacaoFornecedorId: homAlimForn.id, numeroItem: 1, descricao: 'Arroz tipo 1 (5 kg)', unidade: 'PCT', quantidade: '800', valorUnitario: '27.90', valorTotal: '22320.00', confiancaExtracao: 'alta' },
+    { tenantId, homologacaoFornecedorId: homAlimForn.id, numeroItem: 1, descricao: 'Arroz tipo 1 (5 kg), agulhinha, longo fino, polido, com no mínimo 90% de grãos inteiros, isento de sujidades, parasitas, larvas, mofo e substâncias estranhas; embalagem plástica resistente, atóxica, íntegra e bem vedada, com identificação do produto, marca, lote, data de fabricação e validade mínima de 6 meses a contar da entrega', unidade: 'PCT', quantidade: '800', valorUnitario: '27.90', valorTotal: '22320.00', confiancaExtracao: 'alta' },
     // falta a unidade de propósito: a revisão precisa apontar e exigir
     { tenantId, homologacaoFornecedorId: homAlimForn.id, numeroItem: 2, descricao: 'Feijão carioca (1 kg)', unidade: null, quantidade: '600', valorUnitario: '8.49', valorTotal: '5094.00', confiancaExtracao: 'media' },
   ]);

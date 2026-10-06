@@ -5,6 +5,7 @@ import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import { permissoes, usuarios } from '../db/schema';
 import { CreateUsuarioDto, UpdateUsuarioDto } from './dto/usuario.dto';
 import { codigoPostgres } from '../common/postgres-exception.filter';
+import { cpfValido, nomePessoaValido, normalizarCpf } from '../common/documentos';
 
 // Quem está chamando — o módulo inteiro é gated por 'administrativo.usuarios',
 // mas essa permissão pode ser concedida a um usuário PADRAO. Sem checar o
@@ -56,6 +57,9 @@ export class UsuariosService {
 
   async create(tenantId: string, chamador: ChamadorUsuarios, dto: CreateUsuarioDto) {
     if (dto.tipoUsuario === 'ADMIN') this.exigirAdminPara(chamador, 'criar um usuário administrador');
+    if (!cpfValido(dto.cpf)) throw new BadRequestException('CPF inválido — informe os 11 dígitos de um CPF válido');
+    if (!nomePessoaValido(dto.nome)) throw new BadRequestException('Nome inválido — use apenas letras, sem números');
+    dto = { ...dto, cpf: normalizarCpf(dto.cpf), nome: dto.nome.trim() };
 
     const existing = await this.db
       .select()
@@ -95,7 +99,10 @@ export class UsuariosService {
     if (dto.tipoUsuario !== undefined && dto.tipoUsuario !== alvo.tipoUsuario) this.exigirAdminPara(chamador, 'alterar o tipo de um usuário');
 
     const patch: Record<string, unknown> = {};
-    if (dto.nome !== undefined) patch.nome = dto.nome;
+    if (dto.nome !== undefined) {
+      if (!nomePessoaValido(dto.nome)) throw new BadRequestException('Nome inválido — use apenas letras, sem números');
+      patch.nome = dto.nome.trim();
+    }
     if (dto.telefone !== undefined) patch.telefone = dto.telefone;
     if (dto.ativo !== undefined) patch.ativo = dto.ativo;
     if (dto.tipoUsuario !== undefined) patch.tipoUsuario = dto.tipoUsuario;

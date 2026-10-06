@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { HistoricoOrdemModal } from '../components/HistoricoOrdemModal';
 import { ImportarPlanilhaDemandaButton } from '../components/ImportarPlanilhaDemandaButton';
+import { DescricaoResumida } from '../components/DescricaoResumida';
 
 type Aba = 'CONTRATOS' | 'BUSCAR' | 'RASCUNHO' | 'EMITIDA' | 'CANCELADA';
 
@@ -433,7 +434,7 @@ export function PainelOrdens() {
                 <tbody>
                   {itens.map((it) => (
                     <tr key={it.id}>
-                      <td style={{ fontSize: 13.5 }}>{it.descricao} <span className="text-muted">({it.unidade})</span></td>
+                      <td style={{ fontSize: 13.5, minWidth: 0 }}><DescricaoResumida texto={it.descricao} /> <span className="text-muted">({it.unidade})</span></td>
                       <td className="num" style={{ textAlign: 'right' }}>{it.quantidadeDisponivel}</td>
                       <td className="num" style={{ textAlign: 'right' }}>R$ {Number(it.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                       <td><input className="input num" type="number" min={0} max={it.quantidadeDisponivel} style={{ textAlign: 'right' }}

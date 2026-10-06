@@ -13,6 +13,7 @@ import {
 } from '../db/schema';
 import { ExtracaoHomologacao, ExtracaoHomologacaoService } from './extracao-homologacao.service';
 import { PatchFornecedorDto, PatchItemDto } from './dto/homologacao.dto';
+import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 
 type MulterFile = { path: string; originalname: string; size: number };
 
@@ -21,6 +22,7 @@ export class LicitacoesHomologacaoService {
   constructor(
     @Inject(DRIZZLE) private db: DrizzleDB,
     private extracao: ExtracaoHomologacaoService,
+    private saldoCeiling: SaldoCeilingService,
   ) {}
 
   private async validarLicitacao(tenantId: string, licitacaoId: string) {
@@ -56,7 +58,8 @@ export class LicitacoesHomologacaoService {
   }
 
   async detalhe(tenantId: string, homologacaoId: string) {
-    // orderBy explícito por id — sem isso, o Postgres pode retornar os
+    // Itens pela ordem do edital (numeroItem), com o id como desempate fixo.
+    // orderBy explícito — sem isso, o Postgres pode retornar os
     // fornecedores/itens em ordem diferente depois de um UPDATE (a linha
     // editada pode mudar de posição física), e a tela de revisão "pulava" de
     // lugar a cada campo salvo. A ordem em si é arbitrária, só precisa ser
@@ -66,7 +69,7 @@ export class LicitacoesHomologacaoService {
       with: {
         fornecedores: {
           orderBy: (f, { asc }) => [asc(f.id)],
-          with: { itens: { orderBy: (it, { asc }) => [asc(it.id)] }, fornecedor: true },
+          with: { itens: { orderBy: (it, { asc }) => [asc(it.numeroItem), asc(it.id)] }, fornecedor: true },
         },
       },
     });
@@ -294,26 +297,44 @@ export class LicitacoesHomologacaoService {
   // um fornecedor para aquela licitação, prontos para popular a grade de
   // itens. Procura entre as homologações 'revisado' mais recentes primeiro
   // (reenvio corrigido substitui efetivamente a versão anterior para import).
-  async itensParaImportar(tenantId: string, licitacaoId: string, fornecedorId: string) {
+  // `quantidade` é o que AINDA está disponível — o teto da homologação menos o
+  // que atas e contratos diretos já reservaram, ou, com `ataOrgaoId` (contrato
+  // que abate de um órgão da ata), o saldo daquele órgão. Antes vinha a
+  // quantidade homologada cheia, e o usuário só descobria o limite ao salvar.
+  async itensParaImportar(tenantId: string, licitacaoId: string, fornecedorId: string, ataOrgaoId?: string) {
     await this.validarLicitacao(tenantId, licitacaoId);
     if (!fornecedorId) throw new BadRequestException('Informe o fornecedor');
 
     const homologacoesRevisadas = await this.db.query.licitacaoHomologacoes.findMany({
       where: and(eq(licitacaoHomologacoes.tenantId, tenantId), eq(licitacaoHomologacoes.licitacaoId, licitacaoId), eq(licitacaoHomologacoes.status, 'revisado')),
-      with: { fornecedores: { with: { itens: { orderBy: (it, { asc }) => [asc(it.id)] } } } },
+      with: { fornecedores: { with: { itens: { orderBy: (it, { asc }) => [asc(it.numeroItem), asc(it.id)] } } } },
       orderBy: (h, { desc: descOrder }) => [descOrder(h.enviadoEm)],
     });
 
     for (const hom of homologacoesRevisadas) {
       const fornecedorHomologado = hom.fornecedores.find((f) => f.fornecedorId === fornecedorId);
       if (fornecedorHomologado) {
-        return fornecedorHomologado.itens.map((it) => ({
-          homologacaoItemId: it.id,
-          descricao: it.descricao,
-          unidade: it.unidade ?? '',
-          quantidade: Number(it.quantidade),
-          valorUnitario: Number(it.valorUnitario),
-        }));
+        return this.db.transaction(async (tx) => {
+          const resultado: { homologacaoItemId: string; descricao: string; unidade: string; quantidadeHomologada: number; quantidade: number; valorUnitario: number }[] = [];
+          for (const it of fornecedorHomologado.itens) {
+            let disponivel = 0;
+            if (ataOrgaoId) {
+              // item que não está distribuído para este órgão da ata não tem saldo nele
+              disponivel = await this.saldoCeiling.ataItemSaldoDisponivel(tx as unknown as DrizzleDB, tenantId, ataOrgaoId, it.id).then((r) => r.disponivel).catch(() => 0);
+            } else {
+              disponivel = (await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx as unknown as DrizzleDB, tenantId, it.id)).disponivel;
+            }
+            resultado.push({
+              homologacaoItemId: it.id,
+              descricao: it.descricao,
+              unidade: it.unidade ?? '',
+              quantidadeHomologada: Number(it.quantidade),
+              quantidade: Math.max(0, disponivel),
+              valorUnitario: Number(it.valorUnitario),
+            });
+          }
+          return resultado;
+        });
       }
     }
     return [];

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { DescricaoResumida } from './DescricaoResumida';
 
 interface FornecedorOpcao { id: string; razaoSocial: string; cnpjCpf: string; }
-interface ItemImportavel { homologacaoItemId: string; descricao: string; unidade: string; quantidade: number; valorUnitario: number; }
+// `quantidade` = o que ainda está disponível para importar (saldo da
+// homologação, ou do órgão da ata quando `ataOrgaoId` é passado).
+interface ItemImportavel { homologacaoItemId: string; descricao: string; unidade: string; quantidade: number; quantidadeHomologada?: number; valorUnitario: number; }
 
 // Usado tanto no wizard de criação de Contrato quanto no passo de itens por
 // órgão de uma Ata — só aparece quando a licitação escolhida tem ao menos uma
@@ -12,11 +15,13 @@ interface ItemImportavel { homologacaoItemId: string; descricao: string; unidade
 export function ImportarHomologacaoModal({
   licitacaoId,
   fornecedorIdPadrao,
+  ataOrgaoId,
   onClose,
   onImportar,
 }: {
   licitacaoId: string;
   fornecedorIdPadrao?: string;
+  ataOrgaoId?: string;
   onClose: () => void;
   onImportar: (itens: ItemImportavel[]) => void;
 }) {
@@ -39,15 +44,17 @@ export function ImportarHomologacaoModal({
     if (!fornecedorId) { setItens([]); return; }
     setCarregando(true);
     setErro(null);
-    api.get(`/licitacoes/${licitacaoId}/homologacao-itens?fornecedorId=${fornecedorId}`)
+    const filtroOrgao = ataOrgaoId ? `&ataOrgaoId=${ataOrgaoId}` : '';
+    api.get(`/licitacoes/${licitacaoId}/homologacao-itens?fornecedorId=${fornecedorId}${filtroOrgao}`)
       .then((lista: ItemImportavel[]) => {
         setItens(lista);
-        setSelecionados(new Set(lista.map((_, i) => i)));
+        // item sem saldo vem desmarcado e não pode ser marcado
+        setSelecionados(new Set(lista.map((it, i) => (it.quantidade > 0 ? i : -1)).filter((i) => i >= 0)));
         if (!lista.length) setErro('Nenhum item revisado encontrado para este fornecedor nesta licitação.');
       })
       .catch((err) => setErro(err instanceof Error ? err.message : 'Erro ao buscar itens homologados'))
       .finally(() => setCarregando(false));
-  }, [licitacaoId, fornecedorId]);
+  }, [licitacaoId, fornecedorId, ataOrgaoId]);
 
   function toggle(idx: number) {
     setSelecionados((prev) => {
@@ -64,8 +71,11 @@ export function ImportarHomologacaoModal({
 
   return (
     <div className="dialog-backdrop" onClick={onClose}>
-      <div className="dialog" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
-        <h3 className="dialog-title">Importar itens da homologação</h3>
+      <div className="dialog dialog-grande" role="dialog" aria-modal="true" aria-labelledby="titulo-importar" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <h3 className="dialog-title" id="titulo-importar">Importar itens da homologação</h3>
+          <button type="button" className="btn btn-ghost" onClick={onClose} aria-label="Fechar"><i className="ph ph-x" />Fechar</button>
+        </div>
 
         <div className="field">
           <label>Fornecedor homologado</label>
@@ -80,25 +90,41 @@ export function ImportarHomologacaoModal({
         {erro && <p style={{ fontSize: 12.5, color: 'var(--color-critical)' }}>{erro}</p>}
 
         {!!itens.length && (
-          <table className="table">
-            <thead>
-              <tr><th style={{ width: 32 }}></th><th>Descrição</th><th style={{ width: 80 }}>Unidade</th><th style={{ width: 90, textAlign: 'right' }}>Qtd.</th><th style={{ width: 120, textAlign: 'right' }}>Valor unit.</th></tr>
-            </thead>
-            <tbody>
-              {itens.map((it, idx) => (
-                <tr key={idx} style={{ opacity: selecionados.has(idx) ? 1 : 0.45 }}>
-                  <td><input type="checkbox" checked={selecionados.has(idx)} onChange={() => toggle(idx)} /></td>
-                  <td>{it.descricao}</td>
-                  <td style={{ fontSize: 12.5 }}>{it.unidade}</td>
-                  <td className="num" style={{ textAlign: 'right' }}>{it.quantidade}</td>
-                  <td className="num" style={{ textAlign: 'right' }}>R$ {it.valorUnitario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+          <div className="dialog-rolagem">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th style={{ width: 32 }}>
+                    <input type="checkbox" aria-label="Marcar todos com saldo" checked={selecionados.size > 0 && selecionados.size === itens.filter((it) => it.quantidade > 0).length}
+                      onChange={(e) => setSelecionados(e.target.checked ? new Set(itens.map((it, i) => (it.quantidade > 0 ? i : -1)).filter((i) => i >= 0)) : new Set())} />
+                  </th>
+                  <th>Descrição</th><th style={{ width: 100 }}>Unidade</th>
+                  <th style={{ width: 130, textAlign: 'right' }}>{ataOrgaoId ? 'Disponível no órgão' : 'Disponível'}</th>
+                  <th style={{ width: 120, textAlign: 'right' }}>Valor unit.</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {itens.map((it, idx) => (
+                  <tr key={idx} style={{ opacity: selecionados.has(idx) ? 1 : 0.45 }}>
+                    <td><input type="checkbox" checked={selecionados.has(idx)} disabled={it.quantidade <= 0} onChange={() => toggle(idx)} aria-label={`Selecionar ${it.descricao.slice(0, 40)}`} /></td>
+                    <td style={{ minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
+                    <td style={{ fontSize: 12.5 }}>{it.unidade}</td>
+                    <td className="num" style={{ textAlign: 'right' }}>
+                      {it.quantidade}
+                      {it.quantidadeHomologada != null && it.quantidadeHomologada !== it.quantidade && (
+                        <div className="text-muted" style={{ fontSize: 11 }}>de {it.quantidadeHomologada} homologados</div>
+                      )}
+                      {it.quantidade <= 0 && <div style={{ fontSize: 11, color: 'var(--color-critical)' }}>sem saldo</div>}
+                    </td>
+                    <td className="num" style={{ textAlign: 'right' }}>R$ {it.valorUnitario.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
-        <div className="dialog-actions" style={{ justifyContent: 'flex-start', marginTop: 12 }}>
+        <div className="dialog-actions" style={{ justifyContent: 'flex-start' }}>
           <button className="btn btn-primary" onClick={confirmar} disabled={!selecionados.size}>
             Importar {selecionados.size || ''} {selecionados.size === 1 ? 'item' : 'itens'}
           </button>

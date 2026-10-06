@@ -11,6 +11,12 @@ interface Modulo { id: string; recurso: string; nome: string; icone: string; }
 interface UsuarioRow { id: string; nome: string; email: string; cpf: string; ativo: boolean; tipoUsuario: string; telefone?: string | null; }
 interface UsuarioDetalhe extends UsuarioRow { permissoes: string[]; }
 
+// Só dígitos, formatados como 000.000.000-00 enquanto a pessoa digita.
+function formatarCpf(valor: string) {
+  const d = valor.replace(/\D/g, '').slice(0, 11);
+  return d.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1-$2');
+}
+
 export function Usuarios() {
   const [lista, setLista] = useState<UsuarioRow[]>([]);
   const [modulos, setModulos] = useState<Modulo[]>([]);
@@ -138,10 +144,10 @@ export function Usuarios() {
       {mostrarForm && (
         <form onSubmit={onSubmit} className="card elev-md" style={{ padding: '20px 22px', marginBottom: 26, gap: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 14 }}>
-            <div className="field"><label>CPF</label>
-              <input className="input" value={cpf} onChange={(e) => setCpf(e.target.value)} required /></div>
-            <div className="field"><label>Nome</label>
-              <input className="input" value={nome} onChange={(e) => setNome(e.target.value)} required /></div>
+            <div className="field"><label htmlFor="novo-cpf">CPF</label>
+              <input id="novo-cpf" className="input num" inputMode="numeric" placeholder="000.000.000-00" value={cpf} onChange={(e) => setCpf(formatarCpf(e.target.value))} required pattern="\d{3}\.\d{3}\.\d{3}-\d{2}" title="CPF com 11 dígitos" /></div>
+            <div className="field"><label htmlFor="novo-nome">Nome</label>
+              <input id="novo-nome" className="input" value={nome} onChange={(e) => setNome(e.target.value)} required pattern="[^0-9]*[A-Za-zÀ-ÿ][^0-9]*" title="Use apenas letras, sem números" /></div>
             <div className="field"><label>E-mail</label>
               <input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
             <div className="field"><label>Senha</label>
@@ -224,7 +230,7 @@ export function Usuarios() {
             <form onSubmit={salvarDados} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'color-mix(in srgb, var(--color-text) 48%, transparent)' }}>Dados do usuário</div>
               <div className="field"><label htmlFor="ed-nome">Nome</label>
-                <input id="ed-nome" className="input" value={edNome} onChange={(e) => setEdNome(e.target.value)} required /></div>
+                <input id="ed-nome" className="input" value={edNome} onChange={(e) => setEdNome(e.target.value)} required pattern="[^0-9]*[A-Za-zÀ-ÿ][^0-9]*" title="Use apenas letras, sem números" /></div>
               <div className="field"><label htmlFor="ed-telefone">Telefone</label>
                 <input id="ed-telefone" className="input" value={edTelefone} onChange={(e) => setEdTelefone(e.target.value)} /></div>
               <div className="field"><label htmlFor="ed-tipo">Tipo de usuário</label>

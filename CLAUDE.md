@@ -219,8 +219,8 @@ valores) numa licitação, extraída e depois importada para os itens de uma Ata
 - Arquivos ficam em `api/uploads/homologacoes/` (path configurável via
   `HOMOLOGACAO_UPLOADS_DIR`, gitignored) com nome gerado (`randomUUID()`) — nunca o nome
   original do arquivo, que fica só na coluna `arquivoNome` para exibição.
-- As queries de `LicitacoesHomologacaoService.detalhe()` usam `orderBy` explícito por `id`
-  nos fornecedores/itens — sem isso, um `UPDATE` (ex.: salvar um campo na tela de revisão)
+- As queries de `LicitacoesHomologacaoService.detalhe()` usam `orderBy` explícito
+  (fornecedores por `id`; itens por `numeroItem` e depois `id`, para seguir a ordem do edital) — sem isso, um `UPDATE` (ex.: salvar um campo na tela de revisão)
   pode fazer o Postgres devolver a linha em outra posição na próxima leitura, e a tela
   "pula" itens de lugar a cada edição.
 - **Uma homologação revisada por licitação.** Concluir a revisão de um reenvio marca a

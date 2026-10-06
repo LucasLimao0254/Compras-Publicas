@@ -141,7 +141,7 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 |---|---|---|
 | E1 | Lista de contratos | 002/2026 com saldo R$ 1.296,05 de R$ 1.593,68; 003/2026 com R$ 0,00 de R$ 3.750,00 |
 | E2 | Detalhe do **004/2026** | "até" com a **data de hoje** (não a de ontem) [3] |
-| E3 | Novo contrato para a Limpa Tudo na licitação 002/2026 | Itens só por "importar da homologação", com descrição, unidade e valor travados; sem "adicionar item" |
+| E3 | Novo contrato: escolher a licitação 002/2026, a Limpa Tudo e o órgão Saúde, e importar da homologação | Processo e objeto vêm preenchidos da licitação; o fornecedor só lista os homologados; a importação pede o órgão antes e mostra o **disponível no órgão** (detergente 300, sabão 200); descrições longas aparecem resumidas, com "ver mais"; sem "adicionar item" nem linhas vazias |
 | E4 | **003/2026**, aba Aditivos: aditivo de **Quantidade** +30 luvas | Aceito (R$ 375,00). No item da homologação, o saldo **não fica negativo** |
 | E5 | **002/2026**: aditivo de Quantidade | Recusado: *"Ainda há saldo disponível neste contrato (R$ 1.296,05 — o item … tem 249 disponível)"* |
 | E6 | **002/2026**: aditivo de **Supressão** | O formulário pede **itens e quantidades**, sem percentual. Suprimir 20 sabões dá −R$ 178,00 e o valor total cai para R$ 1.415,68 |

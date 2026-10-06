@@ -123,3 +123,30 @@ describe('Homologação', () => {
     expect(f.homologacaoFornecedorId).toBe(forn.id);
   });
 });
+
+describe('Importação mostra a quantidade disponível (E3)', () => {
+  let ctx: Ctx;
+  beforeAll(() => { ctx = criarCtx(); });
+  afterAll(() => encerrarCtx(ctx));
+
+  it('sem órgão: teto menos o que atas e contratos diretos já usaram; com órgão da ata: o saldo daquele órgão', async () => {
+    const c = await criarCenario(ctx);
+    const ata = await criarAta(ctx, c, [{ orgao: 'A', item: 'item1', quantidade: 60 }]);
+    const porItem = (lista: any[]) => Object.fromEntries(lista.map((i) => [i.homologacaoItemId, i]));
+
+    const semOrgao = porItem(await ctx.homologacao.itensParaImportar(c.tenantId, c.licitacaoId, c.fornecedorId));
+    expect(semOrgao[c.item1].quantidadeHomologada).toBe(100);
+    expect(semOrgao[c.item1].quantidade).toBe(40); // 60 reservados na ata
+    expect(semOrgao[c.item2].quantidade).toBe(50);
+
+    await criarContratoNaAta(ctx, c, ata.orgaoA, 25);
+    const noOrgaoA = porItem(await ctx.homologacao.itensParaImportar(c.tenantId, c.licitacaoId, c.fornecedorId, ata.orgaoA));
+    expect(noOrgaoA[c.item1].quantidade).toBe(35); // 60 do órgão − 25 contratados
+    expect(noOrgaoA[c.item2].quantidade).toBe(0); // item 2 não está neste órgão
+  });
+});
+
+async function criarContratoNaAta(ctx: Ctx, c: any, ataOrgaoId: string, quantidade: number) {
+  const { criarContrato } = await import('../helpers');
+  return criarContrato(ctx, c, { origem: { ataOrgaoId }, itens: [{ item: 'item1', quantidade }] });
+}
