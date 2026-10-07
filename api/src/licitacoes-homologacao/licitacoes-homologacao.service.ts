@@ -1,8 +1,10 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { readFile } from 'fs/promises';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import {
+  atas,
+  contratos,
   fornecedores,
   homologacaoFornecedores,
   homologacaoItens,
@@ -11,6 +13,7 @@ import {
 } from '../db/schema';
 import { ExtracaoHomologacao, ExtracaoHomologacaoService } from './extracao-homologacao.service';
 import { PatchFornecedorDto, PatchItemDto } from './dto/homologacao.dto';
+import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 
 type MulterFile = { path: string; originalname: string; size: number };
 
@@ -19,6 +22,7 @@ export class LicitacoesHomologacaoService {
   constructor(
     @Inject(DRIZZLE) private db: DrizzleDB,
     private extracao: ExtracaoHomologacaoService,
+    private saldoCeiling: SaldoCeilingService,
   ) {}
 
   private async validarLicitacao(tenantId: string, licitacaoId: string) {
@@ -39,6 +43,9 @@ export class LicitacoesHomologacaoService {
     if (homologacao.status === 'revisado') {
       throw new BadRequestException('Esta homologação já foi revisada — edição bloqueada');
     }
+    if (homologacao.status === 'substituido') {
+      throw new BadRequestException('Esta homologação foi substituída por um reenvio — edição bloqueada');
+    }
   }
 
   async listar(tenantId: string, licitacaoId: string) {
@@ -51,7 +58,8 @@ export class LicitacoesHomologacaoService {
   }
 
   async detalhe(tenantId: string, homologacaoId: string) {
-    // orderBy explícito por id — sem isso, o Postgres pode retornar os
+    // Itens pela ordem do edital (numeroItem), com o id como desempate fixo.
+    // orderBy explícito — sem isso, o Postgres pode retornar os
     // fornecedores/itens em ordem diferente depois de um UPDATE (a linha
     // editada pode mudar de posição física), e a tela de revisão "pulava" de
     // lugar a cada campo salvo. A ordem em si é arbitrária, só precisa ser
@@ -61,7 +69,7 @@ export class LicitacoesHomologacaoService {
       with: {
         fornecedores: {
           orderBy: (f, { asc }) => [asc(f.id)],
-          with: { itens: { orderBy: (it, { asc }) => [asc(it.id)] }, fornecedor: true },
+          with: { itens: { orderBy: (it, { asc }) => [asc(it.numeroItem), asc(it.id)] }, fornecedor: true },
         },
       },
     });
@@ -93,8 +101,13 @@ export class LicitacoesHomologacaoService {
     try {
       const buffer = await readFile(file.path);
       const extraido = await this.extracao.extrair(buffer);
-      await this.gravarExtracao(tenantId, homologacao.id, extraido);
-      await this.db.update(licitacaoHomologacoes).set({ status: 'pronto_para_revisao' }).where(and(eq(licitacaoHomologacoes.id, homologacao.id), eq(licitacaoHomologacoes.tenantId, tenantId)));
+      // Numa transação só: se qualquer insert falhar no meio (ex.: valor fora
+      // da precisão da coluna), nenhum fornecedor/item fica gravado pela
+      // metade numa homologação marcada como 'erro'.
+      await this.db.transaction(async (tx) => {
+        await this.gravarExtracao(tx as unknown as DrizzleDB, tenantId, homologacao.id, extraido);
+        await tx.update(licitacaoHomologacoes).set({ status: 'pronto_para_revisao' }).where(and(eq(licitacaoHomologacoes.id, homologacao.id), eq(licitacaoHomologacoes.tenantId, tenantId)));
+      });
     } catch (err) {
       const detalhe = err instanceof Error ? err.message : 'Erro desconhecido na extração';
       await this.db.update(licitacaoHomologacoes).set({ status: 'erro', erroDetalhe: detalhe }).where(and(eq(licitacaoHomologacoes.id, homologacao.id), eq(licitacaoHomologacoes.tenantId, tenantId)));
@@ -103,9 +116,9 @@ export class LicitacoesHomologacaoService {
     return this.detalhe(tenantId, homologacao.id);
   }
 
-  private async gravarExtracao(tenantId: string, homologacaoId: string, extraido: ExtracaoHomologacao) {
+  private async gravarExtracao(tx: DrizzleDB, tenantId: string, homologacaoId: string, extraido: ExtracaoHomologacao) {
     for (const forn of extraido.fornecedores) {
-      const [fRow] = await this.db
+      const [fRow] = await tx
         .insert(homologacaoFornecedores)
         .values({
           tenantId,
@@ -116,7 +129,7 @@ export class LicitacoesHomologacaoService {
         .returning();
 
       if (!forn.itens.length) continue;
-      await this.db.insert(homologacaoItens).values(
+      await tx.insert(homologacaoItens).values(
         forn.itens.map((it) => {
           const unidade = it.unidade ?? null;
           const quantidade = it.quantidade ?? null;
@@ -216,7 +229,10 @@ export class LicitacoesHomologacaoService {
   }
 
   async concluirRevisao(tenantId: string, homologacaoId: string) {
-    await this.getHomologacao(tenantId, homologacaoId);
+    const homologacao = await this.getHomologacao(tenantId, homologacaoId);
+    if (homologacao.status !== 'pronto_para_revisao') {
+      throw new BadRequestException('Só é possível concluir a revisão de uma homologação pronta para revisão');
+    }
     const detalhe = await this.detalhe(tenantId, homologacaoId);
 
     if (!detalhe.fornecedores.length) {
@@ -233,10 +249,47 @@ export class LicitacoesHomologacaoService {
         if (!it.descricao || !it.unidade || it.quantidade == null || it.valorUnitario == null) {
           throw new BadRequestException(`Preencha descrição, unidade, quantidade e valor unitário de todos os itens de "${f.nomeExtraido}" antes de concluir a revisão`);
         }
+        if (Number(it.quantidade) <= 0 || Number(it.valorUnitario) <= 0) {
+          throw new BadRequestException(`O item "${it.descricao}" de "${f.nomeExtraido}" precisa ter quantidade e valor unitário maiores que zero`);
+        }
       }
     }
 
-    await this.db.update(licitacaoHomologacoes).set({ status: 'revisado' }).where(and(eq(licitacaoHomologacoes.id, homologacaoId), eq(licitacaoHomologacoes.tenantId, tenantId)));
+    // Só uma homologação revisada vale por licitação (MODELO.md, invariante 3:
+    // teto fixo). Antes, concluir um reenvio deixava as duas valendo e o teto
+    // de cada fornecedor+item ficava duplicado. O reenvio substitui a
+    // anterior só enquanto ela não foi usada por nenhuma ata/contrato; depois
+    // disso o teto já está em uso e não pode ser trocado por baixo.
+    await this.db.transaction(async (tx) => {
+      const anteriores = await tx
+        .select({ id: licitacaoHomologacoes.id })
+        .from(licitacaoHomologacoes)
+        .where(and(
+          eq(licitacaoHomologacoes.tenantId, tenantId),
+          eq(licitacaoHomologacoes.licitacaoId, homologacao.licitacaoId),
+          eq(licitacaoHomologacoes.status, 'revisado'),
+          ne(licitacaoHomologacoes.id, homologacaoId),
+        ))
+        .for('update');
+
+      if (anteriores.length) {
+        const fornecedoresAnteriores = await tx
+          .select({ id: homologacaoFornecedores.id })
+          .from(homologacaoFornecedores)
+          .where(inArray(homologacaoFornecedores.homologacaoId, anteriores.map((h) => h.id)));
+        const ids = fornecedoresAnteriores.map((f) => f.id);
+        if (ids.length) {
+          const [ataEmUso] = await tx.select({ id: atas.id }).from(atas).where(and(eq(atas.tenantId, tenantId), inArray(atas.homologacaoFornecedorId, ids)));
+          const [contratoEmUso] = await tx.select({ id: contratos.id }).from(contratos).where(and(eq(contratos.tenantId, tenantId), inArray(contratos.homologacaoFornecedorId, ids)));
+          if (ataEmUso || contratoEmUso) {
+            throw new BadRequestException('Esta licitação já tem uma homologação revisada em uso por ata ou contrato — o teto homologado é fixo e não pode ser substituído por um reenvio');
+          }
+        }
+        await tx.update(licitacaoHomologacoes).set({ status: 'substituido' }).where(inArray(licitacaoHomologacoes.id, anteriores.map((h) => h.id)));
+      }
+
+      await tx.update(licitacaoHomologacoes).set({ status: 'revisado' }).where(and(eq(licitacaoHomologacoes.id, homologacaoId), eq(licitacaoHomologacoes.tenantId, tenantId)));
+    });
     return this.detalhe(tenantId, homologacaoId);
   }
 
@@ -244,26 +297,44 @@ export class LicitacoesHomologacaoService {
   // um fornecedor para aquela licitação, prontos para popular a grade de
   // itens. Procura entre as homologações 'revisado' mais recentes primeiro
   // (reenvio corrigido substitui efetivamente a versão anterior para import).
-  async itensParaImportar(tenantId: string, licitacaoId: string, fornecedorId: string) {
+  // `quantidade` é o que AINDA está disponível — o teto da homologação menos o
+  // que atas e contratos diretos já reservaram, ou, com `ataOrgaoId` (contrato
+  // que abate de um órgão da ata), o saldo daquele órgão. Antes vinha a
+  // quantidade homologada cheia, e o usuário só descobria o limite ao salvar.
+  async itensParaImportar(tenantId: string, licitacaoId: string, fornecedorId: string, ataOrgaoId?: string) {
     await this.validarLicitacao(tenantId, licitacaoId);
     if (!fornecedorId) throw new BadRequestException('Informe o fornecedor');
 
     const homologacoesRevisadas = await this.db.query.licitacaoHomologacoes.findMany({
       where: and(eq(licitacaoHomologacoes.tenantId, tenantId), eq(licitacaoHomologacoes.licitacaoId, licitacaoId), eq(licitacaoHomologacoes.status, 'revisado')),
-      with: { fornecedores: { with: { itens: { orderBy: (it, { asc }) => [asc(it.id)] } } } },
+      with: { fornecedores: { with: { itens: { orderBy: (it, { asc }) => [asc(it.numeroItem), asc(it.id)] } } } },
       orderBy: (h, { desc: descOrder }) => [descOrder(h.enviadoEm)],
     });
 
     for (const hom of homologacoesRevisadas) {
       const fornecedorHomologado = hom.fornecedores.find((f) => f.fornecedorId === fornecedorId);
       if (fornecedorHomologado) {
-        return fornecedorHomologado.itens.map((it) => ({
-          homologacaoItemId: it.id,
-          descricao: it.descricao,
-          unidade: it.unidade ?? '',
-          quantidade: Number(it.quantidade),
-          valorUnitario: Number(it.valorUnitario),
-        }));
+        return this.db.transaction(async (tx) => {
+          const resultado: { homologacaoItemId: string; descricao: string; unidade: string; quantidadeHomologada: number; quantidade: number; valorUnitario: number }[] = [];
+          for (const it of fornecedorHomologado.itens) {
+            let disponivel = 0;
+            if (ataOrgaoId) {
+              // item que não está distribuído para este órgão da ata não tem saldo nele
+              disponivel = await this.saldoCeiling.ataItemSaldoDisponivel(tx as unknown as DrizzleDB, tenantId, ataOrgaoId, it.id).then((r) => r.disponivel).catch(() => 0);
+            } else {
+              disponivel = (await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx as unknown as DrizzleDB, tenantId, it.id)).disponivel;
+            }
+            resultado.push({
+              homologacaoItemId: it.id,
+              descricao: it.descricao,
+              unidade: it.unidade ?? '',
+              quantidadeHomologada: Number(it.quantidade),
+              quantidade: Math.max(0, disponivel),
+              valorUnitario: Number(it.valorUnitario),
+            });
+          }
+          return resultado;
+        });
       }
     }
     return [];
@@ -276,11 +347,16 @@ export class LicitacoesHomologacaoService {
     const homologacoesRevisadas = await this.db.query.licitacaoHomologacoes.findMany({
       where: and(eq(licitacaoHomologacoes.tenantId, tenantId), eq(licitacaoHomologacoes.licitacaoId, licitacaoId), eq(licitacaoHomologacoes.status, 'revisado')),
       with: { fornecedores: { with: { fornecedor: true } } },
+      orderBy: (h, { desc: descOrder }) => [descOrder(h.enviadoEm)],
     });
+    // Mais recente primeiro e o primeiro visto vence — mesma escolha de
+    // itensParaImportar. Sem ordem definida, o homologacaoFornecedorId podia
+    // vir de uma homologação e os itens de outra, e o contrato era recusado
+    // com "Item não pertence ao fornecedor deste contrato".
     const porId = new Map<string, { id: string; razaoSocial: string; cnpjCpf: string; homologacaoFornecedorId: string }>();
     for (const hom of homologacoesRevisadas) {
       for (const f of hom.fornecedores) {
-        if (f.fornecedor) porId.set(f.fornecedor.id, { ...f.fornecedor, homologacaoFornecedorId: f.id });
+        if (f.fornecedor && !porId.has(f.fornecedor.id)) porId.set(f.fornecedor.id, { ...f.fornecedor, homologacaoFornecedorId: f.id });
       }
     }
     return [...porId.values()];

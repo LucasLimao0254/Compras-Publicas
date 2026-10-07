@@ -44,7 +44,7 @@ export function criarCtx(): Ctx {
     aditivos: new AditivosService(db, contratos, saldo),
     apostilamentos: new ApostilamentosService(db),
     ordens: new OrdensService(db, configuracoes),
-    homologacao: new LicitacoesHomologacaoService(db, new ExtracaoHomologacaoService()),
+    homologacao: new LicitacoesHomologacaoService(db, new ExtracaoHomologacaoService(), saldo),
   };
 }
 
@@ -252,4 +252,18 @@ export async function rejeicao(promessa: Promise<unknown>): Promise<string> {
     return err instanceof Error ? err.message : String(err);
   }
   throw new Error('A operação deveria ter sido rejeitada, mas foi aceita');
+}
+
+// CPF válido (com dígitos verificadores) para testes que criam usuário pelo
+// service, que recusa CPF inválido.
+let seqCpf = 0;
+export function gerarCpf(): string {
+  const base = String(100000000 + ((Date.now() + seqCpf++ * 7919) % 899999999)).slice(0, 9);
+  const digito = (b: string) => {
+    const soma = b.split('').reduce((acc, d, i) => acc + Number(d) * (b.length + 1 - i), 0);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  const d1 = digito(base);
+  return base + d1 + digito(base + d1);
 }

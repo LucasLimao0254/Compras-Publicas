@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { RemanejarSaldoModal } from '../components/RemanejarSaldoModal';
 import { ImportarHomologacaoModal } from '../components/ImportarHomologacaoModal';
@@ -8,14 +8,20 @@ import { GerenciarLotesModal } from '../components/GerenciarLotesModal';
 import { ItemHistoricoModal } from '../components/ItemHistoricoModal';
 import { ImportarItensAtaModal } from '../components/ImportarItensAtaModal';
 import { GerarMinutaButton } from '../components/GerarMinutaButton';
+import { formatarDia } from '../lib/datas';
+import { DescricaoResumida } from '../components/DescricaoResumida';
+import { formatarQuantidade, formatarValor } from '../lib/numeros';
+import { BotaoExcluir, EditarAtaModal } from '../components/EditarExcluir';
 
 interface Orgao { id: string; perfil: string; quantidadeItens: number; valorTotal: number; valorUtilizado: number; saldoDisponivel: number; secretaria: { titulo: string }; }
-interface Item { id: string; numeroItem: number; descricao: string; unidade: string; quantidadeContratada: string; valorUnitario: string; quantidadeUtilizada: number; quantidadeDisponivel: number; }
+interface Item { id: string; numeroItem: number; descricao: string; unidade: string; quantidadeContratada: string; valorUnitario: string; quantidadeUtilizada: number; quantidadeDisponivel: number; homologacaoItemId: string | null; }
 interface ContratoDaAta { id: string; numero: string; saldoDisponivel: number; valorTotal: number; fornecedor: { razaoSocial: string }; }
 
 export function AtaDetalhe() {
   const { id } = useParams();
   const [ata, setAta] = useState<any>(null);
+  const [editandoAta, setEditandoAta] = useState(false);
+  const navigate = useNavigate();
   const [orgaoAberto, setOrgaoAberto] = useState<string | null>(null);
   const [itensPorOrgao, setItensPorOrgao] = useState<Record<string, Item[]>>({});
   const [mostrarRemanejar, setMostrarRemanejar] = useState(false);
@@ -26,6 +32,7 @@ export function AtaDetalhe() {
   const [valorUnitario, setValorUnitario] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [temHomologacao, setTemHomologacao] = useState(false);
+  const ataVinculada = !!ata?.homologacaoFornecedorId;
   const [importarParaOrgao, setImportarParaOrgao] = useState<string | null>(null);
   const [importando, setImportando] = useState(false);
   const [mostrarLotes, setMostrarLotes] = useState(false);
@@ -173,7 +180,7 @@ export function AtaDetalhe() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <span className="tag tag-neutral">{ata.tipo === 'ATAS' ? 'Ata de Registro de Preços' : 'Credenciamento'}</span>
               <span className="tag tag-outline">{ata.situacao}</span>
-              <span className="tag tag-outline">{new Date(ata.vigenciaInicial).toLocaleDateString('pt-BR')} – {new Date(ata.vigenciaFinal).toLocaleDateString('pt-BR')}</span>
+              <span className="tag tag-outline">{formatarDia(ata.vigenciaInicial)} – {formatarDia(ata.vigenciaFinal)}</span>
             </div>
           </div>
         </div>
@@ -182,6 +189,11 @@ export function AtaDetalhe() {
             <div className="num" style={{ fontSize: 26, fontFamily: 'var(--font-heading)', fontWeight: 500 }}>R$ {ata.saldoDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
             <div className="num text-muted" style={{ fontSize: 12 }}>de R$ {ata.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
           </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <button className="btn btn-secondary" onClick={() => setEditandoAta(true)}><i className="ph ph-pencil-simple" />Editar</button>
+            <BotaoExcluir rotulo={`a ata ${ata.numeroArp}`} caminho={`/atas/${ata.id}`} onExcluido={() => navigate('/atas')} />
+          </div>
+          {editandoAta && <EditarAtaModal ata={ata} onFechar={() => setEditandoAta(false)} onSalvo={carregar} />}
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <GerarMinutaButton tipo="ARP" entidadeId={ata.id} modeloCarregado={modeloArpCarregado} label="Gerar minuta ARP" />
             <button className="btn btn-primary" onClick={() => setMostrarRemanejar(true)}><i className="ph ph-arrows-left-right" />Remanejar saldo</button>
@@ -226,23 +238,32 @@ export function AtaDetalhe() {
                     {ata.atasComLotes && (
                       <button className="btn btn-ghost" onClick={() => setMostrarLotes(true)}>Gerenciar lotes</button>
                     )}
-                    <button className="btn btn-ghost" onClick={() => setImportarPlanilhaOrgao(o.id)}><i className="ph ph-upload-simple" />Importar</button>
+                    {/* Ata vinculada a uma homologação só aceita itens da homologação
+                        (MODELO.md, invariante 2) — planilha e item digitado à mão
+                        ficam só para ata comum. */}
+                    {!ataVinculada && (
+                      <button className="btn btn-ghost" onClick={() => setImportarPlanilhaOrgao(o.id)}><i className="ph ph-upload-simple" />Importar</button>
+                    )}
                     {temHomologacao && (
                       <button className="btn btn-ghost" onClick={() => setImportarParaOrgao(o.id)}><i className="ph ph-file-arrow-down" />importar da homologação</button>
                     )}
-                    <button className="btn btn-ghost" onClick={() => { setItemEditando(null); setDescricao(''); setUnidade(''); setQuantidade(''); setValorUnitario(''); setMostrarFormItem(mostrarFormItem === o.id ? null : o.id); }}>
-                      {mostrarFormItem === o.id ? 'Cancelar' : (<><i className="ph ph-plus" />adicionar item</>)}
-                    </button>
+                    {!ataVinculada && (
+                      <button className="btn btn-ghost" onClick={() => { setItemEditando(null); setDescricao(''); setUnidade(''); setQuantidade(''); setValorUnitario(''); setMostrarFormItem(mostrarFormItem === o.id ? null : o.id); }}>
+                        {mostrarFormItem === o.id ? 'Cancelar' : (<><i className="ph ph-plus" />adicionar item</>)}
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 {(mostrarFormItem === o.id || itemEditando) && (
-                  <form onSubmit={(e) => (itemEditando ? onSubmitEdicaoItem(e, o.id) : onSubmitItem(e, o.id))} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 120px 60px', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-                    <input className="input" placeholder="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} required />
-                    <input className="input" placeholder="Unidade" value={unidade} onChange={(e) => setUnidade(e.target.value)} required />
+                  <form onSubmit={(e) => (itemEditando ? onSubmitEdicaoItem(e, o.id) : onSubmitItem(e, o.id))} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 100px 100px 120px auto auto', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                    <input className="input" placeholder="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} disabled={!!itemEditando?.homologacaoItemId} required />
+                    <input className="input" placeholder="Unidade" value={unidade} onChange={(e) => setUnidade(e.target.value)} disabled={!!itemEditando?.homologacaoItemId} required />
                     <input className="input num" placeholder="Qtd." type="number" step="0.001" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} required />
-                    <input className="input num" placeholder="Valor unit." type="number" step="0.0001" value={valorUnitario} onChange={(e) => setValorUnitario(e.target.value)} required />
+                    <input className="input num" placeholder="Valor unit." type="number" step="0.0001" value={valorUnitario} onChange={(e) => setValorUnitario(e.target.value)} disabled={!!itemEditando?.homologacaoItemId} required />
                     <button className="btn btn-primary">{itemEditando ? 'Salvar' : 'OK'}</button>
+                    {/* D3: fechar a edição sem salvar */}
+                    <button type="button" className="btn btn-ghost" onClick={() => { setItemEditando(null); setMostrarFormItem(null); setErro(null); }}>Cancelar</button>
                   </form>
                 )}
                 {erro && <p style={{ fontSize: 12.5, color: 'var(--color-critical)', margin: '0 0 8px' }}>{erro}</p>}
@@ -255,12 +276,12 @@ export function AtaDetalhe() {
                     {(itensPorOrgao[o.id] ?? []).map((it) => (
                       <tr key={it.id}>
                         <td className="num text-muted">{it.numeroItem}</td>
-                        <td>{it.descricao}</td>
+                        <td style={{ minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
                         <td style={{ fontSize: 12.5, color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>{it.unidade}</td>
-                        <td className="num" style={{ textAlign: 'right' }}>{it.quantidadeContratada}</td>
-                        <td className="num" style={{ textAlign: 'right' }}>R$ {Number(it.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                        <td className="num text-muted" style={{ textAlign: 'right' }}>{it.quantidadeUtilizada}</td>
-                        <td className="num" style={{ textAlign: 'right', color: 'var(--color-accent-300)' }}>{it.quantidadeDisponivel}</td>
+                        <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeContratada)}</td>
+                        <td className="num" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatarValor(it.valorUnitario)}</td>
+                        <td className="num text-muted" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeUtilizada)}</td>
+                        <td className="num" style={{ textAlign: 'right', color: 'var(--color-accent-300)' }}>{formatarQuantidade(it.quantidadeDisponivel)}</td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <i className="ph ph-pencil-simple" title="Editar item" onClick={() => iniciarEdicaoItem(it)} style={{ fontSize: 14, cursor: 'pointer', marginRight: 10, color: 'color-mix(in srgb, var(--color-text) 45%, transparent)' }} />
                           <i className="ph ph-clock-counter-clockwise" title="Histórico" onClick={() => setItemHistorico({ orgaoId: o.id, item: it })} style={{ fontSize: 14, cursor: 'pointer', color: 'color-mix(in srgb, var(--color-text) 45%, transparent)' }} />

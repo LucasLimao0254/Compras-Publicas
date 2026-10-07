@@ -1,46 +1,50 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
-import { contratos, fornecedores, itensContrato, itensOrdem, ordens } from '../db/schema';
+import { faixaPrazo, hoje } from '../common/datas';
+import { centavos, reais } from '../common/dinheiro';
+import { calcularSaldosContratos } from '../contratos/contratos.service';
+import { contratos, fornecedores, ordens } from '../db/schema';
 
 @Injectable()
 export class DashboardService {
   constructor(@Inject(DRIZZLE) private db: DrizzleDB) {}
 
   async resumo(tenantId: string) {
-    const listaContratos = await this.db.select().from(contratos).where(eq(contratos.tenantId, tenantId));
-    const agora = new Date();
-    const em30dias = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000);
-
+    const listaContratos = await this.db
+      .select({ id: contratos.id, situacao: contratos.situacao, vigenciaFinal: contratos.vigenciaFinal, fornecedorId: contratos.fornecedorId, fornecedor: fornecedores.razaoSocial })
+      .from(contratos)
+      .innerJoin(fornecedores, eq(contratos.fornecedorId, fornecedores.id))
+      .where(eq(contratos.tenantId, tenantId));
+    // Mesma classificação da lista de contratos (common/datas.ts, faixaPrazo):
+    // cada número daqui abre aquela lista com o filtro correspondente.
+    const hojeDia = hoje();
     let vigentes = 0, vencendo30 = 0, vencidos = 0, arquivados = 0;
-    let valorTotalContratado = 0;
-
     for (const c of listaContratos) {
-      if (c.situacao === 'ARQUIVADO') { arquivados++; continue; }
-      const vf = new Date(c.vigenciaFinal);
-      if (vf < agora) vencidos++;
-      else if (vf <= em30dias) { vigentes++; vencendo30++; }
-      else vigentes++;
+      const faixa = faixaPrazo(c.situacao, c.vigenciaFinal, hojeDia);
+      if (faixa === 'ARQUIVADO') arquivados++;
+      else if (faixa === 'VENCIDO') vencidos++;
+      else { vigentes++; if (faixa === 'VENCENDO_30') vencendo30++; }
     }
 
-    // saldo por contrato (reaproveita a mesma lógica: itens - ordens emitidas)
-    let saldoDisponivelTotal = 0;
-    let valorUtilizadoTotal = 0;
-    for (const c of listaContratos) {
-      if (c.situacao === 'ARQUIVADO') continue;
-      const itens = await this.db.select().from(itensContrato).where(eq(itensContrato.contratoId, c.id));
-      const valorContrato = itens.reduce((acc, it) => acc + Number(it.quantidade) * Number(it.valorUnitario), 0);
-      valorTotalContratado += valorContrato;
+    // Mesmo cálculo das telas de contrato (itens + aditivos de valor, em
+    // centavos) — antes o dashboard tinha a própria conta, sem aditivos, e
+    // fazia duas consultas por contrato. Arquivados ficam fora de tudo,
+    // inclusive do ranking de fornecedores (antes entravam só no ranking).
+    const ativos = listaContratos.filter((c) => c.situacao !== 'ARQUIVADO');
+    const saldos = await calcularSaldosContratos(this.db, ativos.map((c) => c.id));
 
-      const [utilizadoRow] = await this.db
-        .select({ total: sql<string>`coalesce(sum(${itensOrdem.precoTotal}), 0)` })
-        .from(itensOrdem)
-        .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
-        .where(and(eq(ordens.contratoId, c.id), eq(ordens.status, 'EMITIDA')));
-
-      const utilizado = Number(utilizadoRow?.total ?? 0);
-      valorUtilizadoTotal += utilizado;
-      saldoDisponivelTotal += valorContrato - utilizado;
+    let valorTotalContratado = 0, valorUtilizadoTotal = 0;
+    const porFornecedor = new Map<string, { fornecedorId: string; fornecedor: string; valor: number }>();
+    for (const c of ativos) {
+      const s = saldos.get(c.id)!;
+      const total = centavos(s.valorTotal);
+      valorTotalContratado += total;
+      valorUtilizadoTotal += centavos(s.valorUtilizado);
+      // agrupado por id — dois fornecedores com a mesma razão social não se somam
+      const atual = porFornecedor.get(c.fornecedorId) ?? { fornecedorId: c.fornecedorId, fornecedor: c.fornecedor, valor: 0 };
+      atual.valor += total;
+      porFornecedor.set(c.fornecedorId, atual);
     }
 
     const [{ count: ordensEmitidas }] = await this.db
@@ -48,28 +52,20 @@ export class DashboardService {
       .from(ordens)
       .where(and(eq(ordens.tenantId, tenantId), eq(ordens.status, 'EMITIDA')));
 
-    const topFornecedoresRaw = await this.db
-      .select({
-        fornecedor: fornecedores.razaoSocial,
-        valor: sql<string>`coalesce(sum(${itensContrato.quantidade}::numeric * ${itensContrato.valorUnitario}::numeric), 0)`,
-      })
-      .from(contratos)
-      .innerJoin(fornecedores, eq(contratos.fornecedorId, fornecedores.id))
-      .leftJoin(itensContrato, eq(itensContrato.contratoId, contratos.id))
-      .where(eq(contratos.tenantId, tenantId))
-      .groupBy(fornecedores.razaoSocial)
-      .orderBy(sql`sum(${itensContrato.quantidade}::numeric * ${itensContrato.valorUnitario}::numeric) desc`)
-      .limit(5);
+    const topFornecedores = [...porFornecedor.values()]
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 5)
+      .map((f) => ({ fornecedorId: f.fornecedorId, fornecedor: f.fornecedor, valor: reais(f.valor) }));
 
     return {
-      saldoDisponivelTotal,
-      valorTotalContratado,
-      valorUtilizadoTotal,
+      saldoDisponivelTotal: reais(valorTotalContratado - valorUtilizadoTotal),
+      valorTotalContratado: reais(valorTotalContratado),
+      valorUtilizadoTotal: reais(valorUtilizadoTotal),
       percentualUtilizado: valorTotalContratado > 0 ? (valorUtilizadoTotal / valorTotalContratado) * 100 : 0,
-      contratosAtivos: listaContratos.filter((c) => c.situacao !== 'ARQUIVADO').length,
+      contratosAtivos: ativos.length,
       ordensEmitidas: Number(ordensEmitidas ?? 0),
       situacaoContratos: { vigentes, vencendo30, vencidos, arquivados },
-      topFornecedores: topFornecedoresRaw.map((f) => ({ fornecedor: f.fornecedor, valor: Number(f.valor) })),
+      topFornecedores,
     };
   }
 }

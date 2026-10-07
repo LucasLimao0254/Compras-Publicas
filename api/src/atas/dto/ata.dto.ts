@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, Min, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 const TIPOS_ATA = ['ATAS', 'CREDENCIAMENTO'];
@@ -38,7 +38,7 @@ export class CreateAtaDto {
 // registra o evento (ver AtasService.prorrogar). Um PATCH genérico sem essa
 // validação anularia a garantia.
 export class UpdateAtaDto {
-  @IsOptional() @IsString() numeroArp?: string;
+  @IsOptional() @IsString() @IsNotEmpty() numeroArp?: string;
   @IsOptional() @IsDateString() vigenciaInicial?: string;
   @IsOptional() @IsIn(SITUACOES_ATA) situacao?: string;
 }

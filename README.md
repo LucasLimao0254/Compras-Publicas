@@ -42,6 +42,21 @@ web/    Frontend React + Vite + TypeScript + Tailwind CSS
 docker-compose.yml   Postgres via Docker (alternativa ao banco de dev embutido)
 ```
 
+## Ambiente de teste interno
+
+Para testar o sistema já com dados prontos (usuários de cada perfil, licitação homologada,
+ata, contratos em vários estados), sem mexer no banco de desenvolvimento:
+
+```bash
+npm install
+npm run teste:interno    # abre em http://localhost:5174/login
+```
+
+Usuários, dados do cenário e roteiro de testes: [`TESTE_INTERNO.md`](TESTE_INTERNO.md).
+
+Para hospedar esse mesmo ambiente e só mandar um link aos testadores, use o `render.yaml`
+(passo a passo em [`TESTE_INTERNO.md`](TESTE_INTERNO.md#ambiente-hospedado-um-link-para-os-testadores)).
+
 ## Como rodar
 
 ### 1. Banco de dados

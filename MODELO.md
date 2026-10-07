@@ -42,7 +42,10 @@ uma deve virar teste.
    homologação. Não é possível emitir ordem de item não contratado ou sem saldo no contrato.
 6. **Aditivo só com os três saldos zerados.** Contrato, ata (quando houver) e homologação
    precisam estar simultaneamente em saldo zero — sem tolerância percentual. A quantidade do
-   aditivo é acrescida **fora** do teto da homologação.
+   aditivo é acrescida **fora** do teto da homologação. Vale para os aditivos que acrescentam
+   valor ou quantidade, em todo contrato (com origem ou manual — no manual, só o saldo do
+   próprio contrato). **Prorrogação de prazo e supressão não têm essa trava**: prorrogar serve
+   justamente para consumir o saldo restante, e suprimir só se aplica a saldo não consumido.
 7. **Apostilamento não tem trava de saldo** e nunca altera quantidade.
 8. **Contrato derivado de homologação ou ata controla saldo por item.** O modo "Valor global"
    fica indisponível nesses casos.
@@ -75,6 +78,17 @@ teto que aquele fornecedor recebeu na homologação.
 
 A ata tem fornecedor próprio (razão social + CNPJ), visível no cabeçalho e na listagem. O
 formulário de criação impede criar uma segunda ata para o mesmo fornecedor na mesma licitação.
+Escolhida a licitação, o **detentor** só pode ser um dos fornecedores da homologação revisada
+dela (quem já tem ata aparece indisponível); o backend recusa ata sem esse vínculo quando a
+licitação tem homologação.
+
+**Número da ARP**: o campo mostra o último da sequência (maior ano, depois maior número) e
+recusa um número já usado — "12/2026", "012/2026" e "ARP 012/2026" são o mesmo número. A
+mesma regra vale para o número do contrato.
+
+**Editar e excluir**: número, vigência inicial e situação são editáveis; licitação e detentor
+não (os itens e o teto vêm deles), e a vigência final muda por prorrogação. Excluir é só do
+Administrador e só de ata da qual nenhum contrato abate — com contrato, arquiva-se.
 
 Saldo pode ser remanejado entre órgãos, desde que a soma continue respeitando o teto.
 
@@ -91,6 +105,15 @@ aquele fornecedor**, quando não há. O contrato registra explicitamente qual da
 é a sua — nunca por coincidência de número de licitação.
 
 Um fornecedor pode ter vários contratos da mesma origem, enquanto houver saldo.
+
+No formulário de criação a escolha segue a cascata: **licitação → ARP** (só as ARPs dessa
+licitação, ou "Sem ARP — direto da homologação") **→ fornecedor** (o da ARP escolhida; sem ARP,
+os homologados que não têm ata) **→ órgão da ata**.
+
+**Editar e excluir**: número, processo, objeto, faturamento, vigência e situação são editáveis;
+licitação, fornecedor e origem não. Depois da primeira ordem ou do primeiro aditivo, a
+vigência final só muda por aditivo de prazo. Excluir é só do Administrador e só de contrato
+sem nenhuma ordem (nem cancelada) — com ordens, arquiva-se.
 
 **Objeto**: texto próprio do contrato, que normalmente diverge do objeto da licitação e do da
 ata mesmo quando os itens são os mesmos. No formulário de criação, o campo vem
@@ -109,8 +132,9 @@ Tipos: acréscimo até 25%, supressão até 25%, acréscimo até 50%, prorrogaç
 reequilíbrio econômico-financeiro.
 
 Regra própria deste projeto (não é da lei): a quantidade do aditivo entra **fora** do teto da
-homologação, e o aditivo só pode ser criado quando os três saldos — contrato, ata e
-homologação — estão zerados.
+homologação, e o aditivo que acrescenta valor ou quantidade só pode ser criado quando os três
+saldos — contrato, ata e homologação — estão zerados (prorrogação e supressão ficam de fora;
+ver invariante 6).
 
 ### 5.2 Apostilamentos
 
@@ -168,9 +192,13 @@ Nome, Cargo e Portaria.
   antes de qualquer operação. Quatro tipos obrigatórios: **ARP, Contrato, Aditivo e
   Apostilamento**. Arquivo .docx com **marcadores de texto** no corpo (`{{numero_contrato}}`,
   `{{fornecedor_razao_social}}`, etc.); a tela de upload lista os marcadores disponíveis para
-  cada tipo. Faltando o modelo de um tipo, o botão de gerar documento daquele tipo fica
-  desabilitado, com a razão dita na tela. Indicador de prontidão no topo ("4 de 4 modelos
-  carregados").
+  cada tipo. **Cada tipo aceita vários modelos** (ex.: um contrato para pregão, outro para
+  dispensa), cada um com nome e, opcionalmente, as **modalidades de licitação** a que se aplica.
+  Ao gerar, o sistema **sugere** o modelo da modalidade da licitação de origem (sem modelo
+  daquela modalidade, um sem modalidade marcada; sem esse, o mais antigo), mostra qual será
+  usado e deixa escolher outro. Faltando qualquer modelo de um tipo, o botão de gerar documento
+  daquele tipo fica desabilitado, com a razão dita na tela. Indicador de prontidão no topo
+  ("4 de 4 tipos com modelo" — basta um por tipo).
 - **Modelo de dotação orçamentária** — colunas configuráveis por tenant: rótulo editável,
   ordem por arraste, e por coluna os toggles *Múltiplos* e *Obrigatório*. Padrão:
   Gestão/Unidade, Fonte de Recursos, Programa de Trabalho, Elemento de despesa. Mais um toggle

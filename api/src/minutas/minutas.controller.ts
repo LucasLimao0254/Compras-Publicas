@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Param, Post, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { PermissionsGuard } from '../common/permissions.guard';
@@ -28,10 +28,43 @@ export class MinutasController {
   @RequirePermission('compras.configuracoes')
   @Post('modelos/:tipo')
   @UseInterceptors(FileInterceptor('arquivo', { limits: { fileSize: 15 * 1024 * 1024 } }))
-  async enviarModelo(@CurrentUser() u: AuthUser, @Param('tipo') tipo: string, @UploadedFile() file: Express.Multer.File) {
+  async enviarModelo(
+    @CurrentUser() u: AuthUser,
+    @Param('tipo') tipo: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { nome?: string; modalidades?: string; substituirId?: string },
+  ) {
     if (!file) throw new BadRequestException('Nenhum arquivo enviado');
-    await this.service.enviarModelo(u.tenantId, u.userId, u.tipoUsuario, tipo, { originalname: file.originalname, buffer: file.buffer });
+    // multipart: modalidades chega como texto JSON (["PREGAO_ELETRONICO", ...])
+    let modalidades: unknown;
+    if (body?.modalidades) {
+      try { modalidades = JSON.parse(body.modalidades); } catch { throw new BadRequestException('Modalidades em formato inválido'); }
+    }
+    await this.service.enviarModelo(u.tenantId, u.userId, u.tipoUsuario, tipo, { originalname: file.originalname, buffer: file.buffer }, {
+      nome: body?.nome, modalidades, substituirId: body?.substituirId || undefined,
+    });
     return this.service.listarModelos(u.tenantId);
+  }
+
+  @RequirePermission('compras.configuracoes')
+  @Patch('modelos/item/:id')
+  async atualizarModelo(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: { nome?: string; modalidades?: string[] }) {
+    await this.service.atualizarModelo(u.tenantId, u.tipoUsuario, id, { nome: body?.nome, modalidades: body?.modalidades });
+    return this.service.listarModelos(u.tenantId);
+  }
+
+  @RequirePermission('compras.configuracoes')
+  @Delete('modelos/item/:id')
+  async removerModelo(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    await this.service.removerModelo(u.tenantId, u.tipoUsuario, id);
+    return this.service.listarModelos(u.tenantId);
+  }
+
+  // Modelos disponíveis para gerar o documento desta entidade, com o
+  // sugerido pela modalidade da licitação — mesma regra de acesso de gerar().
+  @Get(':tipo/:entidadeId/modelos')
+  modelosParaEntidade(@CurrentUser() u: AuthUser, @Param('tipo') tipo: string, @Param('entidadeId') entidadeId: string) {
+    return this.service.modelosParaEntidade(u.tenantId, tipo, entidadeId);
   }
 
   // Sem @RequirePermission adicional de propósito: quem chega aqui já
@@ -41,8 +74,8 @@ export class MinutasController {
   // aqui é o mesmo que a tela de origem já mostrou. O isolamento que
   // importa (tenant) continua garantido dentro do service.
   @Get(':tipo/:entidadeId')
-  async gerar(@CurrentUser() u: AuthUser, @Param('tipo') tipo: string, @Param('entidadeId') entidadeId: string) {
-    const buffer = await this.service.gerar(u.tenantId, tipo, entidadeId);
+  async gerar(@CurrentUser() u: AuthUser, @Param('tipo') tipo: string, @Param('entidadeId') entidadeId: string, @Query('modeloId') modeloId?: string) {
+    const buffer = await this.service.gerar(u.tenantId, tipo, entidadeId, modeloId || undefined);
     return new StreamableFile(buffer, {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       disposition: `attachment; filename="minuta-${tipo.toLowerCase()}.docx"`,

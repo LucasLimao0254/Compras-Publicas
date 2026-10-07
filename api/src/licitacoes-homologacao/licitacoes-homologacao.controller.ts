@@ -64,8 +64,8 @@ export class LicitacoesHomologacaoController {
   }
 
   @Get(':id/homologacao-itens')
-  itensParaImportar(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('fornecedorId') fornecedorId: string) {
-    return this.service.itensParaImportar(u.tenantId, id, fornecedorId);
+  itensParaImportar(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('fornecedorId') fornecedorId: string, @Query('ataOrgaoId') ataOrgaoId?: string) {
+    return this.service.itensParaImportar(u.tenantId, id, fornecedorId, ataOrgaoId || undefined);
   }
 
   @Get(':id/homologacao-fornecedores')

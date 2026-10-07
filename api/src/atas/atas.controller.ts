@@ -25,10 +25,15 @@ import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDt
 export class AtasController {
   constructor(private service: AtasService) {}
 
+  // A criação de contrato lista as ARPs da licitação e os órgãos da escolhida:
+  // leitura aberta também à tela de Contratos; escrita segue só em Atas.
+  @RequirePermission(['compras.atas', 'compras.contratos'])
   @Get() list(@CurrentUser() u: AuthUser) { return this.service.list(u.tenantId); }
+  @RequirePermission(['compras.atas', 'compras.contratos'])
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: CreateAtaDto) { return this.service.create(u.tenantId, dto); }
   @Patch(':id') update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: UpdateAtaDto) { return this.service.update(u.tenantId, id, dto); }
+  @Delete(':id') remover(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.remover(u.tenantId, u.tipoUsuario, id); }
 
   @Post(':id/orgaos')
   addOrgao(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: OrgaoAtaInput) {

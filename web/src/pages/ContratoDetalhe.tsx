@@ -3,6 +3,10 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { GerarMinutaButton } from '../components/GerarMinutaButton';
+import { formatarDia } from '../lib/datas';
+import { DescricaoResumida } from '../components/DescricaoResumida';
+import { formatarQuantidade, formatarValor } from '../lib/numeros';
+import { BotaoExcluir, EditarContratoModal } from '../components/EditarExcluir';
 
 type Aba = 'itens' | 'ordens' | 'aditivos' | 'minutas';
 type TipoAditivo = 'VALOR' | 'PRAZO' | 'QUANTIDADE' | 'SUPRESSAO' | 'ACRESCIMO_ESPECIAL';
@@ -32,6 +36,9 @@ const TIPO_APOSTILAMENTO_LABEL: Record<TipoApostilamento, string> = {
 
 interface ModelosMinuta { modelos: { tipo: 'ARP' | 'CONTRATO' | 'ADITIVO' | 'APOSTILAMENTO'; carregado: boolean }[]; prontos: number; total: number; }
 
+const paraCentavos = (valor: number) => Math.round(Number((valor * 100).toPrecision(15)));
+const paraReais2 = (valor: number) => paraCentavos(valor) / 100;
+
 export function ContratoDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -60,6 +67,8 @@ export function ContratoDetalhe() {
   const [valorAnteriorApostilamento, setValorAnteriorApostilamento] = useState('');
   const [valorNovoApostilamento, setValorNovoApostilamento] = useState('');
   const [erroApostilamento, setErroApostilamento] = useState<string | null>(null);
+
+  const [editando, setEditando] = useState(false);
 
   async function carregar() {
     const [c, i, o] = await Promise.all([api.get(`/contratos/${id}`), api.get(`/contratos/${id}/itens`), api.get(`/ordens?contratoId=${id}`)]);
@@ -101,9 +110,15 @@ export function ContratoDetalhe() {
   const utilizado = contrato.valorTotal - contrato.saldoDisponivel;
 
   const percNum = Number(percentual.replace(',', '.')) || 0;
-  const valorAcrescimoPrevisto = Number(contrato.valorOriginal) * percNum / 100;
-  const valorAcrescimoQuantidade = itens.reduce((acc, it) => acc + (Number(quantidadesAditivo[it.id]) || 0) * Number(it.valorUnitario), 0);
-  const valorEfetivoDoAditivo = tipoAditivo === 'QUANTIDADE' ? valorAcrescimoQuantidade : valorAcrescimoPrevisto;
+  // Mesma regra de dinheiro do backend (api/src/common/dinheiro.ts): cada
+  // parcela arredondada para centavos antes de somar — duas casas decimais.
+  const valorAcrescimoPrevisto = paraReais2(Number(contrato.valorOriginal) * percNum / 100);
+  const valorAcrescimoQuantidade = itens.reduce((acc, it) => acc + paraCentavos((Number(quantidadesAditivo[it.id]) || 0) * Number(it.valorUnitario)), 0) / 100;
+  // Supressão em contrato controlado por item informa os itens e quantidades
+  // suprimidas (um percentual sobre o valor não reduziria nada que as ordens
+  // enxergam); só contrato em modo "Valor global" suprime por percentual.
+  const aditivoPorItens = tipoAditivo === 'QUANTIDADE' || (tipoAditivo === 'SUPRESSAO' && contrato.formaControleSaldo !== 'APENAS_VALOR_TOTAL');
+  const valorEfetivoDoAditivo = aditivoPorItens ? valorAcrescimoQuantidade : valorAcrescimoPrevisto;
   const limiteValor = Number(contrato.valorOriginal) * (tipoAditivo === 'ACRESCIMO_ESPECIAL' ? 0.5 : 0.25);
   // Mesma regra acumulada que o servidor valida (AditivosService.somaAcrescimos):
   // VALOR e QUANTIDADE dividem o mesmo teto de 25% — aumentar quantidade no
@@ -124,9 +139,9 @@ export function ContratoDetalhe() {
         tipo: tipoAditivo, numero: numeroAditivo || numeroSugerido, dataAssinatura,
         fundamentoLegal, justificativa,
       };
-      if (tipoAditivo === 'VALOR' || tipoAditivo === 'SUPRESSAO' || tipoAditivo === 'ACRESCIMO_ESPECIAL') body.percentual = percNum;
+      if (!aditivoPorItens && (tipoAditivo === 'VALOR' || tipoAditivo === 'SUPRESSAO' || tipoAditivo === 'ACRESCIMO_ESPECIAL')) body.percentual = percNum;
       if (tipoAditivo === 'PRAZO') body.diasProrrogacao = Number(diasProrrogacao);
-      if (tipoAditivo === 'QUANTIDADE') {
+      if (aditivoPorItens) {
         body.itens = itens
           .filter((it) => Number(quantidadesAditivo[it.id]) > 0)
           .map((it) => ({ itemContratoId: it.id, quantidade: Number(quantidadesAditivo[it.id]) }));
@@ -157,10 +172,15 @@ export function ContratoDetalhe() {
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 12, color: 'color-mix(in srgb, var(--color-text) 48%, transparent)' }}>
             <span><i className="ph ph-storefront" style={{ fontSize: 13, verticalAlign: -2 }} /> {contrato.fornecedor?.razaoSocial}</span>
             <span><i className="ph ph-buildings" style={{ fontSize: 13, verticalAlign: -2 }} /> {contrato.orgaoGerenciador?.titulo}</span>
-            <span><i className="ph ph-calendar-blank" style={{ fontSize: 13, verticalAlign: -2 }} /> até {new Date(contrato.vigenciaFinal).toLocaleDateString('pt-BR')}</span>
+            <span><i className="ph ph-calendar-blank" style={{ fontSize: 13, verticalAlign: -2 }} /> até {formatarDia(contrato.vigenciaFinal)}</span>
           </div>
         </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <button className="btn btn-secondary" onClick={() => setEditando(true)}><i className="ph ph-pencil-simple" />Editar</button>
+          <BotaoExcluir rotulo={`o contrato ${contrato.numero}`} caminho={`/contratos/${contrato.id}`} onExcluido={() => navigate('/contratos')} />
+        </div>
       </div>
+      {editando && <EditarContratoModal contrato={contrato} onFechar={() => setEditando(false)} onSalvo={carregar} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) repeat(2,minmax(0,1fr))', gap: 14, marginBottom: 8 }}>
         <div className="card elev-sm" style={{ gap: 10 }}>
@@ -213,12 +233,12 @@ export function ContratoDetalhe() {
               {itens.map((it) => (
                 <tr key={it.id}>
                   <td className="num text-muted">{it.numero}</td>
-                  <td>{it.descricao}</td>
+                  <td style={{ minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
                   <td style={{ fontSize: 12.5, color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>{it.unidade}</td>
-                  <td className="num" style={{ textAlign: 'right' }}>{it.quantidade}</td>
-                  <td className="num" style={{ textAlign: 'right' }}>R$ {Number(it.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                  <td className="num text-muted" style={{ textAlign: 'right' }}>{it.quantidadeUtilizada}</td>
-                  <td className="num" style={{ textAlign: 'right', color: 'var(--color-accent-300)' }}>{it.quantidadeDisponivel}</td>
+                  <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidade)}</td>
+                  <td className="num" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatarValor(it.valorUnitario)}</td>
+                  <td className="num text-muted" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeUtilizada)}</td>
+                  <td className="num" style={{ textAlign: 'right', color: 'var(--color-accent-300)' }}>{formatarQuantidade(it.quantidadeDisponivel)}</td>
                 </tr>
               ))}
             </tbody>
@@ -277,7 +297,7 @@ export function ContratoDetalhe() {
                   <input className="input" type="date" value={dataAssinatura} onChange={(e) => setDataAssinatura(e.target.value)} required /></div>
               </div>
 
-              {(tipoAditivo === 'VALOR' || tipoAditivo === 'SUPRESSAO' || tipoAditivo === 'ACRESCIMO_ESPECIAL') && (
+              {!aditivoPorItens && (tipoAditivo === 'VALOR' || tipoAditivo === 'SUPRESSAO' || tipoAditivo === 'ACRESCIMO_ESPECIAL') && (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12 }}>
                     <div className="field"><label>Percentual sobre o valor original</label>
@@ -307,21 +327,22 @@ export function ContratoDetalhe() {
                   <div className="field"><label>Dias de prorrogação</label>
                     <input className="input num" type="number" value={diasProrrogacao} onChange={(e) => setDiasProrrogacao(e.target.value)} required /></div>
                   <div className="field"><label>Vigência final atual</label>
-                    <input className="input" value={new Date(contrato.vigenciaFinal).toLocaleDateString('pt-BR')} disabled /></div>
+                    <input className="input" value={formatarDia(contrato.vigenciaFinal)} disabled /></div>
                 </div>
               )}
 
-              {tipoAditivo === 'QUANTIDADE' && (
+              {aditivoPorItens && (
                 <div>
-                  <div style={{ fontSize: 12, color: 'color-mix(in srgb, var(--color-text) 70%, transparent)', marginBottom: 6 }}>Quantidades a acrescer</div>
+                  <div style={{ fontSize: 12, color: 'color-mix(in srgb, var(--color-text) 70%, transparent)', marginBottom: 6 }}>{tipoAditivo === 'SUPRESSAO' ? 'Quantidades a suprimir (até o disponível — o já consumido em ordens não pode ser suprimido)' : 'Quantidades a acrescer'}</div>
                   <table className="table">
-                    <thead><tr><th>Item</th><th style={{ textAlign: 'right' }}>Contratada</th><th style={{ width: 140 }}>Acréscimo</th></tr></thead>
+                    <thead><tr><th>Item</th><th style={{ textAlign: 'right' }}>Contratada</th>{tipoAditivo === 'SUPRESSAO' && <th style={{ textAlign: 'right' }}>Disponível</th>}<th style={{ width: 140 }}>{tipoAditivo === 'SUPRESSAO' ? 'Supressão' : 'Acréscimo'}</th></tr></thead>
                     <tbody>
                       {itens.map((it) => (
                         <tr key={it.id}>
-                          <td style={{ fontSize: 13 }}>{it.descricao}</td>
-                          <td className="num" style={{ textAlign: 'right' }}>{it.quantidade}</td>
-                          <td><input className="input num" type="number" min={0} placeholder="0"
+                          <td style={{ fontSize: 13, minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
+                          <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidade)}</td>
+                          {tipoAditivo === 'SUPRESSAO' && <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeDisponivel)}</td>}
+                          <td><input className="input num" type="number" min={0} max={tipoAditivo === 'SUPRESSAO' ? it.quantidadeDisponivel : undefined} placeholder="0"
                             value={quantidadesAditivo[it.id] || ''}
                             onChange={(e) => setQuantidadesAditivo({ ...quantidadesAditivo, [it.id]: e.target.value })} /></td>
                         </tr>
@@ -331,7 +352,11 @@ export function ContratoDetalhe() {
                   <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 14px', borderRadius: 8, marginTop: 12, background: excede ? 'color-mix(in srgb, var(--color-critical) 14%, transparent)' : 'color-mix(in srgb, var(--color-text) 5%, transparent)', boxShadow: `inset 0 0 0 1px ${excede ? 'var(--color-critical)' : 'var(--color-divider)'}` }}>
                     <i className={`ph ${excede ? 'ph-warning-circle' : 'ph-check-circle'}`} style={{ fontSize: 16, color: excede ? 'var(--color-critical)' : 'var(--color-accent)' }} />
                     <div style={{ fontSize: 12.5 }}>
-                      {excede
+                      {tipoAditivo === 'SUPRESSAO'
+                        ? (excede
+                          ? `Esta supressão equivale a R$ ${valorAcrescimoQuantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} e excede, somada às supressões anteriores, o limite de 25% do art. 125 da Lei 14.133/2021 (R$ ${limiteValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}). O acumulado ficaria em R$ ${acumuladoComEste.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`
+                          : `Esta supressão equivale a R$ ${valorAcrescimoQuantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Dentro do limite de 25% do art. 125 da Lei 14.133/2021 — restam R$ ${(limiteValor - acumuladoComEste).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} de margem para supressões.`)
+                        : excede
                         ? `Este acréscimo de quantidade equivale a R$ ${valorAcrescimoQuantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} e excede, somado aos demais aditivos de valor/quantidade, o limite de 25% do art. 125 da Lei 14.133/2021 (R$ ${limiteValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}). O acumulado ficaria em R$ ${acumuladoComEste.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`
                         : `Este acréscimo equivale a R$ ${valorAcrescimoQuantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Dentro do limite de 25% do art. 125 da Lei 14.133/2021 — restam R$ ${(limiteValor - acumuladoComEste).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} de margem compartilhada com aditivos de valor.`}
                     </div>
@@ -362,14 +387,16 @@ export function ContratoDetalhe() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
                     <span className="num" style={{ fontFamily: 'var(--font-heading)', fontWeight: 500, fontSize: 14 }}>{a.numero}</span>
                     <span className="tag tag-neutral">{TIPO_LABEL[a.tipo]}</span>
-                    <span className="num text-muted" style={{ fontSize: 11.5 }}>assinado em {new Date(a.dataAssinatura).toLocaleDateString('pt-BR')}</span>
+                    <span className="num text-muted" style={{ fontSize: 11.5 }}>assinado em {formatarDia(a.dataAssinatura)}</span>
                   </div>
                   <div style={{ fontSize: 13.5, marginBottom: 4 }}>
                     {a.tipo === 'VALOR' && `Acréscimo de ${a.percentual}% ao valor, +R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                     {a.tipo === 'ACRESCIMO_ESPECIAL' && `Acréscimo especial de ${a.percentual}% ao valor (Art. 65 §1º-B), +R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                    {a.tipo === 'SUPRESSAO' && `Supressão de ${a.percentual}% do valor, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                    {a.tipo === 'PRAZO' && `Vigência prorrogada de ${a.vigenciaFinalAnterior ? new Date(a.vigenciaFinalAnterior).toLocaleDateString('pt-BR') : ''} para ${a.vigenciaFinalNova ? new Date(a.vigenciaFinalNova).toLocaleDateString('pt-BR') : ''}`}
-                    {a.tipo === 'QUANTIDADE' && a.itens.map((it) => `${it.itemContrato.descricao} +${it.quantidadeAcrescida}`).join(', ')}
+                    {a.tipo === 'SUPRESSAO' && (a.itens.length
+                      ? `Supressão de ${a.itens.map((it) => `${it.itemContrato.descricao} ${formatarQuantidade(it.quantidadeAcrescida)}`).join(', ')}, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                      : `Supressão de ${a.percentual}% do valor, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)}
+                    {a.tipo === 'PRAZO' && `Vigência prorrogada de ${a.vigenciaFinalAnterior ? formatarDia(a.vigenciaFinalAnterior) : ''} para ${a.vigenciaFinalNova ? formatarDia(a.vigenciaFinalNova) : ''}`}
+                    {a.tipo === 'QUANTIDADE' && a.itens.map((it) => `${it.itemContrato.descricao} +${formatarQuantidade(it.quantidadeAcrescida)}`).join(', ')}
                   </div>
                   <div className="text-muted" style={{ fontSize: 12 }}>{a.justificativa}</div>
                 </div>
@@ -451,7 +478,7 @@ export function ContratoDetalhe() {
             {modelosMinuta && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, fontSize: 12.5 }}>
                 <i className={`ph-fill ${modelosMinuta.prontos === modelosMinuta.total ? 'ph-check-circle' : 'ph-warning-circle'}`} style={{ fontSize: 15, color: modelosMinuta.prontos === modelosMinuta.total ? 'var(--color-accent)' : 'var(--color-warn)' }} />
-                <span>{modelosMinuta.prontos} de {modelosMinuta.total} modelos carregados —</span>
+                <span>{modelosMinuta.prontos} de {modelosMinuta.total} tipos com modelo —</span>
                 <Link to="/configuracoes" style={{ color: 'var(--color-accent)' }}>gerenciar em Configurações</Link>
               </div>
             )}

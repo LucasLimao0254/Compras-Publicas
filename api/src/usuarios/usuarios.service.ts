@@ -1,9 +1,20 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, eq, ne } from 'drizzle-orm';
 import * as bcrypt from 'bcryptjs';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import { permissoes, usuarios } from '../db/schema';
 import { CreateUsuarioDto, UpdateUsuarioDto } from './dto/usuario.dto';
+import { codigoPostgres } from '../common/postgres-exception.filter';
+import { cpfValido, nomePessoaValido, normalizarCpf } from '../common/documentos';
+
+// Quem está chamando — o módulo inteiro é gated por 'administrativo.usuarios',
+// mas essa permissão pode ser concedida a um usuário PADRAO. Sem checar o
+// tipo de quem chama, esse usuário podia se promover (ou criar outro) a
+// ADMIN, ou redefinir a senha de um ADMIN e assumir a conta dele.
+export interface ChamadorUsuarios {
+  tipoUsuario: 'ADMIN' | 'PADRAO';
+  ehAdminPlataforma: boolean;
+}
 
 @Injectable()
 export class UsuariosService {
@@ -36,14 +47,27 @@ export class UsuariosService {
     }
   }
 
-  async create(tenantId: string, callerEhAdminPlataforma: boolean, dto: CreateUsuarioDto) {
+  // Só um ADMIN do tenant concede ou altera o tipo ADMIN, e só ele mexe
+  // (edita, troca senha, remove) em outro ADMIN.
+  private exigirAdminPara(chamador: ChamadorUsuarios, acao: string) {
+    if (chamador.tipoUsuario !== 'ADMIN') {
+      throw new ForbiddenException(`Somente administradores do tenant podem ${acao}`);
+    }
+  }
+
+  async create(tenantId: string, chamador: ChamadorUsuarios, dto: CreateUsuarioDto) {
+    if (dto.tipoUsuario === 'ADMIN') this.exigirAdminPara(chamador, 'criar um usuário administrador');
+    if (!cpfValido(dto.cpf)) throw new BadRequestException('CPF inválido — informe os 11 dígitos de um CPF válido');
+    if (!nomePessoaValido(dto.nome)) throw new BadRequestException('Nome inválido — use apenas letras, sem números');
+    dto = { ...dto, cpf: normalizarCpf(dto.cpf), nome: dto.nome.trim() };
+
     const existing = await this.db
       .select()
       .from(usuarios)
       .where(and(eq(usuarios.tenantId, tenantId), eq(usuarios.email, dto.email)));
     if (existing.length) throw new ConflictException('Já existe um usuário com este e-mail neste município');
 
-    await this.validarCpfEntreTenants(tenantId, dto.cpf, callerEhAdminPlataforma);
+    await this.validarCpfEntreTenants(tenantId, dto.cpf, chamador.ehAdminPlataforma);
 
     const senhaHash = await bcrypt.hash(dto.senha, 10);
     const [created] = await this.db
@@ -69,11 +93,16 @@ export class UsuariosService {
     return this.get(tenantId, created.id);
   }
 
-  async update(tenantId: string, id: string, dto: UpdateUsuarioDto) {
-    await this.get(tenantId, id); // garante que existe e pertence ao tenant
+  async update(tenantId: string, chamador: ChamadorUsuarios, id: string, dto: UpdateUsuarioDto) {
+    const alvo = await this.get(tenantId, id); // garante que existe e pertence ao tenant
+    if (alvo.tipoUsuario === 'ADMIN') this.exigirAdminPara(chamador, 'alterar um usuário administrador');
+    if (dto.tipoUsuario !== undefined && dto.tipoUsuario !== alvo.tipoUsuario) this.exigirAdminPara(chamador, 'alterar o tipo de um usuário');
 
     const patch: Record<string, unknown> = {};
-    if (dto.nome !== undefined) patch.nome = dto.nome;
+    if (dto.nome !== undefined) {
+      if (!nomePessoaValido(dto.nome)) throw new BadRequestException('Nome inválido — use apenas letras, sem números');
+      patch.nome = dto.nome.trim();
+    }
     if (dto.telefone !== undefined) patch.telefone = dto.telefone;
     if (dto.ativo !== undefined) patch.ativo = dto.ativo;
     if (dto.tipoUsuario !== undefined) patch.tipoUsuario = dto.tipoUsuario;
@@ -95,9 +124,21 @@ export class UsuariosService {
     return this.get(tenantId, id);
   }
 
-  async remove(tenantId: string, id: string) {
-    await this.get(tenantId, id);
-    await this.db.delete(usuarios).where(and(eq(usuarios.id, id), eq(usuarios.tenantId, tenantId)));
+  async remove(tenantId: string, chamador: ChamadorUsuarios, id: string) {
+    const alvo = await this.get(tenantId, id);
+    if (alvo.tipoUsuario === 'ADMIN') this.exigirAdminPara(chamador, 'remover um usuário administrador');
+    try {
+      await this.db.delete(usuarios).where(and(eq(usuarios.id, id), eq(usuarios.tenantId, tenantId)));
+    } catch (err) {
+      // 23503 = violação de chave estrangeira: o usuário é autor de eventos
+      // (histórico de ordens, prorrogações, remanejamentos, apostilamentos…)
+      // que precisam continuar apontando para ele. Apagar quebraria a
+      // auditoria; o caminho é desativar.
+      if (codigoPostgres(err) === '23503') {
+        throw new BadRequestException('Este usuário tem registros no histórico e não pode ser excluído — desative-o em vez disso');
+      }
+      throw err;
+    }
     return { ok: true };
   }
 }

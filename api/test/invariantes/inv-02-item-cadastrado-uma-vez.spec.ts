@@ -38,14 +38,11 @@ describe('Invariante 2 — item cadastrado uma única vez (na homologação)', (
     expect(msg).toMatch(/não pertence ao fornecedor/i);
   });
 
-  // ---- LACUNAS CONHECIDAS (fora do escopo dos itens 2–6 da TAREFA_RECONCILIACAO) ----
-  // O código de hoje aceita descrição/unidade/valor digitados junto do vínculo com
-  // a homologação, e aceita item sem vínculo em ata/contrato que têm origem. Isso
-  // contradiz o invariante 2. Ficam como `it.failing`: passam (como "falha
-  // esperada") enquanto a lacuna existir e VIRAM VERMELHO quando ela for
-  // corrigida — aí é só trocar `it.failing` por `it`.
+  // Estas três eram lacunas conhecidas (`it.failing`) — ata e contrato
+  // aceitavam descrição/unidade/valor digitados e item sem vínculo mesmo com
+  // origem na homologação. Corrigidas; agora são testes normais.
 
-  it.failing('LACUNA: descrição/unidade/valor do item de ata vêm da homologação, não do que o cliente digitar', async () => {
+  it('descrição/unidade/valor do item de ata vêm da homologação, não do que o cliente digitar', async () => {
     const c = await criarCenario(ctx);
     const ata = await criarAta(ctx, c);
     await ctx.atas.addItem(c.tenantId, ata.ataId, ata.orgaoA, {
@@ -61,7 +58,7 @@ describe('Invariante 2 — item cadastrado uma única vez (na homologação)', (
     expect(Number(item.valorUnitario)).toBe(10);
   });
 
-  it.failing('LACUNA: ata vinculada a uma homologação não aceita item sem homologacaoItemId', async () => {
+  it('ata vinculada a uma homologação não aceita item sem homologacaoItemId', async () => {
     const c = await criarCenario(ctx);
     const ata = await criarAta(ctx, c);
     await rejeicao(
@@ -69,7 +66,7 @@ describe('Invariante 2 — item cadastrado uma única vez (na homologação)', (
     );
   });
 
-  it.failing('LACUNA: contrato com origem não aceita item sem homologacaoItemId', async () => {
+  it('contrato com origem não aceita item sem homologacaoItemId', async () => {
     const c = await criarCenario(ctx);
     await rejeicao(
       ctx.contratos.create(c.tenantId, {

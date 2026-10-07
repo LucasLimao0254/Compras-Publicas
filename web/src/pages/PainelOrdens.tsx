@@ -4,6 +4,8 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { HistoricoOrdemModal } from '../components/HistoricoOrdemModal';
 import { ImportarPlanilhaDemandaButton } from '../components/ImportarPlanilhaDemandaButton';
+import { DescricaoResumida } from '../components/DescricaoResumida';
+import { formatarQuantidade, formatarValor } from '../lib/numeros';
 
 type Aba = 'CONTRATOS' | 'BUSCAR' | 'RASCUNHO' | 'EMITIDA' | 'CANCELADA';
 
@@ -36,7 +38,11 @@ export function PainelOrdens() {
   const { usuario } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [ordens, setOrdens] = useState<OrdemRow[]>([]);
-  const [aba, setAba] = useState<Aba>('CONTRATOS');
+  // ?aba=EMITIDA etc. — a Visão geral abre o painel direto na aba do número clicado
+  const [aba, setAba] = useState<Aba>(() => {
+    const a = searchParams.get('aba');
+    return a === 'RASCUNHO' || a === 'EMITIDA' || a === 'CANCELADA' || a === 'BUSCAR' ? a : 'CONTRATOS';
+  });
   const [contratoAberto, setContratoAberto] = useState<string | null>(null);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [fNumero, setFNumero] = useState('');
@@ -433,9 +439,9 @@ export function PainelOrdens() {
                 <tbody>
                   {itens.map((it) => (
                     <tr key={it.id}>
-                      <td style={{ fontSize: 13.5 }}>{it.descricao} <span className="text-muted">({it.unidade})</span></td>
-                      <td className="num" style={{ textAlign: 'right' }}>{it.quantidadeDisponivel}</td>
-                      <td className="num" style={{ textAlign: 'right' }}>R$ {Number(it.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      <td style={{ fontSize: 13.5, minWidth: 0 }}><DescricaoResumida texto={it.descricao} /> <span className="text-muted">({it.unidade})</span></td>
+                      <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeDisponivel)}</td>
+                      <td className="num" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatarValor(it.valorUnitario)}</td>
                       <td><input className="input num" type="number" min={0} max={it.quantidadeDisponivel} style={{ textAlign: 'right' }}
                         disabled={!!editandoOrdemId && !itensOrdemIdPorItem[it.id]}
                         value={quantidades[it.id] || ''} onChange={(e) => setQuantidades({ ...quantidades, [it.id]: e.target.value })} /></td>
