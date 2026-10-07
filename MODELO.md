@@ -78,6 +78,13 @@ teto que aquele fornecedor recebeu na homologação.
 
 A ata tem fornecedor próprio (razão social + CNPJ), visível no cabeçalho e na listagem. O
 formulário de criação impede criar uma segunda ata para o mesmo fornecedor na mesma licitação.
+Escolhida a licitação, o **detentor** só pode ser um dos fornecedores da homologação revisada
+dela (quem já tem ata aparece indisponível); o backend recusa ata sem esse vínculo quando a
+licitação tem homologação.
+
+**Editar e excluir**: número, vigência inicial e situação são editáveis; licitação e detentor
+não (os itens e o teto vêm deles), e a vigência final muda por prorrogação. Excluir é só do
+Administrador e só de ata da qual nenhum contrato abate — com contrato, arquiva-se.
 
 Saldo pode ser remanejado entre órgãos, desde que a soma continue respeitando o teto.
 
@@ -94,6 +101,15 @@ aquele fornecedor**, quando não há. O contrato registra explicitamente qual da
 é a sua — nunca por coincidência de número de licitação.
 
 Um fornecedor pode ter vários contratos da mesma origem, enquanto houver saldo.
+
+No formulário de criação a escolha segue a cascata: **licitação → ARP** (só as ARPs dessa
+licitação, ou "Sem ARP — direto da homologação") **→ fornecedor** (o da ARP escolhida; sem ARP,
+os homologados que não têm ata) **→ órgão da ata**.
+
+**Editar e excluir**: número, processo, objeto, faturamento, vigência e situação são editáveis;
+licitação, fornecedor e origem não. Depois da primeira ordem ou do primeiro aditivo, a
+vigência final só muda por aditivo de prazo. Excluir é só do Administrador e só de contrato
+sem nenhuma ordem (nem cancelada) — com ordens, arquiva-se.
 
 **Objeto**: texto próprio do contrato, que normalmente diverge do objeto da licitação e do da
 ata mesmo quando os itens são os mesmos. No formulário de criação, o campo vem

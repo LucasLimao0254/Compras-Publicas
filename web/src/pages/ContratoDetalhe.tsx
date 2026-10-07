@@ -5,6 +5,8 @@ import { api } from '../lib/api';
 import { GerarMinutaButton } from '../components/GerarMinutaButton';
 import { formatarDia } from '../lib/datas';
 import { DescricaoResumida } from '../components/DescricaoResumida';
+import { formatarQuantidade, formatarValor } from '../lib/numeros';
+import { BotaoExcluir, EditarContratoModal } from '../components/EditarExcluir';
 
 type Aba = 'itens' | 'ordens' | 'aditivos' | 'minutas';
 type TipoAditivo = 'VALOR' | 'PRAZO' | 'QUANTIDADE' | 'SUPRESSAO' | 'ACRESCIMO_ESPECIAL';
@@ -65,6 +67,8 @@ export function ContratoDetalhe() {
   const [valorAnteriorApostilamento, setValorAnteriorApostilamento] = useState('');
   const [valorNovoApostilamento, setValorNovoApostilamento] = useState('');
   const [erroApostilamento, setErroApostilamento] = useState<string | null>(null);
+
+  const [editando, setEditando] = useState(false);
 
   async function carregar() {
     const [c, i, o] = await Promise.all([api.get(`/contratos/${id}`), api.get(`/contratos/${id}/itens`), api.get(`/ordens?contratoId=${id}`)]);
@@ -171,7 +175,12 @@ export function ContratoDetalhe() {
             <span><i className="ph ph-calendar-blank" style={{ fontSize: 13, verticalAlign: -2 }} /> até {formatarDia(contrato.vigenciaFinal)}</span>
           </div>
         </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <button className="btn btn-secondary" onClick={() => setEditando(true)}><i className="ph ph-pencil-simple" />Editar</button>
+          <BotaoExcluir rotulo={`o contrato ${contrato.numero}`} caminho={`/contratos/${contrato.id}`} onExcluido={() => navigate('/contratos')} />
+        </div>
       </div>
+      {editando && <EditarContratoModal contrato={contrato} onFechar={() => setEditando(false)} onSalvo={carregar} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) repeat(2,minmax(0,1fr))', gap: 14, marginBottom: 8 }}>
         <div className="card elev-sm" style={{ gap: 10 }}>
@@ -226,10 +235,10 @@ export function ContratoDetalhe() {
                   <td className="num text-muted">{it.numero}</td>
                   <td style={{ minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
                   <td style={{ fontSize: 12.5, color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>{it.unidade}</td>
-                  <td className="num" style={{ textAlign: 'right' }}>{it.quantidade}</td>
-                  <td className="num" style={{ textAlign: 'right' }}>R$ {Number(it.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                  <td className="num text-muted" style={{ textAlign: 'right' }}>{it.quantidadeUtilizada}</td>
-                  <td className="num" style={{ textAlign: 'right', color: 'var(--color-accent-300)' }}>{it.quantidadeDisponivel}</td>
+                  <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidade)}</td>
+                  <td className="num" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatarValor(it.valorUnitario)}</td>
+                  <td className="num text-muted" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeUtilizada)}</td>
+                  <td className="num" style={{ textAlign: 'right', color: 'var(--color-accent-300)' }}>{formatarQuantidade(it.quantidadeDisponivel)}</td>
                 </tr>
               ))}
             </tbody>
@@ -331,8 +340,8 @@ export function ContratoDetalhe() {
                       {itens.map((it) => (
                         <tr key={it.id}>
                           <td style={{ fontSize: 13, minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
-                          <td className="num" style={{ textAlign: 'right' }}>{it.quantidade}</td>
-                          {tipoAditivo === 'SUPRESSAO' && <td className="num" style={{ textAlign: 'right' }}>{it.quantidadeDisponivel}</td>}
+                          <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidade)}</td>
+                          {tipoAditivo === 'SUPRESSAO' && <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeDisponivel)}</td>}
                           <td><input className="input num" type="number" min={0} max={tipoAditivo === 'SUPRESSAO' ? it.quantidadeDisponivel : undefined} placeholder="0"
                             value={quantidadesAditivo[it.id] || ''}
                             onChange={(e) => setQuantidadesAditivo({ ...quantidadesAditivo, [it.id]: e.target.value })} /></td>
@@ -384,10 +393,10 @@ export function ContratoDetalhe() {
                     {a.tipo === 'VALOR' && `Acréscimo de ${a.percentual}% ao valor, +R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                     {a.tipo === 'ACRESCIMO_ESPECIAL' && `Acréscimo especial de ${a.percentual}% ao valor (Art. 65 §1º-B), +R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                     {a.tipo === 'SUPRESSAO' && (a.itens.length
-                      ? `Supressão de ${a.itens.map((it) => `${it.itemContrato.descricao} ${it.quantidadeAcrescida}`).join(', ')}, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                      ? `Supressão de ${a.itens.map((it) => `${it.itemContrato.descricao} ${formatarQuantidade(it.quantidadeAcrescida)}`).join(', ')}, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                       : `Supressão de ${a.percentual}% do valor, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)}
                     {a.tipo === 'PRAZO' && `Vigência prorrogada de ${a.vigenciaFinalAnterior ? formatarDia(a.vigenciaFinalAnterior) : ''} para ${a.vigenciaFinalNova ? formatarDia(a.vigenciaFinalNova) : ''}`}
-                    {a.tipo === 'QUANTIDADE' && a.itens.map((it) => `${it.itemContrato.descricao} +${it.quantidadeAcrescida}`).join(', ')}
+                    {a.tipo === 'QUANTIDADE' && a.itens.map((it) => `${it.itemContrato.descricao} +${formatarQuantidade(it.quantidadeAcrescida)}`).join(', ')}
                   </div>
                   <div className="text-muted" style={{ fontSize: 12 }}>{a.justificativa}</div>
                 </div>

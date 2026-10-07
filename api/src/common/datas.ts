@@ -40,3 +40,16 @@ export function formatarInstanteBR(data: Date | string | null | undefined): stri
 export function periodoValido(inicio: Date | string, fim: Date | string): boolean {
   return diaDaData(inicio) <= diaDaData(fim);
 }
+
+// Faixa de prazo de um contrato — a mesma classificação nos números da Visão
+// geral e nos filtros da lista de contratos (que a Visão geral abre já
+// filtrada). VENCENDO_30 é um contrato vigente que vence nos próximos 30 dias.
+export type FaixaPrazo = 'ARQUIVADO' | 'VENCIDO' | 'VENCENDO_30' | 'VIGENTE';
+export function faixaPrazo(situacao: string, vigenciaFinal: Date | string, hojeDia = hoje()): FaixaPrazo {
+  if (situacao === 'ARQUIVADO') return 'ARQUIVADO';
+  const vf = diaDaData(vigenciaFinal);
+  if (vf < hojeDia) return 'VENCIDO';
+  const limite = new Date(`${hojeDia}T00:00:00Z`);
+  limite.setUTCDate(limite.getUTCDate() + 30);
+  return vf <= diaDaData(limite) ? 'VENCENDO_30' : 'VIGENTE';
+}

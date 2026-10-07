@@ -64,7 +64,7 @@ describe('Grupo 4', () => {
     expect(resumo.valorTotalContratado).toBe(110);
     expect(resumo.valorUtilizadoTotal).toBe(100);
     expect(resumo.saldoDisponivelTotal).toBe(10);
-    expect(resumo.topFornecedores).toEqual([{ fornecedor: 'Fornecedor Teste Ltda', valor: 110 }]);
+    expect(resumo.topFornecedores).toEqual([{ fornecedorId: c.fornecedorId, fornecedor: 'Fornecedor Teste Ltda', valor: 110 }]);
     expect(resumo.situacaoContratos.arquivados).toBe(1);
   });
 

@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsIn, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 const FORMAS_FATURAMENTO = ['MENSAL','POR_MEDICAO','POR_ETAPA','POR_ENTREGA','SOB_DEMANDA','PARCELA_UNICA','PAGAMENTO_ANTECIPADO'];
@@ -46,7 +46,10 @@ export class CreateContratoDto {
 }
 
 export class UpdateContratoDto {
+  @IsOptional() @IsString() @IsNotEmpty() numero?: string;
+  @IsOptional() @IsString() @IsNotEmpty() numeroProcesso?: string;
   @IsOptional() @IsString() objeto?: string;
+  @IsOptional() @IsIn(FORMAS_FATURAMENTO) formaFaturamento?: string;
   @IsOptional() @IsDateString() vigenciaInicial?: string;
   @IsOptional() @IsDateString() vigenciaFinal?: string;
   @IsOptional() @IsIn(SITUACOES) situacao?: string;

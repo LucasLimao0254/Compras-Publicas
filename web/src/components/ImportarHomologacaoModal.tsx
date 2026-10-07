@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { DescricaoResumida } from './DescricaoResumida';
+import { formatarQuantidade, formatarValor } from '../lib/numeros';
 
 interface FornecedorOpcao { id: string; razaoSocial: string; cnpjCpf: string; }
 // `quantidade` = o que ainda está disponível para importar (saldo da
@@ -110,13 +111,13 @@ export function ImportarHomologacaoModal({
                     <td style={{ minWidth: 0 }}><DescricaoResumida texto={it.descricao} /></td>
                     <td style={{ fontSize: 12.5 }}>{it.unidade}</td>
                     <td className="num" style={{ textAlign: 'right' }}>
-                      {it.quantidade}
+                      {formatarQuantidade(it.quantidade)}
                       {it.quantidadeHomologada != null && it.quantidadeHomologada !== it.quantidade && (
-                        <div className="text-muted" style={{ fontSize: 11 }}>de {it.quantidadeHomologada} homologados</div>
+                        <div className="text-muted" style={{ fontSize: 11 }}>de {formatarQuantidade(it.quantidadeHomologada)} homologados</div>
                       )}
                       {it.quantidade <= 0 && <div style={{ fontSize: 11, color: 'var(--color-critical)' }}>sem saldo</div>}
                     </td>
-                    <td className="num" style={{ textAlign: 'right' }}>R$ {it.valorUnitario.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
+                    <td className="num" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatarValor(it.valorUnitario)}</td>
                   </tr>
                 ))}
               </tbody>

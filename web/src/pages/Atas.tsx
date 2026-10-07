@@ -2,6 +2,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { BotaoExcluir, EditarAtaModal } from '../components/EditarExcluir';
 
 const TIPOS_ATA = ['ATAS', 'CREDENCIAMENTO'];
 const PERFIS = ['GERENCIADOR', 'PARTICIPANTE'];
@@ -11,7 +12,8 @@ interface OrgaoForm { secretariaId: string; perfil: string; }
 interface FornecedorHomologado { id: string; homologacaoFornecedorId: string; }
 
 interface AtaResumo {
-  id: string; numeroArp: string; tipo: string; situacao: string;
+  vigenciaInicial: string; vigenciaFinal: string;
+  id: string; licitacaoId: string; detentorPrincipalId: string; numeroArp: string; tipo: string; situacao: string;
   quantidadeOrgaos: number; valorTotal: number; saldoDisponivel: number;
   detentorPrincipal: { razaoSocial: string };
   licitacao: { numero: string };
@@ -23,6 +25,7 @@ export function Atas() {
   const [fornecedores, setFornecedores] = useState<Opcao[]>([]);
   const [secretarias, setSecretarias] = useState<Opcao[]>([]);
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [ataEditando, setAtaEditando] = useState<AtaResumo | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const [tipo, setTipo] = useState(TIPOS_ATA[0]);
@@ -33,7 +36,7 @@ export function Atas() {
   const [vigenciaFinal, setVigenciaFinal] = useState('');
   const [orgaos, setOrgaos] = useState<OrgaoForm[]>([{ secretariaId: '', perfil: 'GERENCIADOR' }]);
   const [atasComLotes, setAtasComLotes] = useState(false);
-  const [fornecedoresHomologados, setFornecedoresHomologados] = useState<FornecedorHomologado[]>([]);
+  const [fornecedoresHomologados, setFornecedoresHomologados] = useState<FornecedorHomologado[] | null>(null);
 
   // Quando a licitação escolhida tem homologação revisada e o detentor
   // principal está entre os fornecedores homologados, a ata nasce já
@@ -41,11 +44,28 @@ export function Atas() {
   // grade de itens passa a poder ser preenchida por "importar da
   // homologação" na tela de detalhe.
   useEffect(() => {
-    if (!licitacaoId) { setFornecedoresHomologados([]); return; }
+    setDetentorPrincipalId('');
+    if (!licitacaoId) { setFornecedoresHomologados(null); return; }
+    setFornecedoresHomologados(null);
     api.get(`/licitacoes/${licitacaoId}/homologacao-fornecedores`).then(setFornecedoresHomologados).catch(() => setFornecedoresHomologados([]));
   }, [licitacaoId]);
 
-  const homologacaoFornecedorId = fornecedoresHomologados.find((f) => f.id === detentorPrincipalId)?.homologacaoFornecedorId;
+  const homologacaoFornecedorId = fornecedoresHomologados?.find((f) => f.id === detentorPrincipalId)?.homologacaoFornecedorId;
+  // Detentor só entre os vencedores homologados da licitação escolhida; quem
+  // já tem ata nesta licitação aparece desabilitado (uma ata por fornecedor
+  // por licitação — MODELO.md, invariante 4).
+  const detentoresPossiveis = (fornecedoresHomologados ?? []).map((h) => ({
+    id: h.id,
+    label: fornecedores.find((f) => f.id === h.id)?.label ?? h.id,
+    jaTemAta: lista.some((a) => a.licitacaoId === licitacaoId && a.detentorPrincipalId === h.id),
+  }));
+  const avisoDetentor = !licitacaoId
+    ? 'Escolha a licitação primeiro.'
+    : fornecedoresHomologados === null
+      ? 'Carregando os fornecedores homologados…'
+      : !fornecedoresHomologados.length
+        ? 'Esta licitação não tem homologação revisada — envie e revise a homologação em Licitações antes de criar a ata.'
+        : 'Só os fornecedores homologados nesta licitação.';
 
   async function carregar() {
     const [a, l, f, s] = await Promise.all([
@@ -110,11 +130,11 @@ export function Atas() {
                 {licitacoes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select></div>
             <div className="field"><label>Detentor principal</label>
-              <select className="input" value={detentorPrincipalId} onChange={(e) => setDetentorPrincipalId(e.target.value)} required>
+              <select className="input" value={detentorPrincipalId} onChange={(e) => setDetentorPrincipalId(e.target.value)} required disabled={!detentoresPossiveis.length}>
                 <option value="">Selecione</option>
-                {fornecedores.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                {detentoresPossiveis.map((o) => <option key={o.id} value={o.id} disabled={o.jaTemAta}>{o.label}{o.jaTemAta ? ' — já tem ata nesta licitação' : ''}</option>)}
               </select>
-              {homologacaoFornecedorId && <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Vinculada à homologação — o teto por item vem de lá.</p>}</div>
+              <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>{homologacaoFornecedorId ? 'Vinculada à homologação — o teto por item vem de lá.' : avisoDetentor}</p></div>
             <div className="field"><label>Vigência inicial</label>
               <input type="date" className="input" value={vigenciaInicial} onChange={(e) => setVigenciaInicial(e.target.value)} required /></div>
             <div className="field"><label>Vigência final</label>
@@ -160,7 +180,7 @@ export function Atas() {
             <th style={{ width: 130 }}>Licitação</th>
             <th style={{ width: 90 }}>Órgãos</th>
             <th style={{ width: 220 }}>Saldo</th>
-            <th style={{ width: 40 }}></th>
+            <th style={{ width: 120 }}></th>
           </tr>
         </thead>
         <tbody>
@@ -180,7 +200,11 @@ export function Atas() {
                 </div>
                 <div className="saldo-bar"><span style={{ width: `${Math.max(2, Math.round((a.valorTotal ? a.saldoDisponivel / a.valorTotal : 0) * 100))}%` }} /></div>
               </td>
-              <td style={{ textAlign: 'right' }}>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 2, verticalAlign: 'middle' }}>
+                  <button type="button" className="icone-acao" title={`Editar ata ${a.numeroArp}`} aria-label={`Editar ata ${a.numeroArp}`} onClick={() => setAtaEditando(a)}><i className="ph ph-pencil-simple" /></button>
+                  <BotaoExcluir compacto rotulo={`a ata ${a.numeroArp}`} caminho={`/atas/${a.id}`} onExcluido={carregar} />
+                </span>
                 <Link to={`/atas/${a.id}`} style={{ display: 'inline-flex', width: 32, height: 32, borderRadius: 8, background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', alignItems: 'center', justifyContent: 'center' }}>
                   <i className="ph ph-arrow-right" style={{ fontSize: 16, color: 'var(--color-accent)' }} />
                 </Link>
@@ -190,6 +214,7 @@ export function Atas() {
           {!lista.length && <tr><td colSpan={6} style={{ padding: '24px 0', textAlign: 'center' }} className="text-muted">Nenhuma ata cadastrada</td></tr>}
         </tbody>
       </table>
+      {ataEditando && <EditarAtaModal ata={ataEditando} onFechar={() => setAtaEditando(null)} onSalvo={carregar} />}
     </div>
   );
 }

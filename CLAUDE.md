@@ -148,7 +148,10 @@ per-order rounding can legitimately leave ±R$ 0,01.
 midnight: compare and format them by day with `src/common/datas.ts` (`vencida`,
 `formatarDiaBR`; `web/src/lib/datas.ts` on the frontend). A contract is still valid on its
 last day. `new Date(vigenciaFinal) < new Date()` and a plain `toLocaleDateString()` are
-both one day off in Brasília time.
+both one day off in Brasília time. A contract's deadline bucket (`VIGENTE`/`VENCENDO_30`/
+`VENCIDO`/`ARQUIVADO`) is `faixaPrazo` in the same file — the dashboard counts and the
+contract list filters (`/contratos?situacao=`, which the dashboard links to) both use it, so a
+clicked number always matches the filtered list.
 
 **Aditivos vs. teto**: quantity added by a `QUANTIDADE` aditivo is outside the
 ata/homologação ceiling (MODELO.md invariant 6) — ceiling consumption uses

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
@@ -142,6 +142,15 @@ export class AtasService {
     const [detentor] = await this.db.select({ id: fornecedores.id }).from(fornecedores).where(and(eq(fornecedores.id, dto.detentorPrincipalId), eq(fornecedores.tenantId, tenantId)));
     if (!detentor) throw new BadRequestException('Detentor principal não encontrado para este tenant');
 
+    // Licitação com homologação revisada: o detentor precisa ser um dos
+    // vencedores homologados, e a ata nasce vinculada a ele (MODELO.md,
+    // invariantes 2 e 4) — antes dava para escolher qualquer fornecedor.
+    if (!dto.homologacaoFornecedorId) {
+      const [revisada] = await this.db.select({ id: licitacaoHomologacoes.id }).from(licitacaoHomologacoes)
+        .where(and(eq(licitacaoHomologacoes.tenantId, tenantId), eq(licitacaoHomologacoes.licitacaoId, dto.licitacaoId), eq(licitacaoHomologacoes.status, 'revisado')));
+      if (revisada) throw new BadRequestException('Esta licitação tem homologação — o detentor principal precisa ser um dos fornecedores homologados');
+    }
+
     if (dto.homologacaoFornecedorId) {
       await this.validarHomologacaoFornecedor(tenantId, dto.homologacaoFornecedorId, dto.licitacaoId, dto.detentorPrincipalId);
       const [ataExistente] = await this.db.select({ id: atas.id }).from(atas).where(eq(atas.homologacaoFornecedorId, dto.homologacaoFornecedorId));
@@ -206,14 +215,34 @@ export class AtasService {
     if (dto.vigenciaInicial !== undefined && !periodoValido(dto.vigenciaInicial, ata.vigenciaFinal)) {
       throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
     }
+    if (dto.numeroArp !== undefined && dto.numeroArp !== ata.numeroArp) {
+      const [dup] = await this.db.select({ id: atas.id }).from(atas).where(and(eq(atas.tenantId, tenantId), eq(atas.numeroArp, dto.numeroArp)));
+      if (dup) throw new ConflictException('Já existe uma ata com este número ARP');
+    }
     const patch: Record<string, unknown> = {};
-    if (dto.numeroArp !== undefined) patch.numeroArp = dto.numeroArp;
+    if (dto.numeroArp !== undefined) patch.numeroArp = dto.numeroArp.trim();
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);
     if (dto.situacao !== undefined) patch.situacao = dto.situacao as any;
     if (Object.keys(patch).length) {
       await this.db.update(atas).set(patch).where(and(eq(atas.id, id), eq(atas.tenantId, tenantId)));
     }
     return this.get(tenantId, id);
+  }
+
+  // Exclusão só pelo Administrador e só de ata da qual nenhum contrato abate.
+  // Órgãos, itens, lotes, prorrogações e remanejamentos vão junto (ON DELETE
+  // CASCADE); o teto da homologação volta a ficar livre para uma nova ata.
+  async remover(tenantId: string, tipoUsuario: string, id: string) {
+    if (tipoUsuario !== 'ADMIN') throw new ForbiddenException('Somente o Administrador do tenant exclui atas');
+    await this.get(tenantId, id);
+    const vinculados = await this.db.select({ numero: contratos.numero }).from(contratos)
+      .innerJoin(ataOrgaos, eq(contratos.ataOrgaoId, ataOrgaos.id))
+      .where(and(eq(contratos.tenantId, tenantId), eq(ataOrgaos.ataId, id)));
+    if (vinculados.length) {
+      throw new BadRequestException(`Esta ata tem contrato vinculado (${vinculados.map((c) => c.numero).join(', ')}) — não pode ser excluída. Para tirá-la de uso, mude a situação para Arquivada`);
+    }
+    await this.db.delete(atas).where(and(eq(atas.id, id), eq(atas.tenantId, tenantId)));
+    return { ok: true };
   }
 
   async addOrgao(tenantId: string, ataId: string, dto: OrgaoAtaInput) {

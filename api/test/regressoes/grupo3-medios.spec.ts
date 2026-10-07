@@ -3,6 +3,7 @@ import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as schema from '../../src/db/schema';
+import { eq } from 'drizzle-orm';
 import { diaDaData, formatarDiaBR, hoje, vencida } from '../../src/common/datas';
 import { codigoPostgres } from '../../src/common/postgres-exception.filter';
 import { MinutasService, substituirMarcadores } from '../../src/minutas/minutas.service';
@@ -38,7 +39,8 @@ describe('Grupo 3', () => {
       const ordem: any = await ctx.ordens.create(c.tenantId, c.usuarioId, { contratoId: contrato.id, itens: [{ itemContratoId: contrato.itens[0].id, quantidade: 1 }] } as any);
       expect(ordem.status).toBe('EMITIDA');
 
-      await ctx.contratos.update(c.tenantId, contrato.id, { vigenciaFinal: diaRelativo(-1) });
+      // o dia seguinte: com ordem emitida, a vigência só muda por aditivo — aqui direto no banco
+      await ctx.db.update(schema.contratos).set({ vigenciaFinal: new Date(`${diaRelativo(-1)}T00:00:00Z`) }).where(eq(schema.contratos.id, contrato.id));
       expect(await rejeicao(ctx.ordens.create(c.tenantId, c.usuarioId, { contratoId: contrato.id, itens: [{ itemContratoId: contrato.itens[0].id, quantidade: 1 }] } as any))).toMatch(/vencido/);
     });
   });

@@ -134,6 +134,8 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | D2 | Abrir um órgão | Só aparece **"importar da homologação"**; não há "adicionar item" nem "Importar" planilha, porque a ata é vinculada à homologação |
 | D3 | Editar um item | Descrição, unidade e valor ficam travados; só a quantidade muda |
 | D4 | Remanejar 50 detergentes de Saúde para Educação | Saldos dos órgãos atualizados; o histórico do item mostra o remanejamento |
+| D5 | **Nova ata**: antes e depois de escolher a licitação 002/2026, abrir o campo **Detentor principal** | Antes: desabilitado, *"Escolha a licitação primeiro"*. Depois: só **Limpa Tudo** (indisponível, *"já tem ata nesta licitação"*) e **Protege EPI** |
+| D6 | Na lista de atas, **editar** a ARP 001/2026 (ícone de lápis) e depois **excluir** (lixeira); repetir pela tela da ata (botões Editar/Excluir) | A edição salva. A exclusão é recusada: *"Esta ata tem contrato vinculado (002/2026)…"*. Valores unitários dos itens aparecem **sem "R$"** e as quantidades sem ".000" |
 
 ### E. Contratos e aditivos [2A, 2B, 3]
 
@@ -141,12 +143,13 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 |---|---|---|
 | E1 | Lista de contratos | 002/2026 com saldo R$ 1.296,05 de R$ 1.593,68; 003/2026 com R$ 0,00 de R$ 3.750,00 |
 | E2 | Detalhe do **004/2026** | "até" com a **data de hoje** (não a de ontem) [3] |
-| E3 | Novo contrato: escolher a licitação 002/2026, a Limpa Tudo e o órgão Saúde, e importar da homologação | Processo e objeto vêm preenchidos da licitação; o fornecedor só lista os homologados; a importação pede o órgão antes e mostra o **disponível no órgão** (detergente 300, sabão 200); descrições longas aparecem resumidas, com "ver mais"; sem "adicionar item" nem linhas vazias |
+| E3 | Novo contrato: escolher a licitação 002/2026, a **ARP 001/2026** e o órgão Saúde, e importar da homologação | Processo e objeto vêm preenchidos da licitação; o campo **ARP** só lista as ARPs da licitação (mais "Sem ARP — direto da homologação"); escolhida a ARP, o fornecedor é **só a Limpa Tudo**; "Sem ARP" lista só a Protege EPI; a importação pede o órgão antes e mostra o **disponível no órgão** (detergente 300, sabão 200); descrições longas aparecem resumidas, com "ver mais"; sem "adicionar item" nem linhas vazias |
 | E4 | **003/2026**, aba Aditivos: aditivo de **Quantidade** +30 luvas | Aceito (R$ 375,00). No item da homologação, o saldo **não fica negativo** |
 | E5 | **002/2026**: aditivo de Quantidade | Recusado: *"Ainda há saldo disponível neste contrato (R$ 1.296,05 — o item … tem 249 disponível)"* |
 | E6 | **002/2026**: aditivo de **Supressão** | O formulário pede **itens e quantidades**, sem percentual. Suprimir 20 sabões dá −R$ 178,00 e o valor total cai para R$ 1.415,68 |
 | E7 | **002/2026**: tentar suprimir mais sabão do que o disponível | Recusado: *"só é possível suprimir até …"* |
 | E8 | **001/2026** (contrato manual, com saldo): aditivo de **Valor**. Depois, aditivo de **Prazo** no mesmo contrato | O de valor é recusado: *"Ainda há saldo disponível neste contrato…"*. O de prazo é aceito |
+| E9 | Na lista de contratos: **editar** o 005/2026 (lápis) e trocar o objeto; **excluir** o 002/2026; depois excluir o 005/2026. Repetir Editar/Excluir na tela do contrato | Edição salva. 002/2026: recusado, *"Este contrato tem 3 ordens — não pode ser excluído…"*. 005/2026 (sem ordens) some da lista. Como `compras@`, a lixeira não aparece (só o admin exclui) |
 
 ### F. Ordens [2C, 3]
 
@@ -173,6 +176,7 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | # | Passos | Resultado esperado |
 |---|---|---|
 | H1 | Como admin, abrir Visão geral | Cartões de situação: o 005/2026 aparece em **Vencidos** e o 004/2026 **não** |
+| H2 | Clicar em cada número da Visão geral: **Vencendo em 30 dias**, **Vencidos**, **Contratos ativos**, **Ordens emitidas**, a legenda da pizza e um nome em **Top fornecedores** | Cada um abre a tela já filtrada: Contratos com o filtro de situação correspondente (a lista tem o mesmo número de linhas do cartão), Painel de ordens na aba Emitido, e a página do fornecedor |
 
 ## Arquivos de exemplo (`.ambiente-teste/arquivos/`)
 

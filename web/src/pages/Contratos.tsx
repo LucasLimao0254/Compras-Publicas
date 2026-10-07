@@ -1,9 +1,11 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { formatarDia } from '../lib/datas';
 import { api } from '../lib/api';
 import { ImportarHomologacaoModal } from '../components/ImportarHomologacaoModal';
 import { DescricaoResumida } from '../components/DescricaoResumida';
+import { BotaoExcluir, EditarContratoModal } from '../components/EditarExcluir';
 
 const FORMAS_FATURAMENTO = ['MENSAL','POR_MEDICAO','POR_ETAPA','POR_ENTREGA','SOB_DEMANDA','PARCELA_UNICA','PAGAMENTO_ANTECIPADO'];
 const SITUACAO_TAG: Record<string, string> = { VIGENTE: 'tag tag-accent', MINUTA: 'tag tag-outline', ARQUIVADO: 'tag tag-neutral' };
@@ -13,9 +15,25 @@ interface LicitacaoOpcao extends Opcao { numeroProcesso: string; objeto: string;
 interface ItemForm { descricao: string; unidade: string; quantidade: string; valorUnitario: string; homologacaoItemId?: string; }
 interface FornecedorHomologado { id: string; homologacaoFornecedorId: string; }
 interface OrgaoAta { id: string; secretaria: { titulo: string }; }
+interface AtaDaLicitacao { id: string; numeroArp: string; situacao: string; licitacaoId: string; detentorPrincipalId: string; homologacaoFornecedorId: string | null; detentorPrincipal: { razaoSocial: string }; }
+const SEM_ARP = 'SEM_ARP';
+
+// Filtros por faixa de prazo — a mesma classificação dos números da Visão
+// geral (api/src/common/datas.ts, faixaPrazo), que abre esta lista filtrada.
+type FaixaPrazo = 'ARQUIVADO' | 'VENCIDO' | 'VENCENDO_30' | 'VIGENTE';
+const FILTROS_PRAZO: { valor: string; rotulo: string; faixas: FaixaPrazo[] }[] = [
+  { valor: '', rotulo: 'Todas as situações', faixas: ['VIGENTE', 'VENCENDO_30', 'VENCIDO', 'ARQUIVADO'] },
+  { valor: 'ATIVOS', rotulo: 'Ativos (não arquivados)', faixas: ['VIGENTE', 'VENCENDO_30', 'VENCIDO'] },
+  { valor: 'VIGENTES', rotulo: 'Vigentes', faixas: ['VIGENTE', 'VENCENDO_30'] },
+  { valor: 'VENCENDO_30', rotulo: 'Vencendo em 30 dias', faixas: ['VENCENDO_30'] },
+  { valor: 'VENCIDOS', rotulo: 'Vencidos', faixas: ['VENCIDO'] },
+  { valor: 'ARQUIVADOS', rotulo: 'Arquivados', faixas: ['ARQUIVADO'] },
+];
 
 interface ContratoResumo {
   id: string; numero: string; objeto: string; situacao: string;
+  vigenciaFinal: string; faixaPrazo: FaixaPrazo; fornecedorId: string;
+  vigenciaInicial: string; numeroProcesso: string; formaFaturamento: string;
   valorTotal: number; saldoDisponivel: number;
   fornecedor: { razaoSocial: string };
   orgaoGerenciador: { titulo: string };
@@ -23,10 +41,21 @@ interface ContratoResumo {
 
 export function Contratos() {
   const [lista, setLista] = useState<ContratoResumo[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filtroPrazo = FILTROS_PRAZO.find((f) => f.valor === (searchParams.get('situacao') ?? '')) ?? FILTROS_PRAZO[0];
+  const filtroFornecedor = searchParams.get('fornecedorId') ?? '';
+  function mudarFiltro(chave: string, valor: string) {
+    const proximos = new URLSearchParams(searchParams);
+    if (valor) proximos.set(chave, valor); else proximos.delete(chave);
+    setSearchParams(proximos, { replace: true });
+  }
+  const visiveis = lista.filter((c) => filtroPrazo.faixas.includes(c.faixaPrazo) && (!filtroFornecedor || c.fornecedorId === filtroFornecedor));
+  const comFiltro = !!filtroPrazo.valor || !!filtroFornecedor;
   const [licitacoes, setLicitacoes] = useState<LicitacaoOpcao[]>([]);
   const [secretarias, setSecretarias] = useState<Opcao[]>([]);
   const [fornecedores, setFornecedores] = useState<Opcao[]>([]);
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [contratoEditando, setContratoEditando] = useState<ContratoResumo | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const [numero, setNumero] = useState('');
@@ -42,6 +71,8 @@ export function Contratos() {
   const [fornecedoresHomologados, setFornecedoresHomologados] = useState<FornecedorHomologado[]>([]);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [ataDoFornecedor, setAtaDoFornecedor] = useState<{ id: string; orgaos: OrgaoAta[] } | null>(null);
+  const [todasAtas, setTodasAtas] = useState<AtaDaLicitacao[]>([]);
+  const [ataId, setAtaId] = useState('');
   const [ataOrgaoId, setAtaOrgaoId] = useState('');
 
   useEffect(() => {
@@ -51,22 +82,39 @@ export function Contratos() {
 
   const homologacaoFornecedorId = fornecedoresHomologados.find((f) => f.id === fornecedorId)?.homologacaoFornecedorId;
   const temHomologacao = fornecedoresHomologados.length > 0;
-  // Licitação com homologação revisada: só os fornecedores vencedores dela
-  // podem ser contratados por ela. Sem homologação, a lista inteira.
-  const fornecedoresDaLicitacao = temHomologacao ? fornecedores.filter((f) => fornecedoresHomologados.some((h) => h.id === f.id)) : fornecedores;
 
-  // Se o fornecedor já tem uma ata para esta homologação, o contrato precisa
-  // abater dela (ataOrgaoId), não direto do teto homologado — o backend
-  // rejeita o caminho direto quando existe ata. Sem ata, abate direto.
+  // Licitação → ARP → fornecedor. As ARPs listadas são só as desta licitação;
+  // escolhida uma, o fornecedor é o da ARP e o saldo abate de um órgão dela.
+  // "Sem ARP" contrata direto do teto homologado — só para quem foi
+  // homologado e não tem ata (com ata, o backend exige abater dela) — ou,
+  // em licitação sem homologação, qualquer fornecedor (contrato manual).
+  const atasDaLicitacao = todasAtas.filter((a) => a.licitacaoId === licitacaoId && a.situacao !== 'ARQUIVADO');
+  const ataEscolhida = atasDaLicitacao.find((a) => a.id === ataId) ?? null;
+  const fornecedoresComAta = new Set(todasAtas.filter((a) => a.licitacaoId === licitacaoId).map((a) => a.detentorPrincipalId));
+  const fornecedoresDaLicitacao = ataEscolhida
+    // hoje cada ARP tem um detentor (uma ata por fornecedor, MODELO.md inv. 4);
+    // a lista já comporta mais de um, e aí o usuário escolhe
+    ? fornecedores.filter((f) => f.id === ataEscolhida.detentorPrincipalId)
+    : temHomologacao
+      ? fornecedores.filter((f) => fornecedoresHomologados.some((h) => h.id === f.id) && !fornecedoresComAta.has(f.id))
+      : fornecedores;
+
+  function escolherAta(id: string) {
+    setAtaId(id);
+    setAtaOrgaoId('');
+    setItens((prev) => prev.filter((it) => !it.homologacaoItemId));
+    const ata = atasDaLicitacao.find((a) => a.id === id);
+    setFornecedorId(ata ? ata.detentorPrincipalId : '');
+  }
+
   useEffect(() => {
-    if (!homologacaoFornecedorId) { setAtaDoFornecedor(null); setAtaOrgaoId(''); return; }
-    api.get('/atas').then(async (todas: { id: string; homologacaoFornecedorId?: string }[]) => {
-      const ata = todas.find((a) => a.homologacaoFornecedorId === homologacaoFornecedorId);
-      if (!ata) { setAtaDoFornecedor(null); setAtaOrgaoId(''); return; }
-      const detalhe = await api.get(`/atas/${ata.id}`);
-      setAtaDoFornecedor({ id: ata.id, orgaos: detalhe.orgaos });
-    }).catch(() => { setAtaDoFornecedor(null); setAtaOrgaoId(''); });
-  }, [homologacaoFornecedorId]);
+    if (!ataEscolhida) { setAtaDoFornecedor(null); return; }
+    let ativo = true;
+    api.get(`/atas/${ataEscolhida.id}`)
+      .then((detalhe) => { if (ativo) setAtaDoFornecedor({ id: ataEscolhida.id, orgaos: detalhe.orgaos }); })
+      .catch(() => { if (ativo) setAtaDoFornecedor(null); });
+    return () => { ativo = false; };
+  }, [ataEscolhida?.id]);
 
   // Ao escolher a licitação, o nº do processo e o objeto vêm dela (MODELO.md,
   // seção 5: o objeto é pré-preenchido e editável). Só sobrescreve o que o
@@ -81,6 +129,8 @@ export function Contratos() {
       if (!objeto || objeto === anterior?.objeto) setObjeto(nova.objeto);
     }
     setFornecedorId('');
+    setAtaId('');
+    setAtaOrgaoId('');
     setItens((prev) => prev.filter((it) => !it.homologacaoItemId));
   }
 
@@ -92,9 +142,10 @@ export function Contratos() {
   }
 
   async function carregar() {
-    const [c, l, s, f] = await Promise.all([
-      api.get('/contratos'), api.get('/licitacoes'), api.get('/secretarias'), api.get('/fornecedores'),
+    const [c, l, s, f, a] = await Promise.all([
+      api.get('/contratos'), api.get('/licitacoes'), api.get('/secretarias'), api.get('/fornecedores'), api.get('/atas').catch(() => []),
     ]);
+    setTodasAtas(a);
     setLista(c);
     setLicitacoes(l.map((x: any) => ({ id: x.id, label: `${x.numero} — ${x.modalidade.replaceAll('_',' ')}`, numeroProcesso: x.numeroProcesso ?? '', objeto: x.objeto ?? '' })));
     setSecretarias(s.map((x: any) => ({ id: x.id, label: x.titulo })));
@@ -115,14 +166,14 @@ export function Contratos() {
       await api.post('/contratos', {
         numero, numeroProcesso, objeto, licitacaoId, orgaoGerenciadorId, fornecedorId,
         vigenciaInicial, vigenciaFinal, formaFaturamento, situacao: 'VIGENTE',
-        ataOrgaoId: ataDoFornecedor ? ataOrgaoId : undefined,
-        homologacaoFornecedorId: !ataDoFornecedor ? homologacaoFornecedorId : undefined,
+        ataOrgaoId: ataEscolhida ? ataOrgaoId : undefined,
+        homologacaoFornecedorId: !ataEscolhida ? homologacaoFornecedorId : undefined,
         itens: itens
           .filter((it) => it.descricao)
           .map((it) => ({ descricao: it.descricao, unidade: it.unidade, quantidade: Number(it.quantidade), valorUnitario: Number(it.valorUnitario), homologacaoItemId: it.homologacaoItemId })),
       });
       setMostrarForm(false);
-      setNumero(''); setNumeroProcesso(''); setObjeto('');
+      setNumero(''); setNumeroProcesso(''); setObjeto(''); setAtaId(''); setAtaOrgaoId(''); setFornecedorId('');
       setItens([{ descricao: '', unidade: '', quantidade: '', valorUnitario: '' }]);
       carregar();
     } catch (err) {
@@ -136,7 +187,7 @@ export function Contratos() {
         <div>
           <div className="eyebrow">Compras</div>
           <h2 className="page-title">Contratos</h2>
-          <p className="text-muted" style={{ fontSize: 13.5, margin: '8px 0 0' }}>{lista.length} {lista.length === 1 ? 'registro' : 'registros'} · saldo recalculado a cada leitura</p>
+          <p className="text-muted" style={{ fontSize: 13.5, margin: '8px 0 0' }}>{comFiltro ? `${visiveis.length} de ${lista.length}` : lista.length} {lista.length === 1 ? 'registro' : 'registros'} · saldo recalculado a cada leitura</p>
         </div>
         <button className="btn btn-primary" onClick={() => setMostrarForm((v) => !v)}>
           <i className={`ph ${mostrarForm ? 'ph-x' : 'ph-plus'}`} />{mostrarForm ? 'Cancelar' : 'Novo contrato'}
@@ -160,16 +211,24 @@ export function Contratos() {
                 <option value="">Selecione</option>
                 {secretarias.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select></div>
-            <div className="field"><label>Fornecedor</label>
-              <select className="input" value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)} required>
-                <option value="">Selecione</option>
+            <div className="field"><label htmlFor="contrato-arp">ARP</label>
+              <select id="contrato-arp" className="input" value={ataId} onChange={(e) => escolherAta(e.target.value)} required disabled={!licitacaoId}>
+                <option value="">{licitacaoId ? 'Selecione' : 'Escolha a licitação primeiro'}</option>
+                {atasDaLicitacao.map((a) => <option key={a.id} value={a.id}>{a.numeroArp} — {a.detentorPrincipal?.razaoSocial}</option>)}
+                {licitacaoId && <option value={SEM_ARP}>{temHomologacao ? 'Sem ARP — direto da homologação' : 'Sem ARP'}</option>}
+              </select>
+              {licitacaoId && !atasDaLicitacao.length && <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Nenhuma ARP registrada nesta licitação.</p>}</div>
+            <div className="field"><label htmlFor="contrato-fornecedor">Fornecedor</label>
+              <select id="contrato-fornecedor" className="input" value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)} required disabled={!ataId}>
+                <option value="">{ataId ? 'Selecione' : 'Escolha a ARP primeiro'}</option>
                 {fornecedoresDaLicitacao.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
-              {temHomologacao && <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Só os fornecedores homologados nesta licitação.</p>}
-              {homologacaoFornecedorId && !ataDoFornecedor && <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Vai abater direto do teto homologado deste fornecedor.</p>}</div>
+              {ataEscolhida && <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Fornecedor registrado na ARP {ataEscolhida.numeroArp}.</p>}
+              {ataId === SEM_ARP && temHomologacao && <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Homologados sem ARP nesta licitação — abate direto do teto homologado.</p>}
+              {ataId === SEM_ARP && temHomologacao && !fornecedoresDaLicitacao.length && <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Todos os homologados já têm ARP — escolha a ARP acima.</p>}</div>
             {ataDoFornecedor && (
               <div className="field"><label>Órgão da ata (de onde abate saldo)</label>
-                <select className="input" value={ataOrgaoId} onChange={(e) => setAtaOrgaoId(e.target.value)} required>
+                <select className="input" aria-label="Órgão da ata" value={ataOrgaoId} onChange={(e) => setAtaOrgaoId(e.target.value)} required>
                   <option value="">Selecione</option>
                   {ataDoFornecedor.orgaos.map((o) => <option key={o.id} value={o.id}>{o.secretaria.titulo}</option>)}
                 </select></div>
@@ -237,6 +296,19 @@ export function Contratos() {
         </form>
       )}
 
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div className="field" style={{ minWidth: 220 }}><label htmlFor="filtro-situacao">Situação</label>
+          <select id="filtro-situacao" className="input" value={filtroPrazo.valor} onChange={(e) => mudarFiltro('situacao', e.target.value)}>
+            {FILTROS_PRAZO.map((f) => <option key={f.valor} value={f.valor}>{f.rotulo}</option>)}
+          </select></div>
+        <div className="field" style={{ minWidth: 260, flex: '0 1 360px' }}><label htmlFor="filtro-fornecedor">Fornecedor</label>
+          <select id="filtro-fornecedor" className="input" value={filtroFornecedor} onChange={(e) => mudarFiltro('fornecedorId', e.target.value)}>
+            <option value="">Todos os fornecedores</option>
+            {fornecedores.filter((f) => f.id === filtroFornecedor || lista.some((c) => c.fornecedorId === f.id)).map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </select></div>
+        {comFiltro && <button className="btn btn-ghost" type="button" onClick={() => setSearchParams({}, { replace: true })}><i className="ph ph-x" />Limpar filtros</button>}
+      </div>
+
       <table className="table">
         <thead>
           <tr>
@@ -245,11 +317,11 @@ export function Contratos() {
             <th style={{ width: 150 }}>Órgão</th>
             <th style={{ width: 220 }}>Saldo</th>
             <th style={{ width: 112 }}>Situação</th>
-            <th style={{ width: 40 }}></th>
+            <th style={{ width: 120 }}></th>
           </tr>
         </thead>
         <tbody>
-          {lista.map((c) => (
+          {visiveis.map((c) => (
             <tr key={c.id} style={{ cursor: 'pointer' }}>
               <td className="num" style={{ fontFamily: 'var(--font-heading)', fontWeight: 500 }}>{c.numero}</td>
               <td>
@@ -264,17 +336,28 @@ export function Contratos() {
                 </div>
                 <div className="saldo-bar"><span style={{ width: `${Math.max(2, Math.round((c.valorTotal ? c.saldoDisponivel / c.valorTotal : 0) * 100))}%` }} /></div>
               </td>
-              <td><span className={SITUACAO_TAG[c.situacao] ?? 'tag tag-neutral'}>{c.situacao}</span></td>
-              <td style={{ textAlign: 'right' }}>
+              <td>
+                <span className={SITUACAO_TAG[c.situacao] ?? 'tag tag-neutral'}>{c.situacao}</span>
+                <div style={{ fontSize: 11, marginTop: 4, color: c.faixaPrazo === 'VENCIDO' ? 'var(--color-critical)' : c.faixaPrazo === 'VENCENDO_30' ? 'var(--color-warn)' : 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>
+                  {c.faixaPrazo === 'VENCIDO' ? 'venceu em' : 'até'} {formatarDia(c.vigenciaFinal)}
+                </div>
+              </td>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 2, verticalAlign: 'middle' }}>
+                  <button type="button" className="icone-acao" title={`Editar contrato ${c.numero}`} aria-label={`Editar contrato ${c.numero}`} onClick={() => setContratoEditando(c)}><i className="ph ph-pencil-simple" /></button>
+                  <BotaoExcluir compacto rotulo={`o contrato ${c.numero}`} caminho={`/contratos/${c.id}`} onExcluido={carregar} />
+                </span>
                 <Link to={`/contratos/${c.id}`} style={{ display: 'inline-flex', width: 32, height: 32, borderRadius: 8, background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', alignItems: 'center', justifyContent: 'center' }}>
                   <i className="ph ph-arrow-right" style={{ fontSize: 16, color: 'var(--color-accent)' }} />
                 </Link>
               </td>
             </tr>
           ))}
-          {!lista.length && <tr><td colSpan={6} style={{ padding: '24px 0', textAlign: 'center' }} className="text-muted">Nenhum contrato cadastrado</td></tr>}
+          {!visiveis.length && <tr><td colSpan={6} style={{ padding: '24px 0', textAlign: 'center' }} className="text-muted">{lista.length ? 'Nenhum contrato com esses filtros' : 'Nenhum contrato cadastrado'}</td></tr>}
         </tbody>
       </table>
+
+      {contratoEditando && <EditarContratoModal contrato={contratoEditando} onFechar={() => setContratoEditando(null)} onSalvo={carregar} />}
 
       {mostrarImportar && (
         <ImportarHomologacaoModal

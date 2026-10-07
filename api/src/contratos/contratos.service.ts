@@ -1,5 +1,5 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import {
   aditivos,
@@ -21,7 +21,7 @@ import {
 } from '../db/schema';
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { centavos, centavosDoTotal, decimal2, reais } from '../common/dinheiro';
-import { periodoValido } from '../common/datas';
+import { diaDaData, faixaPrazo, hoje, periodoValido } from '../common/datas';
 import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/contrato.dto';
 
 // Valor total (itens + aditivos de valor), utilizado e saldo de um contrato.
@@ -85,7 +85,8 @@ export class ContratosService {
       with: { licitacao: true, orgaoGerenciador: true, fornecedor: true },
     });
     const saldos = await calcularSaldosContratos(this.db, rows.map((r) => r.id));
-    return rows.map((r) => ({ ...r, ...saldos.get(r.id)! }));
+    const hojeDia = hoje();
+    return rows.map((r) => ({ ...r, ...saldos.get(r.id)!, faixaPrazo: faixaPrazo(r.situacao, r.vigenciaFinal, hojeDia) }));
   }
 
   async get(tenantId: string, id: string) {
@@ -399,7 +400,24 @@ export class ContratosService {
       throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
     }
 
+    // Depois de uma ordem ou de um aditivo, a vigência final só muda por
+    // aditivo de prazo — que fica registrado (e entra na minuta do aditivo).
+    if (dto.vigenciaFinal !== undefined && diaDaData(dto.vigenciaFinal) !== diaDaData(contrato.vigenciaFinal)) {
+      const [{ n: nOrdens }] = await this.db.select({ n: sql<number>`count(*)::int` }).from(ordens).where(and(eq(ordens.tenantId, tenantId), eq(ordens.contratoId, id), ne(ordens.status, 'CANCELADA')));
+      const [{ n: nAditivos }] = await this.db.select({ n: sql<number>`count(*)::int` }).from(aditivos).where(and(eq(aditivos.tenantId, tenantId), eq(aditivos.contratoId, id)));
+      if (nOrdens || nAditivos) {
+        throw new BadRequestException('Este contrato já tem ordens ou aditivos — para mudar a vigência final, registre um aditivo de prazo');
+      }
+    }
+    if (dto.numero !== undefined && dto.numero !== contrato.numero) {
+      const [dup] = await this.db.select({ id: contratos.id }).from(contratos).where(and(eq(contratos.tenantId, tenantId), eq(contratos.numero, dto.numero)));
+      if (dup) throw new ConflictException('Já existe um contrato com este número');
+    }
+
     const patch: Record<string, unknown> = {};
+    if (dto.numero !== undefined) patch.numero = dto.numero.trim();
+    if (dto.numeroProcesso !== undefined) patch.numeroProcesso = dto.numeroProcesso.trim();
+    if (dto.formaFaturamento !== undefined) patch.formaFaturamento = dto.formaFaturamento as any;
     if (dto.objeto !== undefined) patch.objeto = dto.objeto;
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);
     if (dto.vigenciaFinal !== undefined) patch.vigenciaFinal = new Date(dto.vigenciaFinal);
@@ -409,6 +427,21 @@ export class ContratosService {
       await this.db.update(contratos).set(patch).where(and(eq(contratos.id, id), eq(contratos.tenantId, tenantId)));
     }
     return this.get(tenantId, id);
+  }
+
+  // Exclusão só pelo Administrador e só de contrato sem nenhuma ordem (nem
+  // cancelada: a ordem tem número e histórico próprios). Itens, aditivos,
+  // apostilamentos e dotações vão junto (ON DELETE CASCADE). Contrato com
+  // ordens se arquiva, não se exclui.
+  async remover(tenantId: string, tipoUsuario: string, id: string) {
+    if (tipoUsuario !== 'ADMIN') throw new ForbiddenException('Somente o Administrador do tenant exclui contratos');
+    await this.get(tenantId, id);
+    const [{ n }] = await this.db.select({ n: sql<number>`count(*)::int` }).from(ordens).where(and(eq(ordens.tenantId, tenantId), eq(ordens.contratoId, id)));
+    if (n) {
+      throw new BadRequestException(`Este contrato tem ${n} ${n === 1 ? 'ordem' : 'ordens'} — não pode ser excluído. Para tirá-lo de uso, mude a situação para Arquivado`);
+    }
+    await this.db.delete(contratos).where(and(eq(contratos.id, id), eq(contratos.tenantId, tenantId)));
+    return { ok: true };
   }
 
   async addItem(tenantId: string, contratoId: string, item: ItemContratoInput) {
