@@ -20,6 +20,7 @@ import {
 } from '../db/schema';
 import { paraNumeroPlanilha } from '../common/numero-planilha';
 import { periodoValido } from '../common/datas';
+import { numeroJaUsado } from '../common/numeracao';
 import { quantidadeConsumidaDoTeto, SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { ContratosService } from '../contratos/contratos.service';
 import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
@@ -130,8 +131,7 @@ export class AtasService {
   }
 
   async create(tenantId: string, dto: CreateAtaDto) {
-    const dup = await this.db.select().from(atas).where(and(eq(atas.tenantId, tenantId), eq(atas.numeroArp, dto.numeroArp)));
-    if (dup.length) throw new ConflictException('Já existe uma ata com este número ARP');
+    await this.recusarNumeroUsado(tenantId, dto.numeroArp);
 
     const [licitacao] = await this.db.select({ id: licitacoes.id }).from(licitacoes).where(and(eq(licitacoes.id, dto.licitacaoId), eq(licitacoes.tenantId, tenantId)));
     if (!licitacao) throw new BadRequestException('Licitação não encontrada para este tenant');
@@ -210,14 +210,21 @@ export class AtasService {
     }
   }
 
+  // Número já usado por outra ata do tenant — inclusive escrito de outro jeito
+  // ("12/2026" × "ARP 012/2026"), ver common/numeracao.ts.
+  private async recusarNumeroUsado(tenantId: string, numeroArp: string, excetoId?: string) {
+    const existentes = await this.db.select({ id: atas.id, numero: atas.numeroArp }).from(atas).where(eq(atas.tenantId, tenantId));
+    const usado = numeroJaUsado(existentes, numeroArp, excetoId);
+    if (usado) throw new ConflictException(`O número ${usado} já foi usado por outra ata — escolha um número que ainda não existe`);
+  }
+
   async update(tenantId: string, id: string, dto: UpdateAtaDto) {
     const ata = await this.get(tenantId, id);
     if (dto.vigenciaInicial !== undefined && !periodoValido(dto.vigenciaInicial, ata.vigenciaFinal)) {
       throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
     }
     if (dto.numeroArp !== undefined && dto.numeroArp !== ata.numeroArp) {
-      const [dup] = await this.db.select({ id: atas.id }).from(atas).where(and(eq(atas.tenantId, tenantId), eq(atas.numeroArp, dto.numeroArp)));
-      if (dup) throw new ConflictException('Já existe uma ata com este número ARP');
+      await this.recusarNumeroUsado(tenantId, dto.numeroArp, id);
     }
     const patch: Record<string, unknown> = {};
     if (dto.numeroArp !== undefined) patch.numeroArp = dto.numeroArp.trim();

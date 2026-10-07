@@ -135,6 +135,7 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | D3 | Editar um item | Descrição, unidade e valor ficam travados; só a quantidade muda |
 | D4 | Remanejar 50 detergentes de Saúde para Educação | Saldos dos órgãos atualizados; o histórico do item mostra o remanejamento |
 | D5 | **Nova ata**: antes e depois de escolher a licitação 002/2026, abrir o campo **Detentor principal** | Antes: desabilitado, *"Escolha a licitação primeiro"*. Depois: só **Limpa Tudo** (indisponível, *"já tem ata nesta licitação"*) e **Protege EPI** |
+| D7 | **Nova ata**: olhar o campo **Número ARP** vazio; digitar `001/2026`; depois `099/2026`. Repetir em **Novo contrato** com `2/2026` | Vazio, mostra *"Último usado: ARP 001/2026"* (some ao digitar). `001/2026` é apontado como já usado (*"O número ARP 001/2026 já foi usado por outra ata"*) e **Salvar** fica bloqueado; `099/2026` libera. No contrato, `2/2026` é recusado como o **002/2026** |
 | D6 | Na lista de atas, **editar** a ARP 001/2026 (ícone de lápis) e depois **excluir** (lixeira); repetir pela tela da ata (botões Editar/Excluir) | A edição salva. A exclusão é recusada: *"Esta ata tem contrato vinculado (002/2026)…"*. Valores unitários dos itens aparecem **sem "R$"** e as quantidades sem ".000" |
 
 ### E. Contratos e aditivos [2A, 2B, 3]

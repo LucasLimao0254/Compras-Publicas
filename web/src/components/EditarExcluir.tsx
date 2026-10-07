@@ -2,12 +2,13 @@ import type { FormEvent, ReactNode } from 'react';
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
+import { CampoNumero, numeroRepetido, type NumeroExistente } from './CampoNumero';
 
 const FORMAS_FATURAMENTO = ['MENSAL', 'POR_MEDICAO', 'POR_ETAPA', 'POR_ENTREGA', 'SOB_DEMANDA', 'PARCELA_UNICA', 'PAGAMENTO_ANTECIPADO'];
 const dia = (d: string | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 
-function Dialogo({ titulo, idTitulo, onFechar, onSalvar, salvando, erro, children }: {
-  titulo: string; idTitulo: string; onFechar: () => void; onSalvar: (e: FormEvent) => void; salvando: boolean; erro: string | null; children: ReactNode;
+function Dialogo({ titulo, idTitulo, onFechar, onSalvar, salvando, erro, bloqueado, children }: {
+  titulo: string; idTitulo: string; onFechar: () => void; onSalvar: (e: FormEvent) => void; salvando: boolean; erro: string | null; bloqueado?: boolean; children: ReactNode;
 }) {
   return (
     <div className="dialog-backdrop" onClick={onFechar}>
@@ -17,7 +18,7 @@ function Dialogo({ titulo, idTitulo, onFechar, onSalvar, salvando, erro, childre
         {erro && <p role="alert" style={{ fontSize: 12.5, color: 'var(--color-critical)', margin: 0 }}>{erro}</p>}
         <div className="dialog-actions">
           <button type="button" className="btn btn-ghost" onClick={onFechar}>Cancelar</button>
-          <button type="submit" className="btn btn-primary" disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar alterações'}</button>
+          <button type="submit" className="btn btn-primary" disabled={salvando || bloqueado}>{salvando ? 'Salvando…' : 'Salvar alterações'}</button>
         </div>
       </form>
     </div>
@@ -40,17 +41,17 @@ export interface AtaEditavel { id: string; numeroArp: string; vigenciaInicial: s
 
 // Licitação e detentor ficam fixos (os itens e o teto vêm deles); a vigência
 // final muda por "Prorrogar vigência", na tela da ata, que guarda histórico.
-export function EditarAtaModal({ ata, onFechar, onSalvo }: { ata: AtaEditavel; onFechar: () => void; onSalvo: () => void }) {
+export function EditarAtaModal({ ata, numerosExistentes, onFechar, onSalvo }: { ata: AtaEditavel; numerosExistentes?: NumeroExistente[]; onFechar: () => void; onSalvo: () => void }) {
   const [numeroArp, setNumeroArp] = useState(ata.numeroArp);
   const [vigenciaInicial, setVigenciaInicial] = useState(dia(ata.vigenciaInicial));
   const [situacao, setSituacao] = useState(ata.situacao);
   const { salvando, erro, salvar } = useSalvar(onFechar, onSalvo);
   return (
     <Dialogo titulo={`Editar ata ${ata.numeroArp}`} idTitulo="titulo-editar-ata" onFechar={onFechar} salvando={salvando} erro={erro}
+      bloqueado={!!numeroRepetido(numerosExistentes, numeroArp, ata.id)}
       onSalvar={(e) => { e.preventDefault(); salvar(() => api.patch(`/atas/${ata.id}`, { numeroArp, vigenciaInicial, situacao })); }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
-        <div className="field"><label htmlFor="ed-ata-numero">Número ARP</label>
-          <input id="ed-ata-numero" className="input" value={numeroArp} onChange={(e) => setNumeroArp(e.target.value)} required /></div>
+        <CampoNumero id="ed-ata-numero" rotulo="Número ARP" valor={numeroArp} onChange={setNumeroArp} existentes={numerosExistentes} excetoId={ata.id} entidade="ata" />
         <div className="field"><label htmlFor="ed-ata-situacao">Situação</label>
           <select id="ed-ata-situacao" className="input" value={situacao} onChange={(e) => setSituacao(e.target.value)}>
             <option value="VIGENTE">Vigente</option><option value="ARQUIVADO">Arquivada</option>
@@ -74,7 +75,7 @@ export interface ContratoEditavel {
 // Licitação, fornecedor e origem ficam fixos (os itens vêm deles). A vigência
 // final só muda aqui enquanto não há ordem nem aditivo; depois, por aditivo
 // de prazo — o backend recusa com essa orientação.
-export function EditarContratoModal({ contrato, onFechar, onSalvo }: { contrato: ContratoEditavel; onFechar: () => void; onSalvo: () => void }) {
+export function EditarContratoModal({ contrato, numerosExistentes, onFechar, onSalvo }: { contrato: ContratoEditavel; numerosExistentes?: NumeroExistente[]; onFechar: () => void; onSalvo: () => void }) {
   const [numero, setNumero] = useState(contrato.numero);
   const [numeroProcesso, setNumeroProcesso] = useState(contrato.numeroProcesso);
   const [objeto, setObjeto] = useState(contrato.objeto);
@@ -85,10 +86,10 @@ export function EditarContratoModal({ contrato, onFechar, onSalvo }: { contrato:
   const { salvando, erro, salvar } = useSalvar(onFechar, onSalvo);
   return (
     <Dialogo titulo={`Editar contrato ${contrato.numero}`} idTitulo="titulo-editar-contrato" onFechar={onFechar} salvando={salvando} erro={erro}
+      bloqueado={!!numeroRepetido(numerosExistentes, numero, contrato.id)}
       onSalvar={(e) => { e.preventDefault(); salvar(() => api.patch(`/contratos/${contrato.id}`, { numero, numeroProcesso, objeto, formaFaturamento, vigenciaInicial, vigenciaFinal, situacao })); }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
-        <div className="field"><label htmlFor="ed-ct-numero">Número do contrato/ano</label>
-          <input id="ed-ct-numero" className="input" value={numero} onChange={(e) => setNumero(e.target.value)} required /></div>
+        <CampoNumero id="ed-ct-numero" rotulo="Número do contrato/ano" valor={numero} onChange={setNumero} existentes={numerosExistentes} excetoId={contrato.id} entidade="contrato" />
         <div className="field"><label htmlFor="ed-ct-processo">Número do processo</label>
           <input id="ed-ct-processo" className="input" value={numeroProcesso} onChange={(e) => setNumeroProcesso(e.target.value)} required /></div>
         <div className="field"><label htmlFor="ed-ct-faturamento">Forma de faturamento</label>

@@ -2,6 +2,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { CampoNumero, numeroRepetido } from '../components/CampoNumero';
 import { BotaoExcluir, EditarAtaModal } from '../components/EditarExcluir';
 
 const TIPOS_ATA = ['ATAS', 'CREDENCIAMENTO'];
@@ -26,6 +27,7 @@ export function Atas() {
   const [secretarias, setSecretarias] = useState<Opcao[]>([]);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [ataEditando, setAtaEditando] = useState<AtaResumo | null>(null);
+  const numerosAtas = lista.map((a) => ({ id: a.id, numero: a.numeroArp }));
   const [erro, setErro] = useState<string | null>(null);
 
   const [tipo, setTipo] = useState(TIPOS_ATA[0]);
@@ -122,8 +124,7 @@ export function Atas() {
               <select className="input" value={tipo} onChange={(e) => setTipo(e.target.value)}>
                 {TIPOS_ATA.map((t) => <option key={t} value={t}>{t === 'ATAS' ? 'Ata de Registro de Preços' : 'Credenciamento'}</option>)}
               </select></div>
-            <div className="field"><label>Número ARP</label>
-              <input className="input" value={numeroArp} onChange={(e) => setNumeroArp(e.target.value)} required /></div>
+            <CampoNumero id="nova-ata-numero" rotulo="Número ARP" valor={numeroArp} onChange={setNumeroArp} existentes={numerosAtas} entidade="ata" />
             <div className="field"><label>Licitação</label>
               <select className="input" value={licitacaoId} onChange={(e) => setLicitacaoId(e.target.value)} required>
                 <option value="">Selecione</option>
@@ -165,7 +166,7 @@ export function Atas() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button className="btn btn-primary" type="submit">Salvar ata</button>
+            <button className="btn btn-primary" type="submit" disabled={!!numeroRepetido(numerosAtas, numeroArp)}>Salvar ata</button>
             <button className="btn btn-secondary" type="button" onClick={() => setMostrarForm(false)}>Cancelar</button>
             {erro && <span style={{ fontSize: 12.5, color: 'var(--color-critical)' }}>{erro}</span>}
           </div>
@@ -214,7 +215,7 @@ export function Atas() {
           {!lista.length && <tr><td colSpan={6} style={{ padding: '24px 0', textAlign: 'center' }} className="text-muted">Nenhuma ata cadastrada</td></tr>}
         </tbody>
       </table>
-      {ataEditando && <EditarAtaModal ata={ataEditando} onFechar={() => setAtaEditando(null)} onSalvo={carregar} />}
+      {ataEditando && <EditarAtaModal ata={ataEditando} numerosExistentes={numerosAtas} onFechar={() => setAtaEditando(null)} onSalvo={carregar} />}
     </div>
   );
 }

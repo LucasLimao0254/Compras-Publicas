@@ -46,7 +46,7 @@ describe('Editar e excluir ata', () => {
     const c2 = await criarCenario(ctx);
     const a2 = await criarAta(ctx, c2);
     await ctx.db.update(schema.atas).set({ tenantId: c.tenantId }).where(eq(schema.atas.id, a2.ataId)); // mesmo tenant
-    expect(await rejeicao(ctx.atas.update(c.tenantId, a2.ataId, { numeroArp }))).toMatch(/Já existe uma ata/);
+    expect(await rejeicao(ctx.atas.update(c.tenantId, a2.ataId, { numeroArp }))).toMatch(/já foi usado por outra ata/);
   });
 });
 
@@ -62,7 +62,7 @@ describe('Editar e excluir contrato', () => {
     expect([editado.numero, editado.numeroProcesso, editado.formaFaturamento]).toEqual(['CT 99/2026', 'PA 99', 'POR_ENTREGA']);
 
     const outro = await criarContrato(ctx, c, { origem: 'nenhuma', itens: [] });
-    expect(await rejeicao(ctx.contratos.update(c.tenantId, outro.id, { numero: 'CT 99/2026' }))).toMatch(/Já existe um contrato/);
+    expect(await rejeicao(ctx.contratos.update(c.tenantId, outro.id, { numero: 'CT 99/2026' }))).toMatch(/já foi usado por outro contrato/);
 
     await emitirOrdem(ctx, c, contrato, [{ itemContratoId: contrato.itens[0].id, quantidade: 1 }]);
     expect(await rejeicao(ctx.contratos.update(c.tenantId, contrato.id, { vigenciaFinal: '2099-12-31' }))).toMatch(/aditivo de prazo/);
@@ -84,5 +84,29 @@ describe('Editar e excluir contrato', () => {
     // a quantidade volta ao teto da homologação
     const itens = await ctx.homologacao.itensParaImportar(c.tenantId, c.licitacaoId, c.fornecedorId);
     expect(itens.find((i) => i.homologacaoItemId === c.item1)!.quantidade).toBe(90);
+  });
+});
+
+describe('Numeração de ARP e contrato', () => {
+  let ctx: Ctx;
+  beforeAll(() => { ctx = criarCtx(); });
+  afterAll(() => encerrarCtx(ctx));
+
+  it('o mesmo número escrito de outro jeito conta como usado; o último da sequência é o maior', async () => {
+    const { chaveNumero, ultimoNumero } = await import('../../src/common/numeracao');
+    expect(chaveNumero('ARP 012/2026')).toBe(chaveNumero('12/2026'));
+    expect(chaveNumero('012/2025')).not.toBe(chaveNumero('012/2026'));
+    expect(ultimoNumero(['ARP 009/2026', '010/2025', 'ARP 012/2026', '011/2026'])).toBe('ARP 012/2026');
+
+    const c = await criarCenario(ctx);
+    await criarContrato(ctx, c, { origem: 'nenhuma', itens: [] }).then((ct) => ctx.contratos.update(c.tenantId, ct.id, { numero: '007/2026' }));
+    const outro = await criarContrato(ctx, c, { origem: 'nenhuma', itens: [] });
+    expect(await rejeicao(ctx.contratos.update(c.tenantId, outro.id, { numero: '7/2026' }))).toMatch(/007\/2026 já foi usado/);
+
+    const ata = await criarAta(ctx, c);
+    await ctx.atas.update(c.tenantId, ata.ataId, { numeroArp: 'ARP 003/2026' });
+    expect(await rejeicao(ctx.atas.create(c.tenantId, {
+      numeroArp: '003/2026', licitacaoId: c.licitacaoId, detentorPrincipalId: c.fornecedorId, vigenciaInicial: '2026-01-01', vigenciaFinal: '2026-12-31',
+    } as any))).toMatch(/ARP 003\/2026 já foi usado/);
   });
 });

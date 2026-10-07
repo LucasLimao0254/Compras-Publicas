@@ -22,6 +22,7 @@ import {
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { centavos, centavosDoTotal, decimal2, reais } from '../common/dinheiro';
 import { diaDaData, faixaPrazo, hoje, periodoValido } from '../common/datas';
+import { numeroJaUsado } from '../common/numeracao';
 import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/contrato.dto';
 
 // Valor total (itens + aditivos de valor), utilizado e saldo de um contrato.
@@ -309,8 +310,7 @@ export class ContratosService {
   }
 
   async create(tenantId: string, dto: CreateContratoDto) {
-    const dup = await this.db.select().from(contratos).where(and(eq(contratos.tenantId, tenantId), eq(contratos.numero, dto.numero)));
-    if (dup.length) throw new ConflictException('Já existe um contrato com este número');
+    await this.recusarNumeroUsado(tenantId, dto.numero);
 
     await this.validarFksDoTenant(tenantId, dto);
     this.validarItensEntrada(dto.itens ?? []);
@@ -393,6 +393,14 @@ export class ContratosService {
     return this.get(tenantId, contratoId);
   }
 
+  // Número já usado por outro contrato do tenant — inclusive escrito de outro
+  // jeito ("12/2026" × "012/2026"), ver common/numeracao.ts.
+  private async recusarNumeroUsado(tenantId: string, numero: string, excetoId?: string) {
+    const existentes = await this.db.select({ id: contratos.id, numero: contratos.numero }).from(contratos).where(eq(contratos.tenantId, tenantId));
+    const usado = numeroJaUsado(existentes, numero, excetoId);
+    if (usado) throw new ConflictException(`O número ${usado} já foi usado por outro contrato — escolha um número que ainda não existe`);
+  }
+
   async update(tenantId: string, id: string, dto: UpdateContratoDto) {
     const contrato = await this.get(tenantId, id);
     this.validarFormaControleSaldo(dto.formaControleSaldo, contrato.ataOrgaoId, contrato.homologacaoFornecedorId);
@@ -410,8 +418,7 @@ export class ContratosService {
       }
     }
     if (dto.numero !== undefined && dto.numero !== contrato.numero) {
-      const [dup] = await this.db.select({ id: contratos.id }).from(contratos).where(and(eq(contratos.tenantId, tenantId), eq(contratos.numero, dto.numero)));
-      if (dup) throw new ConflictException('Já existe um contrato com este número');
+      await this.recusarNumeroUsado(tenantId, dto.numero, id);
     }
 
     const patch: Record<string, unknown> = {};

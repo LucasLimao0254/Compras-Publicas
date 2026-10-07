@@ -82,6 +82,10 @@ Escolhida a licitação, o **detentor** só pode ser um dos fornecedores da homo
 dela (quem já tem ata aparece indisponível); o backend recusa ata sem esse vínculo quando a
 licitação tem homologação.
 
+**Número da ARP**: o campo mostra o último da sequência (maior ano, depois maior número) e
+recusa um número já usado — "12/2026", "012/2026" e "ARP 012/2026" são o mesmo número. A
+mesma regra vale para o número do contrato.
+
 **Editar e excluir**: número, vigência inicial e situação são editáveis; licitação e detentor
 não (os itens e o teto vêm deles), e a vigência final muda por prorrogação. Excluir é só do
 Administrador e só de ata da qual nenhum contrato abate — com contrato, arquiva-se.

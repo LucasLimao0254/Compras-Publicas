@@ -160,6 +160,11 @@ ata/homologação ceiling (MODELO.md invariant 6) — ceiling consumption uses
 `itensContrato.quantidade` (never below what orders already consumed); only a "Valor
 global" contract suppresses by percentage.
 
+**ARP / contract numbers** are free text ("012/2026", "ARP 012/2026"); `src/common/numeracao.ts`
+(`chaveNumero`, copy in `web/src/lib/numeracao.ts`) treats same number + year as the same, so
+`AtasService`/`ContratosService.recusarNumeroUsado` reject "12/2026" when "012/2026" exists, and
+`CampoNumero` shows the last one of the sequence as placeholder and blocks a repeat as you type.
+
 ### Order creation is a single transaction (`OrdensService.create`)
 
 Validates saldo per line item, allocates the next sequential order number for the tenant

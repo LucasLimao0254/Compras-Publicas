@@ -5,6 +5,7 @@ import { formatarDia } from '../lib/datas';
 import { api } from '../lib/api';
 import { ImportarHomologacaoModal } from '../components/ImportarHomologacaoModal';
 import { DescricaoResumida } from '../components/DescricaoResumida';
+import { CampoNumero, numeroRepetido } from '../components/CampoNumero';
 import { BotaoExcluir, EditarContratoModal } from '../components/EditarExcluir';
 
 const FORMAS_FATURAMENTO = ['MENSAL','POR_MEDICAO','POR_ETAPA','POR_ENTREGA','SOB_DEMANDA','PARCELA_UNICA','PAGAMENTO_ANTECIPADO'];
@@ -56,6 +57,7 @@ export function Contratos() {
   const [fornecedores, setFornecedores] = useState<Opcao[]>([]);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [contratoEditando, setContratoEditando] = useState<ContratoResumo | null>(null);
+  const numerosContratos = lista.map((c) => ({ id: c.id, numero: c.numero }));
   const [erro, setErro] = useState<string | null>(null);
 
   const [numero, setNumero] = useState('');
@@ -197,8 +199,7 @@ export function Contratos() {
       {mostrarForm && (
         <form onSubmit={onSubmit} className="card elev-md" style={{ padding: '22px 24px', marginBottom: 26, gap: 18 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 14 }}>
-            <div className="field"><label>Número do contrato/ano</label>
-              <input className="input" value={numero} onChange={(e) => setNumero(e.target.value)} required /></div>
+            <CampoNumero id="novo-contrato-numero" rotulo="Número do contrato/ano" valor={numero} onChange={setNumero} existentes={numerosContratos} entidade="contrato" />
             <div className="field"><label>Número do processo</label>
               <input className="input" value={numeroProcesso} onChange={(e) => setNumeroProcesso(e.target.value)} required /></div>
             <div className="field"><label>Licitação</label>
@@ -289,7 +290,7 @@ export function Contratos() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button className="btn btn-primary" type="submit">Salvar contrato</button>
+            <button className="btn btn-primary" type="submit" disabled={!!numeroRepetido(numerosContratos, numero)}>Salvar contrato</button>
             <button className="btn btn-secondary" type="button" onClick={() => setMostrarForm(false)}>Descartar</button>
             {erro && <span style={{ fontSize: 12.5, color: 'var(--color-critical)' }}>{erro}</span>}
           </div>
@@ -357,7 +358,7 @@ export function Contratos() {
         </tbody>
       </table>
 
-      {contratoEditando && <EditarContratoModal contrato={contratoEditando} onFechar={() => setContratoEditando(null)} onSalvo={carregar} />}
+      {contratoEditando && <EditarContratoModal contrato={contratoEditando} numerosExistentes={numerosContratos} onFechar={() => setContratoEditando(null)} onSalvo={carregar} />}
 
       {mostrarImportar && (
         <ImportarHomologacaoModal
