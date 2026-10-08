@@ -41,6 +41,29 @@ export function Contratos() {
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [ataDoFornecedor, setAtaDoFornecedor] = useState<{ id: string; orgaos: OrgaoAta[] } | null>(null);
   const [ataOrgaoId, setAtaOrgaoId] = useState('');
+  const [objetoPorLicitacao, setObjetoPorLicitacao] = useState<Record<string, string>>({});
+  const [saldoOrgaoPorItem, setSaldoOrgaoPorItem] = useState<Record<string, number> | null>(null);
+
+  // Objeto vem pré-preenchido com o texto do objeto da licitação, editável —
+  // conveniência de digitação, não herança (MODELO.md, seção 5). Só preenche
+  // enquanto o campo ainda está vazio ou com o texto de outra licitação que o
+  // usuário não chegou a alterar.
+  function onEscolherLicitacao(novoId: string) {
+    const anterior = objetoPorLicitacao[licitacaoId] ?? '';
+    if (!objeto.trim() || objeto === anterior) setObjeto(objetoPorLicitacao[novoId] ?? '');
+    setLicitacaoId(novoId);
+  }
+
+  // Contrato que abate de um órgão de ata: o saldo que vale no seletor de
+  // itens é o daquele órgão, não o teto da homologação.
+  useEffect(() => {
+    if (!ataDoFornecedor || !ataOrgaoId) { setSaldoOrgaoPorItem(null); return; }
+    api.get(`/atas/${ataDoFornecedor.id}/orgaos/${ataOrgaoId}/itens`)
+      .then((lista: { homologacaoItemId: string | null; quantidadeDisponivel: number }[]) => {
+        setSaldoOrgaoPorItem(Object.fromEntries(lista.filter((it) => it.homologacaoItemId).map((it) => [it.homologacaoItemId as string, it.quantidadeDisponivel])));
+      })
+      .catch(() => setSaldoOrgaoPorItem({}));
+  }, [ataDoFornecedor, ataOrgaoId]);
 
   useEffect(() => {
     if (!licitacaoId) { setFornecedoresHomologados([]); return; }
@@ -71,10 +94,13 @@ export function Contratos() {
   }
 
   async function carregar() {
+    // Cada lista de apoio falha sozinha: sem acesso a uma delas, a listagem
+    // de contratos e as demais continuam carregando.
     const [c, l, s, f] = await Promise.all([
-      api.get('/contratos'), api.get('/licitacoes'), api.get('/secretarias'), api.get('/fornecedores'),
+      api.get('/contratos'), api.get('/licitacoes').catch(() => []), api.get('/secretarias').catch(() => []), api.get('/fornecedores').catch(() => []),
     ]);
     setLista(c);
+    setObjetoPorLicitacao(Object.fromEntries(l.map((x: any) => [x.id, x.objeto ?? ''])));
     setLicitacoes(l.map((x: any) => ({ id: x.id, label: `${x.numero} — ${x.modalidade.replaceAll('_',' ')}` })));
     setSecretarias(s.map((x: any) => ({ id: x.id, label: x.titulo })));
     setFornecedores(f.map((x: any) => ({ id: x.id, label: `${x.razaoSocial} (${x.cnpjCpf})` })));
@@ -130,7 +156,7 @@ export function Contratos() {
             <div className="field"><label>Número do processo</label>
               <input className="input" value={numeroProcesso} onChange={(e) => setNumeroProcesso(e.target.value)} required /></div>
             <div className="field"><label>Licitação</label>
-              <select className="input" value={licitacaoId} onChange={(e) => setLicitacaoId(e.target.value)} required>
+              <select className="input" value={licitacaoId} onChange={(e) => onEscolherLicitacao(e.target.value)} required>
                 <option value="">Selecione</option>
                 {licitacoes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select></div>
@@ -171,7 +197,9 @@ export function Contratos() {
               <span style={{ fontSize: 13, fontFamily: 'var(--font-heading)', fontWeight: 500 }}>Itens do contrato</span>
               <div style={{ display: 'flex', gap: 8 }}>
                 {temHomologacao && (
-                  <button type="button" onClick={() => setMostrarImportar(true)} className="btn btn-ghost"><i className="ph ph-file-arrow-down" />importar da homologação</button>
+                  <button type="button" onClick={() => setMostrarImportar(true)} className="btn btn-ghost" disabled={!!ataDoFornecedor && !ataOrgaoId} title={ataDoFornecedor && !ataOrgaoId ? 'Escolha primeiro o órgão da ata de onde o contrato abate saldo' : undefined}>
+                    <i className="ph ph-file-arrow-down" />importar da homologação
+                  </button>
                 )}
                 <button type="button" onClick={addItemRow} className="btn btn-ghost"><i className="ph ph-plus" />adicionar item</button>
               </div>
@@ -181,10 +209,10 @@ export function Contratos() {
               <tbody>
                 {itens.map((it, idx) => (
                   <tr key={idx}>
-                    <td><input className="input" placeholder="Descrição do item" value={it.descricao} onChange={(e) => updateItem(idx, { descricao: e.target.value })} /></td>
-                    <td><input className="input" placeholder="Un." value={it.unidade} onChange={(e) => updateItem(idx, { unidade: e.target.value })} /></td>
+                    <td><input className="input" placeholder="Descrição do item" value={it.descricao} disabled={!!it.homologacaoItemId} onChange={(e) => updateItem(idx, { descricao: e.target.value })} /></td>
+                    <td><input className="input" placeholder="Un." value={it.unidade} disabled={!!it.homologacaoItemId} onChange={(e) => updateItem(idx, { unidade: e.target.value })} /></td>
                     <td><input className="input num" type="number" placeholder="0" value={it.quantidade} onChange={(e) => updateItem(idx, { quantidade: e.target.value })} /></td>
-                    <td><input className="input num" type="number" step="0.01" placeholder="0,00" value={it.valorUnitario} onChange={(e) => updateItem(idx, { valorUnitario: e.target.value })} /></td>
+                    <td><input className="input num" type="number" step="0.01" placeholder="0,00" value={it.valorUnitario} disabled={!!it.homologacaoItemId} onChange={(e) => updateItem(idx, { valorUnitario: e.target.value })} /></td>
                     <td style={{ width: 36 }}><i className="ph ph-trash" onClick={() => removeItem(idx)} style={{ fontSize: 15, cursor: 'pointer', color: 'color-mix(in srgb, var(--color-text) 45%, transparent)' }} /></td>
                   </tr>
                 ))}
@@ -243,6 +271,9 @@ export function Contratos() {
         <ImportarHomologacaoModal
           licitacaoId={licitacaoId}
           fornecedorIdPadrao={fornecedorId || undefined}
+          saldoPorItem={ataDoFornecedor ? (saldoOrgaoPorItem ?? {}) : undefined}
+          rotuloOrigem={ataDoFornecedor ? 'órgão da ata' : 'teto homologado'}
+          jaIncluidos={itens.map((it) => it.homologacaoItemId).filter((v): v is string => !!v)}
           onClose={() => setMostrarImportar(false)}
           onImportar={importarItensHomologados}
         />

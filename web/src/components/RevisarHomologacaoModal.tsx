@@ -93,6 +93,9 @@ export function RevisarHomologacaoModal({ homologacaoId, onClose, onSaved }: { h
   }
 
   if (!homologacao) return null;
+  // Revisada = teto fixo: o backend recusa qualquer edição. A tela abre para
+  // consulta, com os campos travados, em vez de deixar editar e falhar ao salvar.
+  const somenteLeitura = homologacao.status === 'revisado';
 
   const pronta = homologacao.fornecedores.length > 0 && homologacao.fornecedores.every((f) => f.fornecedorId && f.itens.length && f.itens.every((it) => !itemIncompleto(it)));
 
@@ -104,7 +107,12 @@ export function RevisarHomologacaoModal({ homologacaoId, onClose, onSaved }: { h
           Confira os dados extraídos da planilha antes de liberar para importação em ata/contrato. Campos com borda amarela vieram vazios ou incompletos na extração.
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {somenteLeitura && (
+          <p style={{ fontSize: 12.5, margin: '0 0 8px', color: 'var(--color-accent-300)' }}>
+            Esta homologação já foi revisada — as quantidades são o teto fixo de cada item e não podem mais ser alteradas.
+          </p>
+        )}
+        <fieldset disabled={somenteLeitura} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
           {homologacao.fornecedores.map((f) => (
             <div key={f.id} className="card" style={{ padding: 16 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 1fr', gap: 10, alignItems: 'end', marginBottom: 12 }}>
@@ -172,16 +180,18 @@ export function RevisarHomologacaoModal({ homologacaoId, onClose, onSaved }: { h
             </div>
           ))}
           {!homologacao.fornecedores.length && <p className="text-muted" style={{ fontSize: 13 }}>Nenhum fornecedor foi extraído deste documento.</p>}
-        </div>
+        </fieldset>
 
         <div className="dialog-actions" style={{ justifyContent: 'flex-start', marginTop: 16 }}>
-          <button className="btn btn-primary" onClick={concluirRevisao} disabled={concluindo || !pronta}>
-            {concluindo ? 'Concluindo...' : 'Concluir revisão'}
-          </button>
+          {!somenteLeitura && (
+            <button className="btn btn-primary" onClick={concluirRevisao} disabled={concluindo || !pronta}>
+              {concluindo ? 'Concluindo...' : 'Concluir revisão'}
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={onClose}>Fechar</button>
           {erro && <span style={{ fontSize: 12.5, color: 'var(--color-critical)' }}>{erro}</span>}
         </div>
-        {!pronta && !erro && <p className="text-muted" style={{ fontSize: 11.5, marginTop: 6 }}>Vincule um fornecedor cadastrado e preencha descrição, unidade, quantidade e valor unitário de todos os itens para concluir.</p>}
+        {!somenteLeitura && !pronta && !erro && <p className="text-muted" style={{ fontSize: 11.5, marginTop: 6 }}>Vincule um fornecedor cadastrado e preencha descrição, unidade, quantidade e valor unitário de todos os itens para concluir.</p>}
       </div>
     </div>
   );

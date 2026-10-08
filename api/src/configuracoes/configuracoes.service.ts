@@ -1,7 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { eq, sql } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
-import { configuracoesCompras, contadores } from '../db/schema';
+import { configuracoesCompras, contadores, ordens } from '../db/schema';
 import { UpdateConfiguracoesComprasDto } from './dto/configuracoes.dto';
 
 @Injectable()
@@ -33,6 +33,13 @@ export class ConfiguracoesService {
     }
 
     if (dto.proximoNumeroOrdem !== undefined) {
+      // O número é único por tenant: recuar o sequencial para um valor já
+      // usado fazia TODA emissão seguinte falhar até alguém corrigir aqui.
+      const [maior] = await this.db.select({ numero: sql<number | null>`max(${ordens.numero})` }).from(ordens).where(eq(ordens.tenantId, tenantId));
+      const maiorUsado = Number(maior?.numero ?? 0);
+      if (dto.proximoNumeroOrdem <= maiorUsado) {
+        throw new BadRequestException(`O próximo número de ordem precisa ser maior que ${maiorUsado}, o maior número já emitido neste município`);
+      }
       const [contador] = await this.db.select().from(contadores).where(eq(contadores.tenantId, tenantId));
       if (contador) {
         await this.db.update(contadores).set({ proximaOrdem: dto.proximoNumeroOrdem }).where(eq(contadores.tenantId, tenantId));

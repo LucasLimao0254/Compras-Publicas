@@ -1,16 +1,18 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as JSZip from 'jszip';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
-import { writeFile, readFile } from 'fs/promises';
+import { writeFile, readFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
+import { formatarDataPura } from '../common/datas';
 import {
   aditivos,
   atas,
   contratoApostilamentos,
   contratos,
+  itensContrato,
   minutaModelos,
 } from '../db/schema';
 
@@ -41,6 +43,7 @@ const MARCADORES_POR_TIPO: Record<TipoMinuta, { marcador: string; descricao: str
     { marcador: 'numero_processo', descricao: 'Número do processo administrativo' },
     { marcador: 'objeto_contrato', descricao: 'Objeto do contrato' },
     { marcador: 'orgao_gerenciador', descricao: 'Órgão gerenciador do contrato' },
+    { marcador: 'valor_original', descricao: 'Valor original do contrato, na assinatura (antes de qualquer aditivo)' },
     { marcador: 'valor_total', descricao: 'Valor total atual do contrato (itens + aditivos de valor)' },
     { marcador: 'vigencia_final', descricao: 'Data final de vigência do contrato' },
     { marcador: 'vigencia_inicial', descricao: 'Data inicial de vigência do contrato' },
@@ -75,7 +78,11 @@ const TIPO_APOSTILAMENTO_LABEL: Record<string, string> = {
   ALTERACAO_RAZAO_SOCIAL: 'Alteração de razão social', EMPENHO_DOTACAO: 'Empenho de dotação',
 };
 
-const fmtData = (d: unknown) => (d ? new Date(d as string).toLocaleDateString('pt-BR') : '');
+// Vigências e datas de assinatura são datas puras (meia-noite UTC) — formatar
+// no fuso do servidor imprimia o dia anterior. Já a data de registro de um
+// apostilamento é um instante real, mostrado no fuso do órgão.
+const fmtData = (d: unknown) => formatarDataPura(d as Date | string | null);
+const fmtInstante = (d: unknown) => (d ? new Date(d as string).toLocaleDateString('pt-BR', { timeZone: process.env.FUSO_HORARIO || 'America/Sao_Paulo' }) : '');
 const fmtMoeda = (v: unknown) => (v == null ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
 
 // Escapa os 5 caracteres especiais de XML — necessário porque o valor
@@ -84,6 +91,62 @@ const fmtMoeda = (v: unknown) => (v == null ? '' : Number(v).toLocaleString('pt-
 // do .docx se colados sem escapar.
 function escapeXml(texto: string): string {
   return texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+const REGEX_MARCADOR = /\{\{(\w+)\}\}/g;
+
+// Substitui {{marcador}} num XML do Word. O Word costuma partir o texto de um
+// parágrafo em vários trechos (<w:t>) — por revisão ortográfica, mudança de
+// formatação no meio, histórico de edição —, e um marcador digitado de uma
+// vez pode acabar como "{{numero_" + "contrato}}" em trechos vizinhos. Uma
+// troca direta sobre o XML não enxerga esse marcador e o documento sai com o
+// texto "{{...}}" cru. Aqui cada parágrafo é tratado pelo seu texto
+// concatenado: o valor entra no trecho onde o marcador começa e o restante do
+// marcador é removido dos trechos seguintes — a formatação dos trechos fica
+// intacta.
+export function preencherMarcadores(xml: string, dados: Record<string, string>): string {
+  return xml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragrafo) => {
+    const trechos: { inicio: number; fim: number; texto: string }[] = [];
+    const reTexto = /(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g;
+    let m: RegExpExecArray | null;
+    while ((m = reTexto.exec(paragrafo))) {
+      const inicio = m.index + m[1].length;
+      trechos.push({ inicio, fim: inicio + m[2].length, texto: m[2] });
+    }
+    if (!trechos.length) return paragrafo;
+
+    const completo = trechos.map((t) => t.texto).join('');
+    if (!completo.includes('{{')) return paragrafo;
+
+    // posição de cada trecho dentro do texto concatenado
+    const limites: number[] = [];
+    let acumulado = 0;
+    for (const t of trechos) { limites.push(acumulado); acumulado += t.texto.length; }
+    const novos = trechos.map((t) => t.texto.split(''));
+
+    for (const achado of completo.matchAll(REGEX_MARCADOR)) {
+      const valor = dados[achado[1]];
+      if (valor === undefined) continue; // marcador desconhecido fica como está
+      const de = achado.index!;
+      const ate = de + achado[0].length;
+      let escrito = false;
+      trechos.forEach((t, i) => {
+        const ini = limites[i];
+        for (let pos = Math.max(de, ini); pos < Math.min(ate, ini + t.texto.length); pos++) {
+          novos[i][pos - ini] = escrito ? '' : escapeXml(valor);
+          escrito = true;
+        }
+      });
+    }
+
+    let saida = '';
+    let cursor = 0;
+    trechos.forEach((t, i) => {
+      saida += paragrafo.slice(cursor, t.inicio) + novos[i].join('');
+      cursor = t.fim;
+    });
+    return saida + paragrafo.slice(cursor);
+  });
 }
 
 @Injectable()
@@ -135,10 +198,13 @@ export class MinutasService {
     const caminho = join(this.uploadsDir(), nomeGerado);
     await writeFile(caminho, arquivo.buffer);
 
-    const [existente] = await this.db.select({ id: minutaModelos.id }).from(minutaModelos).where(and(eq(minutaModelos.tenantId, tenantId), eq(minutaModelos.tipo, tipo as TipoMinuta)));
+    const [existente] = await this.db.select({ id: minutaModelos.id, arquivoPath: minutaModelos.arquivoPath }).from(minutaModelos).where(and(eq(minutaModelos.tenantId, tenantId), eq(minutaModelos.tipo, tipo as TipoMinuta)));
     const valores = { arquivoNome: arquivo.originalname, arquivoPath: caminho, tamanhoBytes: arquivo.buffer.length, enviadoPor: usuarioId, enviadoEm: new Date() };
     if (existente) {
       await this.db.update(minutaModelos).set(valores).where(eq(minutaModelos.id, existente.id));
+      // O modelo anterior não é mais referenciado por ninguém — sai do disco
+      // (falha ao apagar não invalida o envio do novo).
+      await unlink(existente.arquivoPath).catch(() => undefined);
     } else {
       await this.db.insert(minutaModelos).values({ tenantId, tipo: tipo as TipoMinuta, ...valores });
     }
@@ -161,11 +227,14 @@ export class MinutasService {
 
     const bufferModelo = await readFile(modelo.arquivoPath);
     const zip = await JSZip.loadAsync(bufferModelo);
-    const doc = zip.file('word/document.xml');
-    if (!doc) throw new BadRequestException('Modelo de minuta corrompido — reenvie o arquivo em Configurações');
-    const xmlOriginal = await doc.async('string');
-    const xmlPreenchido = xmlOriginal.replace(/\{\{(\w+)\}\}/g, (match, chave) => (dados[chave] !== undefined ? escapeXml(dados[chave]) : match));
-    zip.file('word/document.xml', xmlPreenchido);
+    if (!zip.file('word/document.xml')) throw new BadRequestException('Modelo de minuta corrompido — reenvie o arquivo em Configurações');
+    // Corpo, cabeçalhos e rodapés — o número do contrato no cabeçalho é tão
+    // comum num modelo quanto no corpo.
+    const partes = Object.keys(zip.files).filter((nome) => /^word\/(document|header\d*|footer\d*)\.xml$/.test(nome));
+    for (const nome of partes) {
+      const xml = await zip.file(nome)!.async('string');
+      zip.file(nome, preencherMarcadores(xml, dados));
+    }
     return zip.generateAsync({ type: 'nodebuffer' });
   }
 
@@ -184,6 +253,17 @@ export class MinutasService {
       with: { fornecedor: true, orgaoGerenciador: true, licitacao: true },
     });
     if (!row) throw new NotFoundException('Contrato não encontrado para este tenant');
+    // Valor total ATUAL (itens + aditivos de valor − supressões), o mesmo que
+    // a tela do contrato mostra — o valor original fica em {{valor_original}}.
+    const [itens] = await this.db
+      .select({ total: sql<string>`coalesce(sum(${itensContrato.quantidade} * ${itensContrato.valorUnitario}), 0)` })
+      .from(itensContrato)
+      .where(eq(itensContrato.contratoId, contratoId));
+    const [adit] = await this.db
+      .select({ total: sql<string>`coalesce(sum(case when ${aditivos.tipo} = 'SUPRESSAO' then -${aditivos.valorAcrescimo} else ${aditivos.valorAcrescimo} end), 0)` })
+      .from(aditivos)
+      .where(and(eq(aditivos.contratoId, contratoId), sql`${aditivos.tipo} in ('VALOR', 'SUPRESSAO')`));
+    const valorAtual = Number(itens?.total ?? 0) + Number(adit?.total ?? 0);
     return {
       numero_contrato: row.numero,
       numero_processo: row.numeroProcesso,
@@ -195,7 +275,8 @@ export class MinutasService {
       vigencia_inicial: fmtData(row.vigenciaInicial),
       vigencia_final: fmtData(row.vigenciaFinal),
       data_assinatura: fmtData(row.dataAssinatura),
-      valor_total: fmtMoeda(row.valorOriginal),
+      valor_original: fmtMoeda(row.valorOriginal),
+      valor_total: fmtMoeda(valorAtual),
     };
   }
 
@@ -246,7 +327,7 @@ export class MinutasService {
       descricao: row.descricao,
       valor_anterior: row.valorAnterior != null ? fmtMoeda(row.valorAnterior) : '',
       valor_novo: row.valorNovo != null ? fmtMoeda(row.valorNovo) : '',
-      data: fmtData(row.criadoEm),
+      data: fmtInstante(row.criadoEm),
     };
   }
 }

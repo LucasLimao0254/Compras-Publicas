@@ -12,6 +12,7 @@ import { DotacaoDto } from './dto/dotacao.dto';
 export class DotacoesController {
   constructor(private service: DotacoesService) {}
 
+  @RequirePermission('compras.contratos', 'compras.ordens')
   @Get() list(@CurrentUser() u: AuthUser) { return this.service.list(u.tenantId); }
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: DotacaoDto) { return this.service.create(u.tenantId, dto); }

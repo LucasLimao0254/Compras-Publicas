@@ -160,8 +160,8 @@ export function Licitacoes() {
                         const info = STATUS_HOMOLOGACAO[h.status];
                         const clicavel = h.status === 'pronto_para_revisao' || h.status === 'revisado';
                         return (
+                          <Fragment key={h.id}>
                           <div
-                            key={h.id}
                             className="card"
                             style={{ padding: '10px 14px', flexDirection: 'row', alignItems: 'center', gap: 12, cursor: clicavel ? 'pointer' : 'default' }}
                             onClick={() => clicavel && setRevisando(h.id)}
@@ -171,6 +171,10 @@ export function Licitacoes() {
                             <span className="text-muted" style={{ fontSize: 11.5 }}>{new Date(h.enviadoEm).toLocaleString('pt-BR')}</span>
                             <span className={info.tag}>{info.label}</span>
                           </div>
+                          {h.status === 'erro' && h.erroDetalhe && (
+                            <p style={{ fontSize: 12, color: 'var(--color-critical)', margin: '0 0 4px 14px' }}>{h.erroDetalhe}</p>
+                          )}
+                          </Fragment>
                         );
                       })}
                       {!(homologacoesPorLicitacao[l.id] ?? []).length && <p className="text-muted" style={{ fontSize: 12.5, margin: 0 }}>Nenhum documento enviado ainda.</p>}

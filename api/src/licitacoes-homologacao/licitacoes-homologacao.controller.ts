@@ -63,11 +63,13 @@ export class LicitacoesHomologacaoController {
     return this.service.listar(u.tenantId, id);
   }
 
+  @RequirePermission('compras.licitacoes', 'compras.contratos', 'compras.atas')
   @Get(':id/homologacao-itens')
   itensParaImportar(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('fornecedorId') fornecedorId: string) {
     return this.service.itensParaImportar(u.tenantId, id, fornecedorId);
   }
 
+  @RequirePermission('compras.licitacoes', 'compras.contratos', 'compras.atas')
   @Get(':id/homologacao-fornecedores')
   fornecedoresHomologados(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.service.fornecedoresHomologados(u.tenantId, id);

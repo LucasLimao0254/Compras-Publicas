@@ -8,9 +8,10 @@ import { GerenciarLotesModal } from '../components/GerenciarLotesModal';
 import { ItemHistoricoModal } from '../components/ItemHistoricoModal';
 import { ImportarItensAtaModal } from '../components/ImportarItensAtaModal';
 import { GerarMinutaButton } from '../components/GerarMinutaButton';
+import { fmtDataPura } from '../lib/datas';
 
 interface Orgao { id: string; perfil: string; quantidadeItens: number; valorTotal: number; valorUtilizado: number; saldoDisponivel: number; secretaria: { titulo: string }; }
-interface Item { id: string; numeroItem: number; descricao: string; unidade: string; quantidadeContratada: string; valorUnitario: string; quantidadeUtilizada: number; quantidadeDisponivel: number; }
+interface Item { id: string; homologacaoItemId: string | null; numeroItem: number; descricao: string; unidade: string; quantidadeContratada: string; valorUnitario: string; quantidadeUtilizada: number; quantidadeDisponivel: number; }
 interface ContratoDaAta { id: string; numero: string; saldoDisponivel: number; valorTotal: number; fornecedor: { razaoSocial: string }; }
 
 export function AtaDetalhe() {
@@ -25,9 +26,8 @@ export function AtaDetalhe() {
   const [quantidade, setQuantidade] = useState('');
   const [valorUnitario, setValorUnitario] = useState('');
   const [erro, setErro] = useState<string | null>(null);
-  const [temHomologacao, setTemHomologacao] = useState(false);
   const [importarParaOrgao, setImportarParaOrgao] = useState<string | null>(null);
-  const [importando, setImportando] = useState(false);
+  const [erroProrrogacao, setErroProrrogacao] = useState<string | null>(null);
   const [mostrarLotes, setMostrarLotes] = useState(false);
   const [importarPlanilhaOrgao, setImportarPlanilhaOrgao] = useState<string | null>(null);
   const [itemEditando, setItemEditando] = useState<Item | null>(null);
@@ -41,12 +41,11 @@ export function AtaDetalhe() {
   async function carregar() {
     const a = await api.get(`/atas/${id}`);
     setAta(a);
-    api.get(`/licitacoes/${a.licitacaoId}/homologacao-fornecedores`).then((f) => setTemHomologacao(f.length > 0)).catch(() => setTemHomologacao(false));
     api.get(`/atas/${id}/contratos`).then(setContratosDaAta).catch(() => setContratosDaAta([]));
   }
   useEffect(() => { carregar(); }, [id]);
   useEffect(() => {
-    api.get('/minutas/modelos').then((m) => setModeloArpCarregado(m.modelos.find((x: any) => x.tipo === 'ARP')?.carregado ?? false));
+    api.get('/minutas/modelos').then((m) => setModeloArpCarregado(m.modelos.find((x: any) => x.tipo === 'ARP')?.carregado ?? false)).catch(() => setModeloArpCarregado(false));
   }, []);
 
   async function recarregarItens(orgaoId: string) {
@@ -85,40 +84,33 @@ export function AtaDetalhe() {
   // nova nem ciclo. O backend valida que a nova data é posterior à atual.
   async function prorrogarAta() {
     setSalvandoProrrogacao(true);
-    setErro(null);
+    setErroProrrogacao(null);
     try {
       await api.post(`/atas/${id}/prorrogar`, { vigenciaFinal: novaVigencia });
       setProrrogando(false);
       setNovaVigencia('');
       await carregar();
     } catch (err) {
-      setErro(err instanceof Error ? err.message : 'Erro ao prorrogar vigência');
+      // Estado próprio, exibido ao lado do botão — o `erro` geral só aparece
+      // dentro de um órgão aberto, e este erro ficava invisível.
+      setErroProrrogacao(err instanceof Error ? err.message : 'Erro ao prorrogar vigência');
     } finally {
       setSalvandoProrrogacao(false);
     }
   }
 
-  // Importar da homologação reaproveita o endpoint de adicionar item, um a
-  // um, em vez de introduzir um endpoint de bulk-insert só para este fluxo —
-  // mesmo princípio de menor-mudança já usado no resto do órgão/item aqui.
+  // Importar da homologação grava todos os itens escolhidos numa transação
+  // só (POST .../itens/lote): ou entram todos, ou nenhum. Um erro sobe para
+  // o modal, que fica aberto mostrando o motivo.
   async function importarItensHomologados(orgaoId: string, itens: { homologacaoItemId: string; descricao: string; unidade: string; quantidade: number; valorUnitario: number }[]) {
-    setImportando(true);
-    setErro(null);
-    try {
-      for (const it of itens) {
-        await api.post(`/atas/${id}/orgaos/${orgaoId}/itens`, it);
-      }
-      const atualizados = await api.get(`/atas/${id}/orgaos/${orgaoId}/itens`);
-      setItensPorOrgao((prev) => ({ ...prev, [orgaoId]: atualizados }));
-      carregar();
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : 'Erro ao importar itens');
-    } finally {
-      setImportando(false);
-    }
+    await api.post(`/atas/${id}/orgaos/${orgaoId}/itens/lote`, { itens });
+    await recarregarItens(orgaoId);
+    carregar();
   }
 
   async function abrirOrgao(orgaoId: string) {
+    setItemEditando(null);
+    setErro(null);
     if (orgaoAberto === orgaoId) { setOrgaoAberto(null); return; }
     setOrgaoAberto(orgaoId);
     if (!itensPorOrgao[orgaoId]) {
@@ -173,7 +165,7 @@ export function AtaDetalhe() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <span className="tag tag-neutral">{ata.tipo === 'ATAS' ? 'Ata de Registro de Preços' : 'Credenciamento'}</span>
               <span className="tag tag-outline">{ata.situacao}</span>
-              <span className="tag tag-outline">{new Date(ata.vigenciaInicial).toLocaleDateString('pt-BR')} – {new Date(ata.vigenciaFinal).toLocaleDateString('pt-BR')}</span>
+              <span className="tag tag-outline">{fmtDataPura(ata.vigenciaInicial)} – {fmtDataPura(ata.vigenciaFinal)}</span>
             </div>
           </div>
         </div>
@@ -202,6 +194,7 @@ export function AtaDetalhe() {
           ) : (
             <button className="btn btn-ghost" onClick={() => setProrrogando(true)}><i className="ph ph-calendar-plus" />Prorrogar vigência</button>
           )}
+          {erroProrrogacao && <span style={{ fontSize: 12, color: 'var(--color-critical)', maxWidth: 320, textAlign: 'right' }}>{erroProrrogacao}</span>}
         </div>
       </div>
 
@@ -227,7 +220,7 @@ export function AtaDetalhe() {
                       <button className="btn btn-ghost" onClick={() => setMostrarLotes(true)}>Gerenciar lotes</button>
                     )}
                     <button className="btn btn-ghost" onClick={() => setImportarPlanilhaOrgao(o.id)}><i className="ph ph-upload-simple" />Importar</button>
-                    {temHomologacao && (
+                    {ata.homologacaoFornecedorId && (
                       <button className="btn btn-ghost" onClick={() => setImportarParaOrgao(o.id)}><i className="ph ph-file-arrow-down" />importar da homologação</button>
                     )}
                     <button className="btn btn-ghost" onClick={() => { setItemEditando(null); setDescricao(''); setUnidade(''); setQuantidade(''); setValorUnitario(''); setMostrarFormItem(mostrarFormItem === o.id ? null : o.id); }}>
@@ -236,12 +229,15 @@ export function AtaDetalhe() {
                   </div>
                 </div>
 
+                {itemEditando?.homologacaoItemId && (
+                  <p className="text-muted" style={{ fontSize: 11.5, margin: '0 0 6px' }}>Item vindo da homologação — só a quantidade deste órgão é editável.</p>
+                )}
                 {(mostrarFormItem === o.id || itemEditando) && (
                   <form onSubmit={(e) => (itemEditando ? onSubmitEdicaoItem(e, o.id) : onSubmitItem(e, o.id))} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 120px 60px', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-                    <input className="input" placeholder="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} required />
-                    <input className="input" placeholder="Unidade" value={unidade} onChange={(e) => setUnidade(e.target.value)} required />
+                    <input className="input" placeholder="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} required disabled={!!itemEditando?.homologacaoItemId} />
+                    <input className="input" placeholder="Unidade" value={unidade} onChange={(e) => setUnidade(e.target.value)} required disabled={!!itemEditando?.homologacaoItemId} />
                     <input className="input num" placeholder="Qtd." type="number" step="0.001" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} required />
-                    <input className="input num" placeholder="Valor unit." type="number" step="0.0001" value={valorUnitario} onChange={(e) => setValorUnitario(e.target.value)} required />
+                    <input className="input num" placeholder="Valor unit." type="number" step="0.0001" value={valorUnitario} onChange={(e) => setValorUnitario(e.target.value)} required disabled={!!itemEditando?.homologacaoItemId} />
                     <button className="btn btn-primary">{itemEditando ? 'Salvar' : 'OK'}</button>
                   </form>
                 )}
@@ -318,11 +314,11 @@ export function AtaDetalhe() {
         <ImportarHomologacaoModal
           licitacaoId={ata.licitacaoId}
           fornecedorIdPadrao={ata.detentorPrincipalId}
+          jaIncluidos={(itensPorOrgao[importarParaOrgao] ?? []).map((it) => it.homologacaoItemId).filter((v): v is string => !!v)}
           onClose={() => setImportarParaOrgao(null)}
           onImportar={(itens) => importarItensHomologados(importarParaOrgao, itens)}
         />
       )}
-      {importando && <p className="text-muted" style={{ fontSize: 12, margin: '8px 0 0' }}>Importando itens...</p>}
 
       {mostrarRemanejar && (
         <RemanejarSaldoModal

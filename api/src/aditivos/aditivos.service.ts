@@ -99,6 +99,11 @@ export class AditivosService {
       if (!contrato) throw new NotFoundException('Contrato não encontrado');
       const valorOriginal = Number(contrato.valorOriginal);
       const limite = valorOriginal * (dto.tipo === 'ACRESCIMO_ESPECIAL' ? 0.5 : 0.25);
+      // O limite legal é um percentual do valor original — contrato criado
+      // sem itens tem valor original zero, e a conta virava "limite de NaN%".
+      if (dto.tipo !== 'PRAZO' && valorOriginal <= 0) {
+        throw new BadRequestException('Este contrato não tem valor original registrado (foi criado sem itens) — não é possível calcular o limite legal de acréscimo ou supressão');
+      }
 
       if (TIPOS_QUE_AUMENTAM_CONSUMO.includes(dto.tipo as TipoAditivo)) {
         await this.verificarTetoEsgotado(tx, tenantId, contrato);
@@ -135,7 +140,7 @@ export class AditivosService {
         diasProrrogacao = dto.diasProrrogacao;
         vigenciaFinalAnterior = contrato.vigenciaFinal;
         vigenciaFinalNova = new Date(contrato.vigenciaFinal);
-        vigenciaFinalNova.setDate(vigenciaFinalNova.getDate() + dto.diasProrrogacao);
+        vigenciaFinalNova.setUTCDate(vigenciaFinalNova.getUTCDate() + dto.diasProrrogacao);
         patchContrato.vigenciaFinal = vigenciaFinalNova;
       } else if (dto.tipo === 'QUANTIDADE') {
         if (!dto.itens?.length) throw new BadRequestException('Informe ao menos um item para acrescer quantidade');

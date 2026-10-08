@@ -48,8 +48,10 @@ export function Atas() {
   const homologacaoFornecedorId = fornecedoresHomologados.find((f) => f.id === detentorPrincipalId)?.homologacaoFornecedorId;
 
   async function carregar() {
+    // Cada lista falha sozinha: sem acesso a uma delas, as outras (e a
+    // própria listagem de atas) continuam carregando.
     const [a, l, f, s] = await Promise.all([
-      api.get('/atas'), api.get('/licitacoes'), api.get('/fornecedores'), api.get('/secretarias'),
+      api.get('/atas'), api.get('/licitacoes').catch(() => []), api.get('/fornecedores').catch(() => []), api.get('/secretarias').catch(() => []),
     ]);
     setLista(a);
     setLicitacoes(l.map((x: any) => ({ id: x.id, label: `${x.numero} — ${x.modalidade.replaceAll('_', ' ')}` })));

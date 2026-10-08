@@ -12,6 +12,7 @@ const LABELS: Record<string, string> = {
   emitiu_ordem: 'Ordem emitida',
   assinatura_concluida: 'Assinaturas concluídas',
   cancelou: 'Ordem cancelada',
+  editou_ordem: 'Ordem editada (quantidades alteradas)',
 };
 
 export function HistoricoOrdemModal({ ordemId, numero, onClose }: { ordemId: string; numero: string; onClose: () => void }) {
@@ -26,7 +27,7 @@ export function HistoricoOrdemModal({ ordemId, numero, onClose }: { ordemId: str
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
         <h3 className="dialog-title">Histórico da ordem {numero}</h3>
-        <p className="text-muted" style={{ fontSize: 12.5, margin: 0 }}>Eventos em ordem cronológica</p>
+        <p className="text-muted" style={{ fontSize: 12.5, margin: 0 }}>Eventos do mais recente para o mais antigo</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '50vh', overflowY: 'auto' }}>
           {eventos.map((e) => (
             <div key={e.id} style={{ display: 'flex', gap: 12 }}>

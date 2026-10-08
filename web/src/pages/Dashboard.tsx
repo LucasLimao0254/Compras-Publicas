@@ -3,39 +3,52 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis
 import { api } from '../lib/api';
 
 interface Resumo {
+  exercicio: number;
   saldoDisponivelTotal: number;
   valorTotalContratado: number;
   valorUtilizadoTotal: number;
   percentualUtilizado: number;
   contratosAtivos: number;
   ordensEmitidas: number;
-  situacaoContratos: { vigentes: number; vencendo30: number; vencidos: number; arquivados: number };
+  situacaoContratos: { vigentes: number; vencendo30: number; vencidos: number; arquivados: number; minutas: number };
   topFornecedores: { fornecedor: string; valor: number }[];
 }
 
-const CORES = ['var(--color-accent)', 'var(--color-warn)', 'var(--color-critical)', 'var(--color-neutral-600)'];
+const CORES = ['var(--color-accent)', 'var(--color-warn)', 'var(--color-critical)', 'var(--color-neutral-600)', 'var(--color-neutral-400)'];
 
 function fmt(v: number) { return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 
 export function Dashboard() {
   const [resumo, setResumo] = useState<Resumo | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
 
-  useEffect(() => { api.get('/dashboard/resumo').then(setResumo); }, []);
+  useEffect(() => { api.get('/dashboard/resumo').then(setResumo).catch((err) => setErro(err instanceof Error ? err.message : 'Erro ao carregar a visão geral')); }, []);
 
+  // Esta é a página inicial de todo mundo, inclusive de quem não tem o
+  // módulo Dashboard — antes ficava em "Carregando..." para sempre.
+  if (erro) {
+    return (
+      <div className="content-page">
+        <h2 className="page-title" style={{ marginBottom: 10 }}>Visão geral</h2>
+        <p className="text-muted" style={{ fontSize: 13.5 }}>Não foi possível exibir a visão geral: {erro}. Use o menu ao lado para acessar os módulos disponíveis para você.</p>
+      </div>
+    );
+  }
   if (!resumo) return <div className="content-page text-muted">Carregando...</div>;
 
   const situacaoData = [
-    { name: 'Vigentes', value: resumo.situacaoContratos.vigentes },
+    { name: 'Vigentes', value: resumo.situacaoContratos.vigentes - resumo.situacaoContratos.vencendo30 },
     { name: 'Vencendo em 30 dias', value: resumo.situacaoContratos.vencendo30 },
     { name: 'Vencidos', value: resumo.situacaoContratos.vencidos },
     { name: 'Arquivados', value: resumo.situacaoContratos.arquivados },
+    { name: 'Em minuta', value: resumo.situacaoContratos.minutas },
   ].filter((d) => d.value > 0);
 
   const disponivel = resumo.valorTotalContratado > 0 ? 100 - resumo.percentualUtilizado : 100;
 
   return (
     <div className="content-page">
-      <div className="eyebrow">Exercício 2026</div>
+      <div className="eyebrow">Exercício {resumo.exercicio}</div>
       <h2 className="page-title" style={{ marginBottom: 22 }}>Visão geral</h2>
 
       <div style={{
@@ -65,7 +78,7 @@ export function Dashboard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14, marginBottom: 26 }}>
         <div className="card elev-sm">
-          <div style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'color-mix(in srgb, var(--color-text) 52%, transparent)' }}>Contratos ativos</div>
+          <div style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'color-mix(in srgb, var(--color-text) 52%, transparent)' }}>Contratos vigentes</div>
           <div className="num" style={{ fontSize: 26, fontFamily: 'var(--font-heading)', fontWeight: 500 }}>{resumo.contratosAtivos}</div>
         </div>
         <div className="card elev-sm">

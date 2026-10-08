@@ -12,6 +12,7 @@ import { LicitacaoDto } from './dto/licitacao.dto';
 export class LicitacoesController {
   constructor(private service: LicitacoesService) {}
 
+  @RequirePermission('compras.licitacoes', 'compras.contratos', 'compras.atas', 'compras.ordens')
   @Get() list(@CurrentUser() u: AuthUser) { return this.service.list(u.tenantId); }
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: LicitacaoDto) { return this.service.create(u.tenantId, dto); }

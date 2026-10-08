@@ -108,6 +108,26 @@ strings mirror the frontend nav structure 1:1 (`administrativo.usuarios`,
 `compras.fornecedores`, `compras.configuracoes`) — adding a nav item means adding the
 matching permission string in both `api` and `web`, nothing more.
 
+A route may list more than one resource — `@RequirePermission('compras.contratos',
+'compras.ordens')` — and then any one of them is enough. This is used on the read endpoints
+that feed selects on other screens (the secretarias list on the contract form, the contract
+list in the order wizard, etc.); a handler-level decorator overrides the controller-level one.
+
+### Vigência and signature dates are pure dates
+
+`vigenciaInicial`/`vigenciaFinal`/`dataAssinatura` arrive as `YYYY-MM-DD` and are stored as
+midnight UTC. Never compare them with `new Date()` nor format them in the local timezone —
+midnight UTC is 21:00 of the previous day in Brasília, which made contracts expire a day early
+and screens show the previous day. Use `src/common/datas.ts` on the API (`vigenciaEncerrada`,
+`diasAte`, `formatarDataPura`) and `web/src/lib/datas.ts` on the frontend (`fmtDataPura`).
+Real instants (`createdAt`, `criadoEm`, `enviadoEm`) keep using normal local formatting.
+
+### Database errors
+
+`PostgresExceptionFilter` maps unique violations (23505) and foreign-key violations (23503) to
+409 and malformed ids/enum values (22P02) to 400. Drizzle wraps the driver error, so the
+SQLSTATE lives in `.cause.code`, not on the thrown error itself.
+
 ### Saldo (contract balance) is always derived, never stored
 
 `ContratosService` and `OrdensService` compute a contract's/item's remaining balance on

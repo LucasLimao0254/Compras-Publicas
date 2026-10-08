@@ -12,6 +12,7 @@ import { FornecedorDto } from './dto/fornecedor.dto';
 export class FornecedoresController {
   constructor(private service: FornecedoresService) {}
 
+  @RequirePermission('compras.fornecedores', 'compras.licitacoes', 'compras.contratos', 'compras.atas', 'compras.ordens')
   @Get() list(@CurrentUser() u: AuthUser) { return this.service.list(u.tenantId); }
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: FornecedorDto) { return this.service.create(u.tenantId, dto); }

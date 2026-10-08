@@ -1,8 +1,11 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { readFile } from 'fs/promises';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import {
+  ataItens,
+  contratos,
+  itensContrato,
   fornecedores,
   homologacaoFornecedores,
   homologacaoItens,
@@ -257,11 +260,33 @@ export class LicitacoesHomologacaoService {
     for (const hom of homologacoesRevisadas) {
       const fornecedorHomologado = hom.fornecedores.find((f) => f.fornecedorId === fornecedorId);
       if (fornecedorHomologado) {
+        const ids = fornecedorHomologado.itens.map((it) => it.id);
+        if (!ids.length) return [];
+        // Saldo ainda não distribuído de cada item: teto menos o que já foi
+        // reservado em ata e o que contratos diretos (sem ata) consumiram —
+        // mesma conta de SaldoCeilingService.homologacaoItemSaldoDisponivel,
+        // em lote e só para exibição (quem valida de verdade é ele, na gravação).
+        const reservado = await this.db
+          .select({ id: ataItens.homologacaoItemId, total: sql<string>`coalesce(sum(${ataItens.quantidadeContratada}), 0)` })
+          .from(ataItens)
+          .where(and(eq(ataItens.tenantId, tenantId), inArray(ataItens.homologacaoItemId, ids)))
+          .groupBy(ataItens.homologacaoItemId);
+        const direto = await this.db
+          .select({ id: itensContrato.homologacaoItemId, total: sql<string>`coalesce(sum(${itensContrato.quantidade}), 0)` })
+          .from(itensContrato)
+          .innerJoin(contratos, eq(itensContrato.contratoId, contratos.id))
+          .where(and(eq(contratos.tenantId, tenantId), isNotNull(contratos.homologacaoFornecedorId), inArray(itensContrato.homologacaoItemId, ids)))
+          .groupBy(itensContrato.homologacaoItemId);
+        const usado = new Map<string, number>();
+        for (const r of [...reservado, ...direto]) if (r.id) usado.set(r.id, (usado.get(r.id) ?? 0) + Number(r.total));
+
         return fornecedorHomologado.itens.map((it) => ({
           homologacaoItemId: it.id,
+          numeroItem: it.numeroItem,
           descricao: it.descricao,
           unidade: it.unidade ?? '',
           quantidade: Number(it.quantidade),
+          quantidadeDisponivel: Math.max(0, Number((Number(it.quantidade) - (usado.get(it.id) ?? 0)).toFixed(3))),
           valorUnitario: Number(it.valorUnitario),
         }));
       }
@@ -276,6 +301,9 @@ export class LicitacoesHomologacaoService {
     const homologacoesRevisadas = await this.db.query.licitacaoHomologacoes.findMany({
       where: and(eq(licitacaoHomologacoes.tenantId, tenantId), eq(licitacaoHomologacoes.licitacaoId, licitacaoId), eq(licitacaoHomologacoes.status, 'revisado')),
       with: { fornecedores: { with: { fornecedor: true } } },
+      // Mais antiga primeiro: no Map abaixo a mais recente sobrescreve — mesma
+      // homologação que itensParaImportar() usa (a mais recente revisada).
+      orderBy: (h, { asc }) => [asc(h.enviadoEm)],
     });
     const porId = new Map<string, { id: string; razaoSocial: string; cnpjCpf: string; homologacaoFornecedorId: string }>();
     for (const hom of homologacoesRevisadas) {

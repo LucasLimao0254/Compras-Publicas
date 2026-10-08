@@ -71,3 +71,11 @@ export class LoteAtaInput {
   @IsString() numero: string;
   @IsString() nome: string;
 }
+
+export class ItensAtaLoteDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => ItemAtaInput)
+  itens: ItemAtaInput[];
+}

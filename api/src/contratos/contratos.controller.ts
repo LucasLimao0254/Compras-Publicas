@@ -12,11 +12,13 @@ import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/c
 export class ContratosController {
   constructor(private service: ContratosService) {}
 
+  @RequirePermission('compras.contratos', 'compras.ordens')
   @Get() list(@CurrentUser() u: AuthUser) { return this.service.list(u.tenantId); }
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: CreateContratoDto) { return this.service.create(u.tenantId, dto); }
   @Patch(':id') update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: UpdateContratoDto) { return this.service.update(u.tenantId, id, dto); }
 
+  @RequirePermission('compras.contratos', 'compras.ordens')
   @Get(':id/itens')
   itens(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.service.itensComSaldo(u.tenantId, id);

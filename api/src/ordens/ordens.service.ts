@@ -5,6 +5,7 @@ import { ConfiguracoesService } from '../configuracoes/configuracoes.service';
 import {
   contadores,
   contratos,
+  dotacoes,
   itensContrato,
   itensOrdem,
   ordemDotacoes,
@@ -12,6 +13,7 @@ import {
   ordens,
   unidadesExecutoras,
 } from '../db/schema';
+import { vigenciaEncerrada } from '../common/datas';
 import { CreateOrdemDto, UpdateOrdemDto } from './dto/ordem.dto';
 
 type ItemCalculado = { itemContratoId: string; quantidade: string; precoUnitario: string; precoTotal: string };
@@ -30,6 +32,8 @@ function letraSeq(n: number): string {
   return s;
 }
 
+const STATUS_VALIDOS = ['RASCUNHO', 'EMITIDA', 'CANCELADA'];
+
 export interface ListaOrdensFiltro {
   status?: string;
   numero?: string;
@@ -45,8 +49,17 @@ export class OrdensService {
 
   async list(tenantId: string, filtro: ListaOrdensFiltro = {}) {
     const condicoes = [eq(ordens.tenantId, tenantId)];
-    if (filtro.status) condicoes.push(eq(ordens.status, filtro.status as any));
-    if (filtro.numero) condicoes.push(eq(ordens.numero, Number(filtro.numero)));
+    if (filtro.status) {
+      if (!STATUS_VALIDOS.includes(filtro.status)) throw new BadRequestException(`Status de ordem inválido: ${filtro.status}`);
+      condicoes.push(eq(ordens.status, filtro.status as any));
+    }
+    if (filtro.numero) {
+      // O campo de busca dispara a cada tecla — texto que não é um número
+      // inteiro simplesmente não casa com nenhuma ordem, em vez de estourar
+      // erro de sintaxe no banco.
+      if (!/^\d{1,9}$/.test(filtro.numero.trim())) return [];
+      condicoes.push(eq(ordens.numero, Number(filtro.numero)));
+    }
     if (filtro.contratoId) condicoes.push(eq(ordens.contratoId, filtro.contratoId));
     if (filtro.licitacaoId) condicoes.push(eq(contratos.licitacaoId, filtro.licitacaoId));
     if (filtro.secretariaId) condicoes.push(eq(contratos.orgaoGerenciadorId, filtro.secretariaId));
@@ -131,14 +144,23 @@ export class OrdensService {
   }
 
   // Contador sequencial por tenant — cria com valor inicial 1 na primeira ordem.
+  // Garante a linha (ON CONFLICT DO NOTHING) e só então lê com FOR UPDATE:
+  // duas emissões simultâneas serializam aqui em vez de lerem o mesmo número
+  // e uma delas morrer na constraint única de (tenant, numero).
   private async proximoNumero(tx: DrizzleDB, tenantId: string) {
-    const [contador] = await tx.select().from(contadores).where(eq(contadores.tenantId, tenantId));
-    if (!contador) {
-      await tx.insert(contadores).values({ tenantId, proximaOrdem: 2 });
-      return 1;
-    }
+    await tx.insert(contadores).values({ tenantId, proximaOrdem: 1 }).onConflictDoNothing({ target: contadores.tenantId });
+    const [contador] = await tx.select().from(contadores).where(eq(contadores.tenantId, tenantId)).for('update');
     await tx.update(contadores).set({ proximaOrdem: contador.proximaOrdem + 1 }).where(eq(contadores.tenantId, tenantId));
     return contador.proximaOrdem;
+  }
+
+  // Toda dotação vinculada precisa ser do mesmo tenant — sem isso um id de
+  // outro município era gravado e os dados dele voltavam na resposta.
+  private async validarDotacoesDoTenant(tx: DrizzleDB, tenantId: string, dotacaoIds: string[]) {
+    const ids = Array.from(new Set(dotacaoIds));
+    if (!ids.length) return;
+    const encontradas = await tx.select({ id: dotacoes.id }).from(dotacoes).where(and(eq(dotacoes.tenantId, tenantId), inArray(dotacoes.id, ids)));
+    if (encontradas.length !== ids.length) throw new BadRequestException('Dotação orçamentária não encontrada para este tenant');
   }
 
   // Emite uma ordem a partir de um contrato — ordem só nasce de contrato (ver
@@ -160,6 +182,8 @@ export class OrdensService {
         const [unidade] = await tx.select({ id: unidadesExecutoras.id }).from(unidadesExecutoras).where(and(eq(unidadesExecutoras.id, dto.unidadeExecutoraId), eq(unidadesExecutoras.tenantId, tenantId)));
         if (!unidade) throw new BadRequestException('Unidade executora não encontrada para este tenant');
       }
+
+      await this.validarDotacoesDoTenant(tx, tenantId, (dto.dotacoes ?? []).map((d) => d.dotacaoId));
 
       const { itensCalculados } = await this.validarOrigemContrato(tx, tenantId, dto, emitirAgora, config.permitirOrdemContratoVencido);
 
@@ -204,7 +228,7 @@ export class OrdensService {
     if (contrato.situacao === 'ARQUIVADO' || contrato.situacao === 'MINUTA') {
       throw new BadRequestException('Não é possível emitir ordem para um contrato arquivado ou em minuta');
     }
-    if (!permitirVencido && new Date(contrato.vigenciaFinal) < new Date()) {
+    if (!permitirVencido && vigenciaEncerrada(contrato.vigenciaFinal)) {
       throw new BadRequestException('Contrato vencido: emissão de ordens bloqueada (habilite em Configurações se necessário)');
     }
 
@@ -287,7 +311,7 @@ export class OrdensService {
     if (contrato.situacao === 'ARQUIVADO' || contrato.situacao === 'MINUTA') {
       throw new BadRequestException('Não é possível emitir ordem para um contrato arquivado ou em minuta');
     }
-    if (!permitirVencido && new Date(contrato.vigenciaFinal) < new Date()) {
+    if (!permitirVencido && vigenciaEncerrada(contrato.vigenciaFinal)) {
       throw new BadRequestException('Contrato vencido: emissão de ordens bloqueada (habilite em Configurações se necessário)');
     }
 
@@ -338,7 +362,7 @@ export class OrdensService {
       if (contrato.situacao === 'ARQUIVADO' || contrato.situacao === 'MINUTA') {
         throw new BadRequestException('Não é possível editar ordem de um contrato arquivado ou em minuta');
       }
-      if (!config.permitirOrdemContratoVencido && new Date(contrato.vigenciaFinal) < new Date()) {
+      if (!config.permitirOrdemContratoVencido && vigenciaEncerrada(contrato.vigenciaFinal)) {
         throw new BadRequestException('Contrato vencido: edição de ordens bloqueada (habilite em Configurações se necessário)');
       }
 
@@ -382,13 +406,22 @@ export class OrdensService {
   // histórico. Não existe decremento a "desfazer" explicitamente: o saldo é
   // sempre derivado filtrando status='EMITIDA', então uma ordem cancelada
   // simplesmente para de contar — o saldo volta sozinho.
-  async cancelar(tenantId: string, usuarioId: string, id: string) {
-    const ordem = await this.get(tenantId, id);
-    if (ordem.status === 'CANCELADA') {
-      throw new BadRequestException('Esta ordem já está cancelada');
-    }
-    await this.db.update(ordens).set({ status: 'CANCELADA' }).where(and(eq(ordens.id, id), eq(ordens.tenantId, tenantId)));
-    await this.db.insert(ordemHistorico).values({ tenantId, ordemId: id, tipoEvento: 'cancelou', usuarioId });
+  // Rascunho qualquer usuário do módulo descarta; ordem já EMITIDA só o
+  // Administrador do tenant cancela (MODELO.md, seção 6) — checado aqui, não
+  // só escondendo o botão na tela.
+  async cancelar(tenantId: string, usuarioId: string, tipoUsuario: 'ADMIN' | 'PADRAO', id: string) {
+    await this.db.transaction(async (tx) => {
+      const [ordem] = await tx.select().from(ordens).where(and(eq(ordens.tenantId, tenantId), eq(ordens.id, id))).for('update');
+      if (!ordem) throw new NotFoundException('Ordem não encontrada');
+      if (ordem.status === 'CANCELADA') {
+        throw new BadRequestException('Esta ordem já está cancelada');
+      }
+      if (ordem.status === 'EMITIDA' && tipoUsuario !== 'ADMIN') {
+        throw new ForbiddenException('Somente administradores do tenant podem cancelar uma ordem já emitida');
+      }
+      await tx.update(ordens).set({ status: 'CANCELADA' }).where(and(eq(ordens.id, id), eq(ordens.tenantId, tenantId)));
+      await tx.insert(ordemHistorico).values({ tenantId, ordemId: id, tipoEvento: 'cancelou', usuarioId });
+    });
     return this.get(tenantId, id);
   }
 

@@ -4,11 +4,12 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { HistoricoOrdemModal } from '../components/HistoricoOrdemModal';
 import { ImportarPlanilhaDemandaButton } from '../components/ImportarPlanilhaDemandaButton';
+import { vigenciaEncerrada } from '../lib/datas';
 
 type Aba = 'CONTRATOS' | 'BUSCAR' | 'RASCUNHO' | 'EMITIDA' | 'CANCELADA';
 
 interface Opcao { id: string; label: string; }
-interface ContratoOpcao { id: string; numero: string; objeto: string; fornecedor: { razaoSocial: string }; saldoDisponivel: number; situacao: string; }
+interface ContratoOpcao { id: string; numero: string; objeto: string; fornecedor: { razaoSocial: string }; saldoDisponivel: number; situacao: string; vigenciaFinal: string; }
 interface ItemDisp { id: string; numero: number; descricao: string; unidade: string; valorUnitario: string; quantidadeDisponivel: number; }
 interface DotacaoLinha { dotacaoId: string; valorRateado: string; }
 
@@ -87,8 +88,11 @@ export function PainelOrdens() {
   }
 
   async function carregarOpcoes() {
+    // Cada lista de apoio falha sozinha — antes, faltar acesso a qualquer uma
+    // derrubava todas, e o assistente ficava sem contrato para escolher.
+    const opcional = (rota: string) => api.get(rota).catch(() => []);
     const [c, l, s, f, d, u] = await Promise.all([
-      api.get('/contratos'), api.get('/licitacoes'), api.get('/secretarias'), api.get('/fornecedores'), api.get('/dotacoes'), api.get('/unidades-executoras'),
+      opcional('/contratos'), opcional('/licitacoes'), opcional('/secretarias'), opcional('/fornecedores'), opcional('/dotacoes'), opcional('/unidades-executoras'),
     ]);
     setContratos(c);
     setLicitacoes(l.map((x: any) => ({ id: x.id, label: `${x.numero} — ${x.modalidade.replaceAll('_', ' ')}` })));
@@ -131,7 +135,9 @@ export function PainelOrdens() {
   const gruposPorContrato = useMemo(() => {
     const mapa = new Map<string, { contratoId: string; label: string; fornecedor: string; qtd: number; total: number; ultima: string }>();
     for (const o of ordens) {
-      if (!o.contrato) continue;
+      // Só ordem emitida entra na contagem e no valor do contrato —
+      // cancelada e rascunho não consomem saldo.
+      if (!o.contrato || o.status !== 'EMITIDA') continue;
       const k = o.contrato.id;
       const total = o.itens.reduce((acc, it) => acc + Number(it.precoTotal), 0);
       const existente = mapa.get(k);
@@ -189,6 +195,8 @@ export function PainelOrdens() {
     setErro(null);
     setSalvando(true);
     try {
+      const zerado = itens.find((it) => itensOrdemIdPorItem[it.id] && !(Number(quantidades[it.id]) > 0));
+      if (zerado) throw new Error(`A quantidade de "${zerado.descricao}" precisa ser maior que zero — não é possível retirar um item de uma ordem já emitida; para isso, cancele a ordem e emita outra`);
       const itensPayload = itens
         .filter((it) => Number(quantidades[it.id]) > 0 && itensOrdemIdPorItem[it.id])
         .map((it) => ({ itemOrdemId: itensOrdemIdPorItem[it.id], quantidade: Number(quantidades[it.id]) }));
@@ -329,14 +337,14 @@ export function PainelOrdens() {
                   <div onClick={() => editarOrdemExistente(o)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer' }}>Editar</div>
                   {confirmandoCancelar === o.id ? (
                     <div style={{ padding: '8px 10px' }}>
-                      <div className="text-muted" style={{ fontSize: 11.5, marginBottom: 4 }}>Confirma excluir?</div>
+                      <div className="text-muted" style={{ fontSize: 11.5, marginBottom: 4 }}>Confirma cancelar esta ordem emitida? O saldo volta ao contrato.</div>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <span onClick={() => confirmarCancelar(o.id)} style={{ fontSize: 11.5, color: 'var(--color-critical)', cursor: 'pointer' }}>Sim, excluir</span>
+                        <span onClick={() => confirmarCancelar(o.id)} style={{ fontSize: 11.5, color: 'var(--color-critical)', cursor: 'pointer' }}>Sim, cancelar</span>
                         <span onClick={() => setConfirmandoCancelar(null)} className="text-muted" style={{ fontSize: 11.5, cursor: 'pointer' }}>Voltar</span>
                       </div>
                     </div>
                   ) : (
-                    <div onClick={() => setConfirmandoCancelar(o.id)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer', color: 'var(--color-critical)' }}>Excluir</div>
+                    <div onClick={() => setConfirmandoCancelar(o.id)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer', color: 'var(--color-critical)' }}>Cancelar ordem</div>
                   )}
                 </>
               )}
@@ -397,8 +405,11 @@ export function PainelOrdens() {
               <h4 style={{ fontSize: 15, marginBottom: 12 }}>1. Selecione o contrato</h4>
               <select className="input" style={{ marginBottom: 16 }} value={contratoId} onChange={(e) => setContratoId(e.target.value)}>
                 <option value="">Nº do contrato ou fornecedor</option>
-                {contratos.map((c) => <option key={c.id} value={c.id}>{c.numero} — {c.fornecedor.razaoSocial}</option>)}
+                {contratos.filter((c) => c.situacao === 'VIGENTE').map((c) => (
+                  <option key={c.id} value={c.id}>{c.numero} — {c.fornecedor.razaoSocial}{vigenciaEncerrada(c.vigenciaFinal) ? ' (vigência encerrada)' : ''}</option>
+                ))}
               </select>
+              <p className="text-muted" style={{ fontSize: 11.5, margin: '-8px 0 16px' }}>Contratos em minuta ou arquivados não recebem ordem e não aparecem aqui. Contrato com vigência encerrada só recebe ordem se isso estiver liberado em Configurações.</p>
 
               <button className="btn btn-primary" onClick={irParaPasso2} disabled={!contratoId}>
                 Selecionar itens<i className="ph ph-arrow-right" />
@@ -417,7 +428,7 @@ export function PainelOrdens() {
 
               <div className="field" style={{ marginBottom: 16 }}>
                 <label>Unidade executora (CNPJ emissor)</label>
-                <select className="input" value={unidadeExecutoraId} onChange={(e) => setUnidadeExecutoraId(e.target.value)}>
+                <select className="input" value={unidadeExecutoraId} disabled={!!editandoOrdemId} onChange={(e) => setUnidadeExecutoraId(e.target.value)}>
                   <option value="">Selecione (opcional)</option>
                   {unidadesExecutoras.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
@@ -444,7 +455,10 @@ export function PainelOrdens() {
                 </tbody>
               </table>
 
-              <div style={{ marginBottom: 16 }}>
+              {editandoOrdemId && (
+                <p className="text-muted" style={{ fontSize: 12, margin: '0 0 16px' }}>Na edição de uma ordem emitida só as quantidades dos itens que já fazem parte dela podem mudar; dotações e unidade executora permanecem as da emissão.</p>
+              )}
+              <div style={{ marginBottom: 16, display: editandoOrdemId ? 'none' : undefined }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ fontSize: 13, fontFamily: 'var(--font-heading)', fontWeight: 500 }}>Dotação orçamentária</span>
                   <button className="btn btn-ghost" type="button" onClick={addDotacaoRow}><i className="ph ph-plus" />Adicionar dotação</button>
@@ -498,7 +512,7 @@ export function PainelOrdens() {
 
       {aba === 'CONTRATOS' && !contratoAberto && (
         <table className="table">
-          <thead><tr><th style={{ width: 110 }}>Contrato</th><th>Fornecedor</th><th style={{ width: 100, textAlign: 'right' }}>Ordens</th><th style={{ width: 150, textAlign: 'right' }}>Valor total</th><th style={{ width: 120 }}>Última ordem</th><th style={{ width: 40 }}></th></tr></thead>
+          <thead><tr><th style={{ width: 110 }}>Contrato</th><th>Fornecedor</th><th style={{ width: 100, textAlign: 'right' }}>Emitidas</th><th style={{ width: 150, textAlign: 'right' }}>Valor emitido</th><th style={{ width: 120 }}>Última ordem</th><th style={{ width: 40 }}></th></tr></thead>
           <tbody>
             {gruposPorContrato.map((g) => (
               <tr key={g.contratoId} style={{ cursor: 'pointer' }} onClick={() => setContratoAberto(g.contratoId)}>
@@ -553,7 +567,7 @@ export function PainelOrdens() {
             </button>
             {filtrosAbertos && (
               <div className="card elev-sm" style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 12, padding: 16 }}>
-                <input className="input" placeholder="Nº da ordem" value={fNumero} onChange={(e) => setFNumero(e.target.value)} />
+                <input className="input" placeholder="Nº da ordem" inputMode="numeric" value={fNumero} onChange={(e) => setFNumero(e.target.value.replace(/\D/g, ''))} />
                 <select className="input" value={fLicitacaoId} onChange={(e) => setFLicitacaoId(e.target.value)}>
                   <option value="">Licitação</option>
                   {licitacoes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}

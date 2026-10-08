@@ -30,7 +30,10 @@ export type ExtracaoHomologacao = z.infer<typeof extracaoSchema>;
 // briefing_upload_homologacao.md (decisão de trocar PDF+IA por planilha
 // determinística, após a extração de texto de PDF se mostrar não-confiável
 // para o layout tabular real desse sistema — colunas saíam fora de ordem).
-const REGEX_FORNECEDOR = /^Fornecedor\s*:\s*(.+?)\s*-\s*(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\s*$/i;
+// Documento aceito: CNPJ ou CPF, com ou sem máscara (pessoa física também
+// vence licitação, e nem todo export traz a pontuação).
+const REGEX_FORNECEDOR = /^Fornecedor\s*:\s*(.+?)\s*-\s*(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{14}|\d{3}\.\d{3}\.\d{3}-\d{2}|\d{11})\s*$/i;
+const REGEX_LINHA_FORNECEDOR = /^Fornecedor\s*:/i;
 
 function paraTexto(valor: unknown): string {
   return valor == null ? '' : String(valor).trim();
@@ -71,13 +74,19 @@ export class ExtracaoHomologacaoService {
     const fornecedores: { nome: string; cnpj: string | null; itens: { numeroItem: string | null; descricao: string; unidade: string | null; quantidade: number | null; valorUnitario: number | null }[] }[] = [];
     let atual: (typeof fornecedores)[number] | null = null;
 
-    for (const linha of linhas) {
+    for (const [indice, linha] of linhas.entries()) {
       const primeiraCelula = paraTexto(linha[0]);
       const matchFornecedor = primeiraCelula.match(REGEX_FORNECEDOR);
       if (matchFornecedor) {
         atual = { nome: matchFornecedor[1].trim(), cnpj: matchFornecedor[2], itens: [] };
         fornecedores.push(atual);
         continue;
+      }
+      // Linha que abre um bloco de fornecedor mas não pôde ser lida: parar
+      // aqui. Seguir em frente atribuiria, sem aviso, os itens deste bloco ao
+      // fornecedor do bloco anterior.
+      if (REGEX_LINHA_FORNECEDOR.test(primeiraCelula)) {
+        throw new Error(`Linha ${indice + 1}: não foi possível ler o fornecedor em "${primeiraCelula}" — o formato esperado é "Fornecedor: NOME - CNPJ ou CPF"`);
       }
 
       // Linha de cabeçalho de colunas (repete a cada bloco de fornecedor) — pula.

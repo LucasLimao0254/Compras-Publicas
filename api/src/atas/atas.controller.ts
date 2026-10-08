@@ -17,7 +17,7 @@ import { PermissionsGuard } from '../common/permissions.guard';
 import { RequirePermission } from '../common/require-permission.decorator';
 import { CurrentUser, AuthUser } from '../common/current-user.decorator';
 import { AtasService } from './atas.service';
-import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
+import { CreateAtaDto, ItemAtaInput, ItensAtaLoteDto, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @RequirePermission('compras.atas')
@@ -25,7 +25,9 @@ import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDt
 export class AtasController {
   constructor(private service: AtasService) {}
 
+  @RequirePermission('compras.atas', 'compras.contratos')
   @Get() list(@CurrentUser() u: AuthUser) { return this.service.list(u.tenantId); }
+  @RequirePermission('compras.atas', 'compras.contratos')
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: CreateAtaDto) { return this.service.create(u.tenantId, dto); }
   @Patch(':id') update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: UpdateAtaDto) { return this.service.update(u.tenantId, id, dto); }
@@ -35,6 +37,7 @@ export class AtasController {
     return this.service.addOrgao(u.tenantId, id, dto);
   }
 
+  @RequirePermission('compras.atas', 'compras.contratos')
   @Get(':id/orgaos/:ataOrgaoId/itens')
   itensDoOrgao(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('ataOrgaoId') ataOrgaoId: string) {
     return this.service.itensDoOrgao(u.tenantId, id, ataOrgaoId);
@@ -43,6 +46,13 @@ export class AtasController {
   @Post(':id/orgaos/:ataOrgaoId/itens')
   addItem(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('ataOrgaoId') ataOrgaoId: string, @Body() dto: ItemAtaInput) {
     return this.service.addItem(u.tenantId, id, ataOrgaoId, dto);
+  }
+
+  // Vários itens numa transação só (importar da homologação) — declarado
+  // antes das rotas com :itemId.
+  @Post(':id/orgaos/:ataOrgaoId/itens/lote')
+  addItens(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('ataOrgaoId') ataOrgaoId: string, @Body() dto: ItensAtaLoteDto) {
+    return this.service.addItens(u.tenantId, id, ataOrgaoId, dto.itens);
   }
 
   @Patch(':id/orgaos/:ataOrgaoId/itens/:itemId')

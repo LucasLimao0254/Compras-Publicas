@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import {
   aditivos,
@@ -7,6 +7,7 @@ import {
   atas,
   contratoDotacoes,
   contratos,
+  dotacoes,
   fornecedores,
   homologacaoFornecedores,
   homologacaoItens,
@@ -112,6 +113,38 @@ export class ContratosService {
       const [fiscal] = await this.db.select({ id: usuarios.id }).from(usuarios).where(and(eq(usuarios.id, dto.fiscalId), eq(usuarios.tenantId, tenantId)));
       if (!fiscal) throw new BadRequestException('Fiscal não encontrado para este tenant');
     }
+
+    const dotacaoIds = Array.from(new Set(dto.dotacaoIds ?? []));
+    if (dotacaoIds.length) {
+      const encontradas = await this.db.select({ id: dotacoes.id }).from(dotacoes).where(and(eq(dotacoes.tenantId, tenantId), inArray(dotacoes.id, dotacaoIds)));
+      if (encontradas.length !== dotacaoIds.length) throw new BadRequestException('Dotação orçamentária não encontrada para este tenant');
+    }
+  }
+
+  // Número de cada item no contrato: o item vindo da homologação mantém o
+  // número que tem na licitação (é por esse número que o usuário o reconhece
+  // e que a planilha de demanda o referencia); item sem origem, ou cujo
+  // número já esteja em uso neste contrato, recebe o próximo número livre.
+  private async numerarItens(tx: DrizzleDB, tenantId: string, itens: ItemContratoInput[], jaUsados: number[] = []): Promise<number[]> {
+    const ids = itens.map((it) => it.homologacaoItemId).filter((v): v is string => !!v);
+    const origem = ids.length
+      ? await tx.select({ id: homologacaoItens.id, numeroItem: homologacaoItens.numeroItem }).from(homologacaoItens).where(and(eq(homologacaoItens.tenantId, tenantId), inArray(homologacaoItens.id, ids)))
+      : [];
+    const numeroDaOrigem = new Map(origem.map((o) => [o.id, o.numeroItem]));
+    const usados = new Set(jaUsados);
+    const numeros: (number | null)[] = itens.map((it) => {
+      const preferido = it.homologacaoItemId ? numeroDaOrigem.get(it.homologacaoItemId) : null;
+      if (preferido == null || usados.has(preferido)) return null;
+      usados.add(preferido);
+      return preferido;
+    });
+    let proximo = 1;
+    return numeros.map((n) => {
+      if (n != null) return n;
+      while (usados.has(proximo)) proximo++;
+      usados.add(proximo);
+      return proximo;
+    });
   }
 
   // Confirma que o órgão de ata pertence ao tenant, à mesma licitação do
@@ -254,10 +287,11 @@ export class ContratosService {
         .returning();
 
       if (dto.itens?.length) {
+        const numeros = await this.numerarItens(tx, tenantId, dto.itens);
         await tx.insert(itensContrato).values(
           dto.itens.map((it, idx) => ({
             contratoId: created.id,
-            numero: idx + 1,
+            numero: numeros[idx],
             descricao: it.descricao,
             unidade: it.unidade,
             quantidade: String(it.quantidade),
@@ -269,7 +303,7 @@ export class ContratosService {
 
       if (dto.dotacaoIds?.length) {
         await tx.insert(contratoDotacoes).values(
-          dto.dotacaoIds.map((dotacaoId) => ({ contratoId: created.id, dotacaoId })),
+          Array.from(new Set(dto.dotacaoIds)).map((dotacaoId) => ({ contratoId: created.id, dotacaoId })),
         );
       }
 
@@ -311,7 +345,7 @@ export class ContratosService {
       });
 
       const existentes = await tx.select().from(itensContrato).where(eq(itensContrato.contratoId, contratoId));
-      const proximoNumero = existentes.length + 1;
+      const [proximoNumero] = await this.numerarItens(tx, tenantId, [item], existentes.map((e) => e.numero));
       const [row] = await tx
         .insert(itensContrato)
         .values({

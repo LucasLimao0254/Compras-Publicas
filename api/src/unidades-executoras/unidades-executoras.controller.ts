@@ -12,6 +12,7 @@ import { UnidadeExecutoraDto } from './dto/unidade-executora.dto';
 export class UnidadesExecutorasController {
   constructor(private service: UnidadesExecutorasService) {}
 
+  @RequirePermission('compras.configuracoes', 'compras.ordens')
   @Get() list(@CurrentUser() u: AuthUser) { return this.service.list(u.tenantId); }
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: UnidadeExecutoraDto) { return this.service.create(u.tenantId, dto); }

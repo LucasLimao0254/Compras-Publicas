@@ -162,7 +162,11 @@ export class AtasService {
       await this.validarSecretarias(tenantId, dto.orgaos);
     }
 
-    const [created] = await this.db
+    // Ata e órgãos entram juntos ou não entra nada: antes, um erro ao gravar
+    // os órgãos deixava a ata gravada sem nenhum — e, sendo uma por
+    // fornecedor homologado, sem como refazer.
+    const criadaId = await this.db.transaction(async (tx) => {
+    const [created] = await tx
       .insert(atas)
       .values({
         tenantId,
@@ -182,10 +186,12 @@ export class AtasService {
       .returning();
 
     if (dto.orgaos?.length) {
-      await this.db.insert(ataOrgaos).values(dto.orgaos.map((o) => ({ tenantId, ataId: created.id, secretariaId: o.secretariaId, perfil: o.perfil as any })));
+      await tx.insert(ataOrgaos).values(dto.orgaos.map((o) => ({ tenantId, ataId: created.id, secretariaId: o.secretariaId, perfil: o.perfil as any })));
     }
+    return created.id;
+    });
 
-    return this.get(tenantId, created.id);
+    return this.get(tenantId, criadaId);
   }
 
   // Confirma que o fornecedor homologado pertence ao tenant, à mesma
@@ -205,6 +211,9 @@ export class AtasService {
   }
 
   private async validarSecretarias(tenantId: string, orgaos: OrgaoAtaInput[]) {
+    if (new Set(orgaos.map((o) => o.secretariaId)).size !== orgaos.length) {
+      throw new BadRequestException('A mesma secretaria foi informada mais de uma vez entre os órgãos da ata');
+    }
     for (const o of orgaos) {
       const [secretaria] = await this.db.select({ id: secretarias.id }).from(secretarias).where(and(eq(secretarias.id, o.secretariaId), eq(secretarias.tenantId, tenantId)));
       if (!secretaria) throw new BadRequestException('Secretaria não encontrada para este tenant');
@@ -226,6 +235,8 @@ export class AtasService {
   async addOrgao(tenantId: string, ataId: string, dto: OrgaoAtaInput) {
     await this.get(tenantId, ataId);
     await this.validarSecretarias(tenantId, [dto]);
+    const [jaParticipa] = await this.db.select({ id: ataOrgaos.id }).from(ataOrgaos).where(and(eq(ataOrgaos.ataId, ataId), eq(ataOrgaos.secretariaId, dto.secretariaId)));
+    if (jaParticipa) throw new ConflictException('Esta secretaria já participa desta ata');
     const [row] = await this.db.insert(ataOrgaos).values({ tenantId, ataId, secretariaId: dto.secretariaId, perfil: dto.perfil as any }).returning();
     return row;
   }
@@ -246,16 +257,42 @@ export class AtasService {
 
   async addItem(tenantId: string, ataId: string, ataOrgaoId: string, dto: ItemAtaInput) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    return this.db.transaction((tx) => this.inserirItem(tx, tenantId, ataId, ataOrgaoId, dto));
+  }
+
+  // Vários itens de uma vez, numa transação só — usado por "importar da
+  // homologação": ou entram todos, ou nenhum. Antes eram N chamadas em laço
+  // e uma falha no meio deixava a importação pela metade.
+  async addItens(tenantId: string, ataId: string, ataOrgaoId: string, itens: ItemAtaInput[]) {
+    await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    return this.db.transaction(async (tx) => {
+      const criados: (typeof ataItens.$inferSelect)[] = [];
+      for (const item of itens) criados.push(await this.inserirItem(tx, tenantId, ataId, ataOrgaoId, item));
+      return criados;
+    });
+  }
+
+  // O lote, quando informado, precisa ser desta mesma ata (e, por tabela,
+  // deste tenant).
+  private async validarLote(tx: DrizzleDB, tenantId: string, ataId: string, loteId: string | undefined) {
+    if (!loteId) return;
+    const [lote] = await tx.select({ id: ataLotes.id }).from(ataLotes).where(and(eq(ataLotes.id, loteId), eq(ataLotes.ataId, ataId), eq(ataLotes.tenantId, tenantId)));
+    if (!lote) throw new BadRequestException('Lote não encontrado nesta ata');
+  }
+
+  private async inserirItem(tx: DrizzleDB, tenantId: string, ataId: string, ataOrgaoId: string, dto: ItemAtaInput) {
+    await this.validarLote(tx, tenantId, ataId, dto.loteId);
+    const existentes = await tx.select({ numeroItem: ataItens.numeroItem, homologacaoItemId: ataItens.homologacaoItemId }).from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
+    const usados = new Set(existentes.map((e) => e.numeroItem));
+    const proximoLivre = () => { let n = 1; while (usados.has(n)) n++; return n; };
 
     if (!dto.homologacaoItemId) {
-      const existentes = await this.db.select().from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
-      const numeroItem = existentes.length + 1;
-      const [row] = await this.db
+      const [row] = await tx
         .insert(ataItens)
         .values({
           tenantId,
           ataOrgaoId,
-          numeroItem,
+          numeroItem: proximoLivre(),
           descricao: dto.descricao,
           unidade: dto.unidade,
           loteId: dto.loteId,
@@ -266,40 +303,48 @@ export class AtasService {
       return row;
     }
 
-    return this.db.transaction(async (tx) => {
-      const [ata] = await tx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(atas).where(eq(atas.id, ataId));
-      const [item] = await tx
-        .select({ homologacaoFornecedorId: homologacaoItens.homologacaoFornecedorId, quantidade: homologacaoItens.quantidade })
-        .from(homologacaoItens)
-        .where(and(eq(homologacaoItens.id, dto.homologacaoItemId!), eq(homologacaoItens.tenantId, tenantId)));
-      if (!item) throw new BadRequestException('Item homologado não encontrado');
-      if (!ata?.homologacaoFornecedorId || item.homologacaoFornecedorId !== ata.homologacaoFornecedorId) {
-        throw new BadRequestException('Este item homologado não pertence ao fornecedor desta ata');
-      }
+    // Um item homologado aparece no máximo uma vez por órgão —
+    // SaldoCeilingService.ataItemSaldoDisponivel exige exatamente 1 linha por
+    // (órgão, item homologado); uma segunda travaria todo contrato contra o
+    // item, e não existe endpoint para apagar item de ata (mesma guarda de
+    // editarItem).
+    if (existentes.some((e) => e.homologacaoItemId === dto.homologacaoItemId)) {
+      throw new BadRequestException(`O item "${dto.descricao}" já está neste órgão — edite a quantidade do item existente em vez de adicioná-lo de novo`);
+    }
 
-      const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, dto.homologacaoItemId!);
-      if (dto.quantidade > disponivel) {
-        throw new BadRequestException(`Quantidade (${dto.quantidade}) excede o saldo homologado restante para este item (${disponivel})`);
-      }
+    const [ata] = await tx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(atas).where(eq(atas.id, ataId));
+    const [item] = await tx
+      .select({ homologacaoFornecedorId: homologacaoItens.homologacaoFornecedorId, numeroItem: homologacaoItens.numeroItem })
+      .from(homologacaoItens)
+      .where(and(eq(homologacaoItens.id, dto.homologacaoItemId), eq(homologacaoItens.tenantId, tenantId)));
+    if (!item) throw new BadRequestException('Item homologado não encontrado');
+    if (!ata?.homologacaoFornecedorId || item.homologacaoFornecedorId !== ata.homologacaoFornecedorId) {
+      throw new BadRequestException('Este item homologado não pertence ao fornecedor desta ata');
+    }
 
-      const existentes = await tx.select().from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
-      const numeroItem = existentes.length + 1;
-      const [row] = await tx
-        .insert(ataItens)
-        .values({
-          tenantId,
-          ataOrgaoId,
-          numeroItem,
-          descricao: dto.descricao,
-          unidade: dto.unidade,
-          loteId: dto.loteId,
-          quantidadeContratada: String(dto.quantidade),
-          valorUnitario: String(dto.valorUnitario),
-          homologacaoItemId: dto.homologacaoItemId,
-        })
-        .returning();
-      return row;
-    });
+    const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, dto.homologacaoItemId);
+    if (dto.quantidade > disponivel) {
+      throw new BadRequestException(`Item "${dto.descricao}": quantidade (${dto.quantidade}) excede o saldo homologado restante para este item (${disponivel})`);
+    }
+
+    // Mantém o número que o item tem na licitação — é por ele que o item é
+    // reconhecido entre os órgãos da ata.
+    const numeroItem = item.numeroItem != null && !usados.has(item.numeroItem) ? item.numeroItem : proximoLivre();
+    const [row] = await tx
+      .insert(ataItens)
+      .values({
+        tenantId,
+        ataOrgaoId,
+        numeroItem,
+        descricao: dto.descricao,
+        unidade: dto.unidade,
+        loteId: dto.loteId,
+        quantidadeContratada: String(dto.quantidade),
+        valorUnitario: String(dto.valorUnitario),
+        homologacaoItemId: dto.homologacaoItemId,
+      })
+      .returning();
+    return row;
   }
 
   // Reabre o mesmo formulário de "adicionar item", agora fazendo UPDATE —
@@ -317,13 +362,14 @@ export class AtasService {
         .where(and(eq(ataItens.id, itemId), eq(ataItens.ataOrgaoId, ataOrgaoId), eq(ataItens.tenantId, tenantId)))
         .for('update');
       if (!existente) throw new NotFoundException('Item não encontrado nesta ata');
+      await this.validarLote(tx, tenantId, ataId, dto.loteId);
 
       // Nunca deixar a quantidade cair abaixo do que ordens emitidas já
       // consumiram deste item — sem essa checagem, quantidadeDisponivel vira
       // negativo e corrompe todo cálculo de saldo derivado a partir daqui.
       const usado = await this.quantidadeUsadaPorItem(tx, existente.id);
       if (dto.quantidade < usado) {
-        throw new BadRequestException(`Quantidade (${dto.quantidade}) não pode ser menor que o total já utilizado em ordens emitidas para este item (${usado})`);
+        throw new BadRequestException(`Quantidade (${dto.quantidade}) não pode ser menor que o total já contratado deste item (${usado})`);
       }
 
       const homologacaoItemId = dto.homologacaoItemId ?? existente.homologacaoItemId ?? undefined;
@@ -445,7 +491,7 @@ export class AtasService {
     const linhas: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, raw: false, defval: '' });
 
     const existentes = await this.db.select({ numeroItem: ataItens.numeroItem }).from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
-    let proximoNumero = existentes.length + 1;
+    let proximoNumero = existentes.reduce((maior, e) => Math.max(maior, e.numeroItem), 0) + 1;
 
     const erros: { linha: number; motivo: string }[] = [];
     let inseridos = 0;

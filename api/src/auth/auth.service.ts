@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, eq, ne } from 'drizzle-orm';
 import * as bcrypt from 'bcryptjs';
@@ -44,7 +44,38 @@ export class AuthService {
     };
   }
 
+  // Freio contra tentativa e erro de senha: depois de MAX_FALHAS erros para o
+  // mesmo município+e-mail, novas tentativas são recusadas até a janela
+  // passar. Em memória, por processo — suficiente para um servidor único; com
+  // mais de uma instância isto precisa ir para um armazenamento compartilhado.
+  private static readonly MAX_FALHAS = 5;
+  private static readonly JANELA_MS = 15 * 60 * 1000;
+  private falhas = new Map<string, { quantidade: number; desde: number }>();
+
+  private exigirNaoBloqueado(chave: string) {
+    const registro = this.falhas.get(chave);
+    if (!registro) return;
+    if (Date.now() - registro.desde > AuthService.JANELA_MS) { this.falhas.delete(chave); return; }
+    if (registro.quantidade >= AuthService.MAX_FALHAS) {
+      const minutos = Math.ceil((AuthService.JANELA_MS - (Date.now() - registro.desde)) / 60000);
+      throw new HttpException(`Muitas tentativas de acesso. Tente novamente em ${minutos} minuto(s).`, HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+
+  private registrarFalha(chave: string) {
+    const registro = this.falhas.get(chave);
+    if (!registro || Date.now() - registro.desde > AuthService.JANELA_MS) this.falhas.set(chave, { quantidade: 1, desde: Date.now() });
+    else registro.quantidade++;
+    // Não deixa o mapa crescer sem limite sob varredura de e-mails.
+    if (this.falhas.size > 10_000) {
+      for (const [k, r] of this.falhas) if (Date.now() - r.desde > AuthService.JANELA_MS) this.falhas.delete(k);
+    }
+  }
+
   async login(dto: LoginDto) {
+    const chave = `${dto.tenantCodigo}:${String(dto.email).trim().toLowerCase()}`;
+    this.exigirNaoBloqueado(chave);
+
     const [tenant] = await this.db.select().from(tenants).where(eq(tenants.codigo, dto.tenantCodigo));
     if (!tenant) throw new UnauthorizedException('Município não encontrado');
 
@@ -52,11 +83,18 @@ export class AuthService {
       .select()
       .from(usuarios)
       .where(and(eq(usuarios.tenantId, tenant.id), eq(usuarios.email, dto.email)));
-    if (!user || !user.ativo) throw new UnauthorizedException('Credenciais inválidas');
+    if (!user || !user.ativo) {
+      this.registrarFalha(chave);
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
 
     const senhaOk = await bcrypt.compare(dto.senha, user.senhaHash);
-    if (!senhaOk) throw new UnauthorizedException('Credenciais inválidas');
+    if (!senhaOk) {
+      this.registrarFalha(chave);
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
 
+    this.falhas.delete(chave);
     return this.emitirSessao(user, tenant);
   }
 

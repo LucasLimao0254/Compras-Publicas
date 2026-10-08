@@ -3,8 +3,18 @@ import { api } from '../lib/api';
 
 interface Orgao { id: string; perfil: string; secretaria: { titulo: string }; }
 interface ItemComSaldo {
-  id: string; numeroItem: number; descricao: string; unidade: string;
+  id: string; homologacaoItemId: string | null; numeroItem: number; descricao: string; unidade: string;
   valorUnitario: string; quantidadeDisponivel: number;
+}
+
+// Mesma regra do servidor (AtasService.remanejarSaldo): itens vindos da
+// homologação são "o mesmo item" quando apontam para o mesmo item homologado;
+// sem homologação dos dois lados, vale o número do item. Unidade e valor
+// unitário precisam bater nos dois casos. Casar só por número deixava de fora
+// itens equivalentes que tinham recebido números diferentes em cada órgão.
+function equivalentes(a: ItemComSaldo, b: ItemComSaldo) {
+  const mesmoItem = a.homologacaoItemId || b.homologacaoItemId ? a.homologacaoItemId === b.homologacaoItemId : a.numeroItem === b.numeroItem;
+  return mesmoItem && a.unidade === b.unidade && Number(a.valorUnitario) === Number(b.valorUnitario);
 }
 interface Historico {
   id: string; quantidade: string; criadoEm: string;
@@ -40,7 +50,7 @@ export function RemanejarSaldoModal({ ataId, orgaos, onClose, onSaved }: { ataId
 
   const itensElegiveis = useMemo(() => {
     return itensOrigem
-      .filter((io) => itensDestino.some((id_) => id_.numeroItem === io.numeroItem && id_.unidade === io.unidade && id_.valorUnitario === io.valorUnitario))
+      .filter((io) => itensDestino.some((id_) => equivalentes(io, id_)))
       .filter((io) => io.quantidadeDisponivel > 0);
   }, [itensOrigem, itensDestino]);
 
@@ -55,9 +65,7 @@ export function RemanejarSaldoModal({ ataId, orgaos, onClose, onSaved }: { ataId
   async function onSubmit() {
     setErro(null);
     if (!itemOrigemId || !quantidade) { setErro('Selecione o item e a quantidade'); return; }
-    const destinoItem = itensDestino.find(
-      (id_) => id_.numeroItem === itemSelecionado?.numeroItem && id_.unidade === itemSelecionado?.unidade && id_.valorUnitario === itemSelecionado?.valorUnitario,
-    );
+    const destinoItem = itemSelecionado ? itensDestino.find((id_) => equivalentes(itemSelecionado, id_)) : undefined;
     if (!destinoItem) { setErro('Item equivalente não encontrado no destino'); return; }
     setSalvando(true);
     try {
@@ -103,7 +111,7 @@ export function RemanejarSaldoModal({ ataId, orgaos, onClose, onSaved }: { ataId
             <h3 className="dialog-title">Remanejar saldo entre órgãos</h3>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', borderRadius: 10, background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', padding: '12px 14px', fontSize: 12, lineHeight: 1.5, color: 'color-mix(in srgb, var(--color-text) 75%, transparent)' }}>
               <i className="ph ph-info" style={{ color: 'var(--color-accent)' }} />
-              Só é possível remanejar itens com o mesmo número, preço unitário e unidade no órgão de destino, dentro do saldo disponível do órgão de origem.
+              Só é possível remanejar para um órgão que já tenha o mesmo item (mesma origem na homologação, preço unitário e unidade), dentro do saldo disponível do órgão de origem. Se o destino ainda não tem o item, importe-o lá com quantidade zero primeiro.
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>

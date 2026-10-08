@@ -19,7 +19,10 @@ export class MinutasController {
     return this.service.marcadoresPorTipo();
   }
 
-  @RequirePermission('compras.configuracoes')
+  // Também lido pelas telas de contrato e ata, para saber se o botão de
+  // gerar fica habilitado — sem isso, quem não tem acesso a Configurações via
+  // "nenhum modelo cadastrado" mesmo com o modelo carregado.
+  @RequirePermission('compras.configuracoes', 'compras.contratos', 'compras.atas')
   @Get('modelos')
   listarModelos(@CurrentUser() u: AuthUser) {
     return this.service.listarModelos(u.tenantId);
@@ -34,12 +37,11 @@ export class MinutasController {
     return this.service.listarModelos(u.tenantId);
   }
 
-  // Sem @RequirePermission adicional de propósito: quem chega aqui já
-  // passou pela tela de detalhe do contrato/ata (compras.contratos ou
-  // compras.atas) de onde o botão "gerar" vive — os quatro tipos são
-  // gerados a partir de páginas com permissões diferentes, e o dado exposto
-  // aqui é o mesmo que a tela de origem já mostrou. O isolamento que
-  // importa (tenant) continua garantido dentro do service.
+  // Os quatro tipos são gerados a partir das telas de contrato e de ata —
+  // basta ter acesso a uma delas. Passar pelo guard (em vez de ficar sem
+  // permissão nenhuma) também faz valer a trava de setor habilitado para o
+  // tenant. O isolamento por tenant continua garantido dentro do service.
+  @RequirePermission('compras.contratos', 'compras.atas')
   @Get(':tipo/:entidadeId')
   async gerar(@CurrentUser() u: AuthUser, @Param('tipo') tipo: string, @Param('entidadeId') entidadeId: string) {
     const buffer = await this.service.gerar(u.tenantId, tipo, entidadeId);
