@@ -70,9 +70,10 @@ export class FornecedoresService {
   async processos(tenantId: string, fornecedorId: string) {
     await this.get(tenantId, fornecedorId);
 
-    const [todasAtas, todosContratos] = await Promise.all([this.atasService.list(tenantId), this.contratosService.list(tenantId)]);
-    const atasDoFornecedor = todasAtas.filter((a) => a.detentorPrincipalId === fornecedorId);
-    const contratosDoFornecedor = todosContratos.filter((c) => c.fornecedorId === fornecedorId);
+    const [atasDoFornecedor, contratosDoFornecedor] = await Promise.all([
+      this.atasService.list(tenantId, { detentorPrincipalId: fornecedorId }),
+      this.contratosService.list(tenantId, { fornecedorId }),
+    ]);
 
     const licitacaoIds = [...new Set([...atasDoFornecedor.map((a) => a.licitacaoId), ...contratosDoFornecedor.map((c) => c.licitacaoId)])];
     const licitacoesDoFornecedor = licitacaoIds.length

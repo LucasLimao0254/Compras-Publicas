@@ -11,6 +11,16 @@ import { PostgresExceptionFilter } from './common/postgres-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // Cabeçalhos básicos de segurança (o que o helmet faria no essencial): sem
+  // adivinhação de tipo, sem embutir a aplicação em iframe de outro site, e
+  // sem vazar a URL interna para links externos.
+  app.use((_req: any, res: any, next: () => void) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    next();
+  });
+
   // Ambiente hospedado de um serviço só (render.yaml): a API responde em
   // /api — o mesmo caminho que o frontend já usa, e que o Vite reescreve em
   // desenvolvimento — e serve o build do frontend em todo o resto, com

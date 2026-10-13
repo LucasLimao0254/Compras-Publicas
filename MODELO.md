@@ -94,6 +94,10 @@ Administrador e só de ata da qual nenhum contrato abate — com contrato, arqui
 
 Saldo pode ser remanejado entre órgãos, desde que a soma continue respeitando o teto.
 
+**Prazo** (Lei 14.133, art. 84): a ata nasce com vigência de até 1 ano e pode ser prorrogada
+por igual período — no máximo 2 anos contados do início. Os itens da ata levam o número do item
+na homologação (o do edital), igual em todos os órgãos.
+
 **Renovação de ata é prorrogação de prazo na própria ata** — mesma ata, mesmo teto, saldo
 restante preservado. Não cria ata nova, não copia itens, não gera ciclo. Não existe
 `ataOrigemId` nem aba de ciclos anteriores.
@@ -212,6 +216,9 @@ Nome, Cargo e Portaria.
   usado e deixa escolher outro. Faltando qualquer modelo de um tipo, o botão de gerar documento
   daquele tipo fica desabilitado, com a razão dita na tela. Indicador de prontidão no topo
   ("4 de 4 tipos com modelo" — basta um por tipo).
+  Marcadores de lista (`{{itens}}`, uma linha por item) e de valor por extenso
+  (`{{valor_total_extenso}}`) estão disponíveis para contrato e ARP. Qualquer aditivo ou
+  apostilamento do contrato pode ter o documento gerado, não só o último.
 - **Modelo de dotação orçamentária** — colunas configuráveis por tenant: rótulo editável,
   ordem por arraste, e por coluna os toggles *Múltiplos* e *Obrigatório*. Padrão:
   Gestão/Unidade, Fonte de Recursos, Programa de Trabalho, Elemento de despesa. Mais um toggle

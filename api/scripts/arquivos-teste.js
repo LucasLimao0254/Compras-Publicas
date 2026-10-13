@@ -67,13 +67,18 @@ async function gerarArquivos(ARQUIVOS) {
     ['Contratada: {{fornecedor_razao_social}} (CNPJ {{fornecedor_cnpj}})'],
     ['Órgão: {{orgao_gerenciador}}'],
     ['Objeto: {{objeto_contrato}}'],
-    ['Valor total: R$ {{valor_total}}'],
-    ['Vigência: {{vigencia_inicial}} a {{vigencia_final}}'],
+    ['Itens:'],
+    ['{{itens}}'],
+    ['Valor total: R$ {{valor_total}} ({{valor_total_extenso}})'],
+    ['Vigência: {{vigencia_inicial}} a {{vigencia_final}} — assinado em {{data_assinatura}}'],
   ]);
   await docx('modelo_ARP.docx', [
     ['ATA DE REGISTRO DE PREÇOS {{numero_arp}}'],
     ['Detentor: {{fornecedor_razao_social}} (CNPJ {{fornecedor_cnpj}}) — Licitação {{licitacao_numero}}'],
     ['Vigência: {{vigencia_inicial}} a {{vigencia_final}}'],
+    ['Itens registrados:'],
+    ['{{itens}}'],
+    ['Valor registrado: R$ {{valor_total}} ({{valor_total_extenso}})'],
   ]);
   await docx('modelo_ADITIVO.docx', [
     ['{{numero_aditivo}} ao contrato {{numero_contrato}}'],

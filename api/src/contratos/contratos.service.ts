@@ -80,9 +80,16 @@ export class ContratosService {
     private saldoCeiling: SaldoCeilingService,
   ) {}
 
-  async list(tenantId: string) {
+  // `filtro` restringe no banco — as telas de licitação, fornecedor e ata
+  // carregavam todos os contratos do município para filtrar em memória.
+  async list(tenantId: string, filtro: { licitacaoId?: string; fornecedorId?: string; ataOrgaoIds?: string[] } = {}) {
+    if (filtro.ataOrgaoIds && !filtro.ataOrgaoIds.length) return [];
+    const condicoes = [eq(contratos.tenantId, tenantId)];
+    if (filtro.licitacaoId) condicoes.push(eq(contratos.licitacaoId, filtro.licitacaoId));
+    if (filtro.fornecedorId) condicoes.push(eq(contratos.fornecedorId, filtro.fornecedorId));
+    if (filtro.ataOrgaoIds) condicoes.push(inArray(contratos.ataOrgaoId, filtro.ataOrgaoIds));
     const rows = await this.db.query.contratos.findMany({
-      where: eq(contratos.tenantId, tenantId),
+      where: and(...condicoes),
       with: { licitacao: true, orgaoGerenciador: true, fornecedor: true },
     });
     const saldos = await calcularSaldosContratos(this.db, rows.map((r) => r.id));

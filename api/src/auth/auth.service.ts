@@ -1,13 +1,20 @@
-import { BadRequestException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import * as bcrypt from 'bcryptjs';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import { permissoes, tenants, usuarios } from '../db/schema';
 import { LoginDto } from './dto/login.dto';
 
+// Tentativas de senha errada por município+e-mail: depois de 5 em 15 minutos,
+// o login fica bloqueado até a janela passar (contra tentativa e erro). Em
+// memória — reinicia junto com o servidor, o que basta para um serviço só.
+const MAX_TENTATIVAS = 5;
+const JANELA_MS = 15 * 60 * 1000;
+
 @Injectable()
 export class AuthService {
+  private falhas = new Map<string, { quantas: number; desde: number }>();
   constructor(
     @Inject(DRIZZLE) private db: DrizzleDB,
     private jwt: JwtService,
@@ -51,18 +58,34 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
+    const email = dto.email.trim().toLowerCase();
+    const chave = `${dto.tenantCodigo}:${email}`;
+    const registro = this.falhas.get(chave);
+    if (registro && Date.now() - registro.desde < JANELA_MS && registro.quantas >= MAX_TENTATIVAS) {
+      const minutos = Math.ceil((JANELA_MS - (Date.now() - registro.desde)) / 60000);
+      throw new HttpException(`Muitas tentativas de acesso — aguarde ${minutos} minuto(s) e tente de novo`, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const falhou = () => {
+      const atual = this.falhas.get(chave);
+      if (!atual || Date.now() - atual.desde >= JANELA_MS) this.falhas.set(chave, { quantas: 1, desde: Date.now() });
+      else atual.quantas++;
+      return new UnauthorizedException('Credenciais inválidas');
+    };
+
     const [tenant] = await this.db.select().from(tenants).where(eq(tenants.codigo, dto.tenantCodigo));
     if (!tenant) throw new UnauthorizedException('Município não encontrado');
 
+    // E-mail sem diferenciar maiúsculas ("Admin@..." = "admin@...").
     const [user] = await this.db
       .select()
       .from(usuarios)
-      .where(and(eq(usuarios.tenantId, tenant.id), eq(usuarios.email, dto.email)));
-    if (!user || !user.ativo) throw new UnauthorizedException('Credenciais inválidas');
+      .where(and(eq(usuarios.tenantId, tenant.id), sql`lower(${usuarios.email}) = ${email}`));
+    if (!user || !user.ativo) throw falhou();
 
     const senhaOk = await bcrypt.compare(dto.senha, user.senhaHash);
-    if (!senhaOk) throw new UnauthorizedException('Credenciais inválidas');
+    if (!senhaOk) throw falhou();
 
+    this.falhas.delete(chave);
     return this.emitirSessao(user, tenant);
   }
 

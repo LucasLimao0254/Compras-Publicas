@@ -55,7 +55,9 @@ export function Dashboard() {
   if (!resumo) return <div className="content-page text-muted">Carregando...</div>;
 
   const situacaoData = [
-    { name: 'Vigentes', value: resumo.situacaoContratos.vigentes, filtro: 'VIGENTES', cor: CORES[0] },
+    // Fatias sem sobreposição: "vigentes" já inclui os que vencem em 30 dias,
+    // então a fatia verde é só a dos que vencem depois disso.
+    { name: 'Vigentes (vencem em mais de 30 dias)', value: resumo.situacaoContratos.vigentes - resumo.situacaoContratos.vencendo30, filtro: 'VIGENTES_MAIS_30', cor: CORES[0] },
     { name: 'Vencendo em 30 dias', value: resumo.situacaoContratos.vencendo30, filtro: 'VENCENDO_30', cor: CORES[1] },
     { name: 'Vencidos', value: resumo.situacaoContratos.vencidos, filtro: 'VENCIDOS', cor: CORES[2] },
     { name: 'Arquivados', value: resumo.situacaoContratos.arquivados, filtro: 'ARQUIVADOS', cor: CORES[3] },

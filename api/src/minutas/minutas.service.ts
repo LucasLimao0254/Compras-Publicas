@@ -8,6 +8,8 @@ import { join } from 'path';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import { formatarDiaBR, formatarInstanteBR } from '../common/datas';
 import { calcularSaldoContrato } from '../contratos/contratos.service';
+import { centavos, centavosDoTotal, reais } from '../common/dinheiro';
+import { reaisPorExtenso } from '../common/extenso';
 import {
   aditivos,
   atas,
@@ -32,8 +34,11 @@ const MARCADORES_POR_TIPO: Record<TipoMinuta, { marcador: string; descricao: str
   ARP: [
     { marcador: 'fornecedor_cnpj', descricao: 'CNPJ do detentor principal da ata' },
     { marcador: 'fornecedor_razao_social', descricao: 'Razão social do detentor principal da ata' },
+    { marcador: 'itens', descricao: 'Itens da ata por órgão, um por linha (quantidade × valor unitário)' },
     { marcador: 'licitacao_numero', descricao: 'Número da licitação de origem' },
     { marcador: 'numero_arp', descricao: 'Número da ata de registro de preços' },
+    { marcador: 'valor_total', descricao: 'Valor total registrado na ata' },
+    { marcador: 'valor_total_extenso', descricao: 'Valor total registrado na ata, por extenso' },
     { marcador: 'vigencia_final', descricao: 'Data final de vigência da ata' },
     { marcador: 'vigencia_inicial', descricao: 'Data inicial de vigência da ata' },
   ],
@@ -41,12 +46,15 @@ const MARCADORES_POR_TIPO: Record<TipoMinuta, { marcador: string; descricao: str
     { marcador: 'data_assinatura', descricao: 'Data de assinatura do contrato' },
     { marcador: 'fornecedor_cnpj', descricao: 'CNPJ do fornecedor contratado' },
     { marcador: 'fornecedor_razao_social', descricao: 'Razão social do fornecedor contratado' },
+    { marcador: 'itens', descricao: 'Itens do contrato, um por linha (quantidade × valor unitário = total)' },
     { marcador: 'licitacao_numero', descricao: 'Número da licitação de origem' },
+    { marcador: 'modalidade', descricao: 'Modalidade da licitação de origem' },
     { marcador: 'numero_contrato', descricao: 'Número do contrato' },
     { marcador: 'numero_processo', descricao: 'Número do processo administrativo' },
     { marcador: 'objeto_contrato', descricao: 'Objeto do contrato' },
     { marcador: 'orgao_gerenciador', descricao: 'Órgão gerenciador do contrato' },
     { marcador: 'valor_total', descricao: 'Valor total atual do contrato (itens + aditivos de valor)' },
+    { marcador: 'valor_total_extenso', descricao: 'Valor total atual do contrato, por extenso' },
     { marcador: 'vigencia_final', descricao: 'Data final de vigência do contrato' },
     { marcador: 'vigencia_inicial', descricao: 'Data inicial de vigência do contrato' },
   ],
@@ -80,6 +88,13 @@ const TIPO_APOSTILAMENTO_LABEL: Record<string, string> = {
   ALTERACAO_RAZAO_SOCIAL: 'Alteração de razão social', EMPENHO_DOTACAO: 'Empenho de dotação',
 };
 
+const fmtMoeda4 = (v: unknown) => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const fmtQtd = (v: unknown) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+const MODALIDADE_LABEL: Record<string, string> = {
+  PREGAO_ELETRONICO: 'Pregão eletrônico', PREGAO_PRESENCIAL: 'Pregão presencial', CONCORRENCIA_PUBLICA: 'Concorrência',
+  DISPENSA: 'Dispensa', INEXIGIBILIDADE: 'Inexigibilidade', ADESAO_ATA: 'Adesão a ata', CHAMAMENTO_PUBLICO: 'Chamamento público',
+  CARTA_CONVITE: 'Carta convite', LEILAO: 'Leilão', CONCURSO: 'Concurso', RDC_PRESENCIAL: 'RDC presencial', DIALOGO_COMPETITIVO: 'Diálogo competitivo',
+};
 const fmtMoeda = (v: unknown) => (v == null ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
 // Escapa os 5 caracteres especiais de XML — necessário porque o valor
@@ -126,7 +141,8 @@ export function substituirMarcadores(xml: string, dados: Record<string, string>)
       const fim = ini + achado[0].length;
       const a = trechoDe(ini);
       const b = trechoDe(fim - 1);
-      const valor = escapeXml(dados[achado[1]]);
+      // Valor com várias linhas (ex.: {{itens}}) vira quebras de linha do Word.
+      const valor = escapeXml(dados[achado[1]]).replace(/\n/g, '</w:t><w:br/><w:t xml:space="preserve">');
       if (a === b) {
         textos[a] = textos[a].slice(0, ini - offsets[a]) + valor + textos[a].slice(fim - offsets[a]);
       } else {
@@ -367,9 +383,10 @@ export class MinutasService {
   private async dadosContrato(tenantId: string, contratoId: string): Promise<Record<string, string>> {
     const row = await this.db.query.contratos.findFirst({
       where: and(eq(contratos.id, contratoId), eq(contratos.tenantId, tenantId)),
-      with: { fornecedor: true, orgaoGerenciador: true, licitacao: true },
+      with: { fornecedor: true, orgaoGerenciador: true, licitacao: true, itens: true },
     });
     if (!row) throw new NotFoundException('Contrato não encontrado para este tenant');
+    const valorTotal = (await calcularSaldoContrato(this.db, row.id)).valorTotal;
     return {
       numero_contrato: row.numero,
       numero_processo: row.numeroProcesso,
@@ -383,16 +400,23 @@ export class MinutasService {
       data_assinatura: formatarDiaBR(row.dataAssinatura),
       // Valor ATUAL (itens + aditivos de valor), como o marcador promete —
       // não o valorOriginal, que é só a base do limite legal dos aditivos.
-      valor_total: fmtMoeda((await calcularSaldoContrato(this.db, row.id)).valorTotal),
+      valor_total: fmtMoeda(valorTotal),
+      valor_total_extenso: reaisPorExtenso(centavos(valorTotal)),
+      modalidade: MODALIDADE_LABEL[row.licitacao.modalidade] ?? row.licitacao.modalidade,
+      itens: [...row.itens].sort((a, b) => a.numero - b.numero)
+        .map((it) => `${it.numero}. ${it.descricao} — ${fmtQtd(it.quantidade)} ${it.unidade} × R$ ${fmtMoeda4(it.valorUnitario)} = R$ ${fmtMoeda(reais(centavosDoTotal(it.quantidade, it.valorUnitario)))}`)
+        .join('\n'),
     };
   }
 
   private async dadosAta(tenantId: string, ataId: string): Promise<Record<string, string>> {
     const row = await this.db.query.atas.findFirst({
       where: and(eq(atas.id, ataId), eq(atas.tenantId, tenantId)),
-      with: { detentorPrincipal: true, licitacao: true },
+      with: { detentorPrincipal: true, licitacao: true, orgaos: { with: { secretaria: true, itens: true } } },
     });
     if (!row) throw new NotFoundException('Ata não encontrada para este tenant');
+    const todosItens = row.orgaos.flatMap((o) => o.itens);
+    const totalCentavos = todosItens.reduce((acc, it) => acc + centavosDoTotal(it.quantidadeContratada, it.valorUnitario), 0);
     return {
       numero_arp: row.numeroArp,
       fornecedor_razao_social: row.detentorPrincipal.razaoSocial,
@@ -400,6 +424,11 @@ export class MinutasService {
       licitacao_numero: row.licitacao.numero,
       vigencia_inicial: formatarDiaBR(row.vigenciaInicial),
       vigencia_final: formatarDiaBR(row.vigenciaFinal),
+      valor_total: fmtMoeda(reais(totalCentavos)),
+      valor_total_extenso: reaisPorExtenso(totalCentavos),
+      itens: row.orgaos.flatMap((o) => [...o.itens].sort((a, b) => a.numeroItem - b.numeroItem)
+        .map((it) => `${o.secretaria.titulo}: ${it.numeroItem}. ${it.descricao} — ${fmtQtd(it.quantidadeContratada)} ${it.unidade} × R$ ${fmtMoeda4(it.valorUnitario)}`))
+        .join('\n'),
     };
   }
 

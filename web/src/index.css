@@ -262,3 +262,7 @@ a.linha-link:hover, a.linha-link:focus-visible { color: inherit; background: col
 
 [data-dens="confortavel"] .table td { padding-top: 13px; padding-bottom: 13px; }
 [data-dens="compacta"] .table td { padding-top: 7px; padding-bottom: 7px; }
+/* Itens de menu e ações em texto — botões de verdade (teclado e leitor de tela) */
+.item-menu { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 12.5px; cursor: pointer; }
+.item-menu:hover, .item-menu:focus-visible { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.link-acao { border: 0; padding: 0; background: transparent; font: inherit; font-size: 11.5px; cursor: pointer; color: inherit; }

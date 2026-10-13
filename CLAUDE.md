@@ -281,6 +281,10 @@ entidade. Ver MODELO.md, seção 8.
   arquivo como zip (`JSZip.loadAsync`) *antes* de gravar, para rejeitar um `.docx` corrompido
   sem nunca chegar a escrever no disco — por isso `enviarModelo()` recebe `{ originalname,
   buffer }`, não um path.
+- Multi-line values (`{{itens}}`) turn `\n` into `<w:br/>` inside the run; `{{valor_total_extenso}}`
+  comes from `src/common/extenso.ts` (`reaisPorExtenso`, cents in). `GET /minutas/modelos` is also
+  readable by the contract/ata screens so the generate button reflects reality for users without
+  Configurações.
 - Substituição (`substituirMarcadores`) em `word/document.xml` e nos cabeçalhos/rodapés,
   parágrafo a parágrafo sobre o texto contínuo dos `<w:t>` — o Word costuma quebrar um
   marcador em vários trechos (`{{numero_` + `contrato}}`), que uma regex sobre o XML bruto

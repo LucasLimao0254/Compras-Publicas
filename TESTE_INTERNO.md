@@ -107,6 +107,7 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | A4 | Entrar com `rh@demo.gov.br` | Vai direto para **Usuários**, sem tela de erro |
 | A5 | Entrar com `compras@demo.gov.br` e abrir Contratos, Atas e Painel de ordens | As três telas carregam; em "Novo contrato" o seletor de órgão lista as 3 secretarias |
 | A6 | Como admin, usar o seletor de município no topo do menu | Troca para a Câmara Municipal Modelo sem pedir senha |
+| A7 | Entrar com `ADMIN@demo.gov.br` (maiúsculas). Depois, em outra aba anônima, errar a senha de `rh@demo.gov.br` 5 vezes e tentar a certa | Entra normalmente. Depois de 5 erros: *"Muitas tentativas de acesso — aguarde … minuto(s)"*, mesmo com a senha certa |
 
 ### B. Usuários [1]
 
@@ -116,6 +117,7 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | B2 | Como `rh@`, editar o Administrador Demo (por exemplo, trocar a senha) | Recusado: *"…podem alterar um usuário administrador"* |
 | B3 | Como `rh@`, criar um usuário **Padrão** | Criado normalmente |
 | B4 | Como admin, excluir a **Carla Compradora** | Recusado: *"…tem registros no histórico… desative-o em vez disso"* [3] |
+| B5 | Como admin, abrir o próprio usuário e desmarcar **ativo**; depois tentar mudar o próprio tipo para Padrão | Recusado: *"Você não pode desativar o próprio usuário"* e *"…tirar de si mesmo o tipo Administrador"* |
 
 ### C. Licitações e homologação [2D]
 
@@ -125,6 +127,7 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | C2 | Vincular o fornecedor (use "cadastrar novo"), preencher a unidade `KG` e concluir | Status **Revisado** |
 | C3 | Licitação **001/2026**: enviar `homologacao_exemplo.xlsx` | Status *Pronto para revisão*; Papel A4 com **quantidade 1500** e **valor 21,90**, não 1,5. Caneta a 1,8765 |
 | C4 | Revisar e concluir a do C3, depois enviar o mesmo arquivo de novo e concluir essa também | A primeira passa a **"Substituída por reenvio"**; só a última vale |
+| C9 | Fornecedores → novo, com CNPJ `11.222.333/0001-80`; depois `11222333000181`; depois de novo `11.222.333/0001-81` | O primeiro é recusado (*"CNPJ/CPF inválido"*); o segundo é salvo como **11.222.333/0001-81**; o terceiro é recusado como duplicado |
 
 ### D. Atas [2A]
 
@@ -136,6 +139,7 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | D4 | Remanejar 50 detergentes de Saúde para Educação | Saldos dos órgãos atualizados; o histórico do item mostra o remanejamento |
 | D5 | **Nova ata**: antes e depois de escolher a licitação 002/2026, abrir o campo **Detentor principal** | Antes: desabilitado, *"Escolha a licitação primeiro"*. Depois: só **Limpa Tudo** (indisponível, *"já tem ata nesta licitação"*) e **Protege EPI** |
 | D7 | **Nova ata**: olhar o campo **Número ARP** vazio; digitar `001/2026`; depois `099/2026`. Repetir em **Novo contrato** com `2/2026` | Vazio, mostra *"Último usado: ARP 001/2026"* (some ao digitar). `001/2026` é apontado como já usado (*"O número ARP 001/2026 já foi usado por outra ata"*) e **Salvar** fica bloqueado; `099/2026` libera. No contrato, `2/2026` é recusado como o **002/2026** |
+| D8 | **Nova ata** com vigência de mais de 1 ano. Depois, na ARP 001/2026, **Prorrogar vigência** para mais de 2 anos do início | Recusado: *"A vigência da ata é de até 1 ano (Lei 14.133, art. 84)…"*; a prorrogação só vai até 1 ano + igual período |
 | D6 | Na lista de atas, **editar** a ARP 001/2026 (ícone de lápis) e depois **excluir** (lixeira); repetir pela tela da ata (botões Editar/Excluir) | A edição salva. A exclusão é recusada: *"Esta ata tem contrato vinculado (002/2026)…"*. Valores unitários dos itens aparecem **sem "R$"** e as quantidades sem ".000" |
 
 ### E. Contratos e aditivos [2A, 2B, 3]
@@ -151,6 +155,8 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | E7 | **002/2026**: tentar suprimir mais sabão do que o disponível | Recusado: *"só é possível suprimir até …"* |
 | E8 | **001/2026** (contrato manual, com saldo): aditivo de **Valor**. Depois, aditivo de **Prazo** no mesmo contrato | O de valor é recusado: *"Ainda há saldo disponível neste contrato…"*. O de prazo é aceito |
 | E9 | Na lista de contratos: **editar** o 005/2026 (lápis) e trocar o objeto; **excluir** o 002/2026; depois excluir o 005/2026. Repetir Editar/Excluir na tela do contrato | Edição salva. 002/2026: recusado, *"Este contrato tem 3 ordens — não pode ser excluído…"*. 005/2026 (sem ordens) some da lista. Como `compras@`, a lixeira não aparece (só o admin exclui) |
+| E10 | **003/2026** (esgotado), aba Aditivos: novo aditivo de **Acréscimo de valor** | O formulário pede **itens e quantidades** (não percentual). +10 luvas → saldo R$ 125,00, e uma nova ordem de 10 luvas é aceita |
+| E11 | Novo contrato na licitação 001/2026, **Sem ARP**, controle **Valor global**. Emitir ordens até passar a quantidade de um item | As ordens abatem R$: passam enquanto houver saldo em reais e são recusadas além dele (*"excede o saldo do contrato"*) |
 
 ### F. Ordens [2C, 3]
 
@@ -162,6 +168,8 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 | F4 | Como `compras@`, emitir o **rascunho** do 002/2026 | Emitido com o próximo número da sequência |
 | F5 | "Ver histórico" de uma ordem | Mostra pelo menos o cadastro e a emissão |
 | F6 | Emitir em duas abas ao mesmo tempo | Números diferentes, sem erro [2C] |
+| F7 | **Nova ordem**: abrir a lista de contratos; escolher o 002/2026 e informar rateio de R$ 1,00 numa dotação | 003/2026 (*sem saldo*) e 005/2026 (*vencido*) aparecem indisponíveis; a dotação **(do contrato)** vem primeiro; aviso de que o rateio não soma o total |
+| F8 | Como admin, **Editar** uma ordem emitida com dois itens: pôr 0 num deles e trocar a dotação | O item com 0 sai da ordem e a dotação nova fica salva (antes as duas mudanças eram ignoradas) |
 
 ### G. Configurações e minutas [2C, 3]
 
@@ -169,8 +177,9 @@ Cada caso diz o que fazer e o que deve acontecer. Entre colchetes, o grupo do
 |---|---|---|
 | G1 | Como admin, pôr o **sequencial da próxima ordem** abaixo do último emitido | Recusado: *"precisa ser maior que o último já emitido"* |
 | G2 | Enviar os 4 `modelo_*.docx` de `.ambiente-teste/arquivos/` | Indicador **"4 de 4 tipos com modelo"** |
-| G3 | No **004/2026**, aba Minutas, gerar o contrato | O .docx sai com todos os campos preenchidos, inclusive "CONTRATO Nº 004/2026". Esse marcador está quebrado em dois trechos no modelo, como o Word faz. Valor total R$ 450,00 |
+| G3 | No **004/2026**, aba Minutas, gerar o contrato | O .docx sai com todos os campos preenchidos, inclusive "CONTRATO Nº 004/2026", a lista de **itens** (uma linha por item), o valor **por extenso** e a data de assinatura 05/01/2026. Esse marcador está quebrado em dois trechos no modelo, como o Word faz. Valor total R$ 450,00 |
 | G4 | Em Configurações → Contrato, **Adicionar modelo** duas vezes com `modelo_CONTRATO.docx`: "Contrato — dispensa" marcando *Dispensa* e "Contrato — pregão" marcando *Pregão eletrônico*. Depois, no **002/2026** (pregão eletrônico), aba Minutas | Os dois modelos aparecem com suas modalidades. No contrato, o seletor vem com **"Contrato — pregão (sugerido)"** e a frase *"licitação por pregão eletrônico"*; trocar para o de dispensa e gerar baixa o .docx |
+| G5 | Como `compras@` (sem acesso a Configurações), aba Minutas de um contrato com aditivo | O botão **Gerar** fica habilitado quando há modelo; dá para escolher **qual aditivo** gerar, não só o último |
 
 ### H. Visão geral
 

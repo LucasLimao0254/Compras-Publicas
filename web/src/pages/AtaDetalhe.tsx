@@ -206,6 +206,8 @@ export function AtaDetalhe() {
                 style={{ width: 148 }}
                 value={novaVigencia}
                 min={new Date(new Date(ata.vigenciaFinal).getTime() + 86400000).toISOString().slice(0, 10)}
+                max={(() => { const d = new Date(ata.vigenciaInicial); d.setUTCFullYear(d.getUTCFullYear() + 2); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); })()}
+                title="Até 2 anos do início da vigência (Lei 14.133, art. 84)"
                 onChange={(e) => setNovaVigencia(e.target.value)}
               />
               <button className="btn btn-primary" onClick={prorrogarAta} disabled={salvandoProrrogacao || !novaVigencia}>{salvandoProrrogacao ? 'Salvando...' : 'Confirmar'}</button>

@@ -159,6 +159,9 @@ export interface AtaCriada {
 
 // Cria uma ata do fornecedor homologado, com os dois órgãos (A gerenciador, B
 // participante). `distribuicao` reserva quantidade de cada item em cada órgão.
+const diaISO = (deslocamentoDias: number) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + deslocamentoDias); return d.toISOString().slice(0, 10); };
+export const VIGENCIA_ATA = (() => { const inicio = diaISO(-30); const f = new Date(`${inicio}T00:00:00Z`); f.setUTCFullYear(f.getUTCFullYear() + 1); f.setUTCDate(f.getUTCDate() - 1); return { inicio, fim: f.toISOString().slice(0, 10) }; })();
+
 export async function criarAta(
   ctx: Ctx,
   c: Cenario,
@@ -170,8 +173,9 @@ export async function criarAta(
     licitacaoId: c.licitacaoId,
     detentorPrincipalId: c.fornecedorId,
     homologacaoFornecedorId: c.homologacaoFornecedorId,
-    vigenciaInicial: '2026-01-01',
-    vigenciaFinal: '2099-12-31',
+    // vigência real de ata (1 ano, Lei 14.133 art. 84), em curso hoje
+    vigenciaInicial: VIGENCIA_ATA.inicio,
+    vigenciaFinal: VIGENCIA_ATA.fim,
     orgaos: [
       { secretariaId: c.secretariaA, perfil: 'GERENCIADOR' },
       { secretariaId: c.secretariaB, perfil: 'PARTICIPANTE' },

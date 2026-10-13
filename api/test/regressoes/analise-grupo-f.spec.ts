@@ -56,3 +56,23 @@ describe('Análise grupo F', () => {
     expect(await rejeicao(ctx.homologacao.concluirRevisao(c.tenantId, c.homologacaoId))).toMatch(/vinculados ao mesmo fornecedor/);
   });
 });
+
+describe('Prazo da ata (Lei 14.133, art. 84)', () => {
+  let ctx: Ctx;
+  beforeAll(() => { ctx = criarCtx(); });
+  afterAll(() => encerrarCtx(ctx));
+
+  it('nasce com até 1 ano e prorroga até 2 anos do início', async () => {
+    const { ultimoDiaDoPeriodo } = await import('../../src/common/datas');
+    expect(ultimoDiaDoPeriodo('2026-03-01', 1)).toBe('2027-02-28');
+    const c = await criarCenario(ctx);
+    expect(await rejeicao(ctx.atas.create(c.tenantId, { numeroArp: `ARP-L-${Date.now()}`, licitacaoId: c.licitacaoId, detentorPrincipalId: c.fornecedorId, homologacaoFornecedorId: c.homologacaoFornecedorId, vigenciaInicial: '2026-03-01', vigenciaFinal: '2027-03-01' } as any))).toMatch(/até 1 ano.*28\/02\/2027/);
+
+    const ata = await criarAta(ctx, c);
+    const [row] = await ctx.db.select().from(schema.atas).where(eq(schema.atas.id, ata.ataId));
+    const limite = ultimoDiaDoPeriodo(row.vigenciaInicial, 2);
+    const umDiaDepois = new Date(`${limite}T00:00:00Z`); umDiaDepois.setUTCDate(umDiaDepois.getUTCDate() + 1);
+    expect(await rejeicao(ctx.atas.prorrogar(c.tenantId, ata.ataId, c.usuarioId, { vigenciaFinal: umDiaDepois.toISOString().slice(0, 10) }))).toMatch(/pode ser prorrogada até/);
+    await ctx.atas.prorrogar(c.tenantId, ata.ataId, c.usuarioId, { vigenciaFinal: limite });
+  });
+});

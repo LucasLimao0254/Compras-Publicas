@@ -69,6 +69,8 @@ export function ContratoDetalhe() {
   const [erroApostilamento, setErroApostilamento] = useState<string | null>(null);
 
   const [editando, setEditando] = useState(false);
+  const [aditivoMinutaId, setAditivoMinutaId] = useState('');
+  const [apostilamentoMinutaId, setApostilamentoMinutaId] = useState('');
 
   async function carregar() {
     const [c, i, o] = await Promise.all([api.get(`/contratos/${id}`), api.get(`/contratos/${id}/itens`), api.get(`/ordens?contratoId=${id}`)]);
@@ -397,8 +399,15 @@ export function ContratoDetalhe() {
                     <span className="num text-muted" style={{ fontSize: 11.5 }}>assinado em {formatarDia(a.dataAssinatura)}</span>
                   </div>
                   <div style={{ fontSize: 13.5, marginBottom: 4 }}>
-                    {a.tipo === 'VALOR' && `Acréscimo de ${a.percentual}% ao valor, +R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                    {a.tipo === 'ACRESCIMO_ESPECIAL' && `Acréscimo especial de ${a.percentual}% ao valor (Art. 65 §1º-B), +R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                    {(a.tipo === 'VALOR' || a.tipo === 'ACRESCIMO_ESPECIAL') && (() => {
+                      const rotulo = a.tipo === 'VALOR' ? 'Acréscimo' : 'Acréscimo especial (Art. 65 §1º-B)';
+                      const perc = a.percentual != null ? `${Number(a.percentual).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%` : '';
+                      const valor = `+R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+                      // contrato por item: o acréscimo foi lançado em quantidades
+                      return a.itens?.length
+                        ? `${rotulo} de ${perc} em ${a.itens.map((it) => `${it.itemContrato.descricao.slice(0, 40)} +${formatarQuantidade(it.quantidadeAcrescida)}`).join(', ')}, ${valor}`
+                        : `${rotulo} de ${perc} ao valor, ${valor}`;
+                    })()}
                     {a.tipo === 'SUPRESSAO' && (a.itens.length
                       ? `Supressão de ${a.itens.map((it) => `${it.itemContrato.descricao} ${formatarQuantidade(it.quantidadeAcrescida)}`).join(', ')}, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                       : `Supressão de ${a.percentual}% do valor, -R$ ${Number(a.valorAcrescimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)}
@@ -477,8 +486,10 @@ export function ContratoDetalhe() {
       )}
 
       {aba === 'minutas' && (() => {
-        const ultimoAditivo = aditivos[0];
-        const ultimoApostilamento = apostilamentos[0];
+        // Qualquer aditivo/apostilamento pode ter o documento gerado (antes só o
+        // último); o mais recente vem selecionado.
+        const aditivoEscolhido = aditivos.find((a) => a.id === aditivoMinutaId) ?? aditivos[0];
+        const apostilamentoEscolhido = apostilamentos.find((a) => a.id === apostilamentoMinutaId) ?? apostilamentos[0];
         const carregado = (tipo: 'ARP' | 'CONTRATO' | 'ADITIVO' | 'APOSTILAMENTO') => modelosMinuta?.modelos.find((m) => m.tipo === tipo)?.carregado ?? false;
         return (
           <div style={{ paddingTop: 18, maxWidth: 640 }}>
@@ -500,16 +511,24 @@ export function ContratoDetalhe() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                 <div>
                   <div style={{ fontSize: 13.5, fontFamily: 'var(--font-heading)', fontWeight: 500 }}>Termo aditivo</div>
-                  <div className="text-muted" style={{ fontSize: 12 }}>{ultimoAditivo ? `Último: ${ultimoAditivo.numero}` : 'Nenhum aditivo registrado ainda'}</div>
+                  {aditivos.length ? (
+                    <select className="input" aria-label="Aditivo do documento" style={{ marginTop: 4, maxWidth: 280 }} value={aditivoEscolhido?.id} onChange={(e) => setAditivoMinutaId(e.target.value)}>
+                      {aditivos.map((a) => <option key={a.id} value={a.id}>{a.numero} — {TIPO_LABEL[a.tipo] ?? a.tipo}</option>)}
+                    </select>
+                  ) : <div className="text-muted" style={{ fontSize: 12 }}>Nenhum aditivo registrado ainda</div>}
                 </div>
-                <GerarMinutaButton tipo="ADITIVO" entidadeId={ultimoAditivo?.id ?? null} modeloCarregado={carregado('ADITIVO')} label="Gerar" motivoIndisponivel="Nenhum aditivo registrado ainda — registre um na aba Aditivos" />
+                <GerarMinutaButton tipo="ADITIVO" entidadeId={aditivoEscolhido?.id ?? null} modeloCarregado={carregado('ADITIVO')} label="Gerar" motivoIndisponivel="Nenhum aditivo registrado ainda — registre um na aba Aditivos" />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                 <div>
                   <div style={{ fontSize: 13.5, fontFamily: 'var(--font-heading)', fontWeight: 500 }}>Apostilamento</div>
-                  <div className="text-muted" style={{ fontSize: 12 }}>{ultimoApostilamento ? `Último: ${new Date(ultimoApostilamento.criadoEm).toLocaleDateString('pt-BR')}` : 'Nenhum apostilamento registrado ainda'}</div>
+                  {apostilamentos.length ? (
+                    <select className="input" aria-label="Apostilamento do documento" style={{ marginTop: 4, maxWidth: 280 }} value={apostilamentoEscolhido?.id} onChange={(e) => setApostilamentoMinutaId(e.target.value)}>
+                      {apostilamentos.map((a) => <option key={a.id} value={a.id}>{new Date(a.criadoEm).toLocaleDateString('pt-BR')} — {a.descricao.slice(0, 40)}</option>)}
+                    </select>
+                  ) : <div className="text-muted" style={{ fontSize: 12 }}>Nenhum apostilamento registrado ainda</div>}
                 </div>
-                <GerarMinutaButton tipo="APOSTILAMENTO" entidadeId={ultimoApostilamento?.id ?? null} modeloCarregado={carregado('APOSTILAMENTO')} label="Gerar" motivoIndisponivel="Nenhum apostilamento registrado ainda — registre um na aba Aditivos" />
+                <GerarMinutaButton tipo="APOSTILAMENTO" entidadeId={apostilamentoEscolhido?.id ?? null} modeloCarregado={carregado('APOSTILAMENTO')} label="Gerar" motivoIndisponivel="Nenhum apostilamento registrado ainda — registre um na aba Aditivos" />
               </div>
             </div>
           </div>

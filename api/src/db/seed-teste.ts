@@ -103,7 +103,7 @@ async function main() {
   // Ata da Limpa Tudo: distribui o teto entre Saúde (gerenciador) e Educação.
   const ata: any = await atas.create(tenantId, {
     numeroArp: 'ARP 001/2026', licitacaoId: licLimpeza.id, detentorPrincipalId: limpaTudo.id, homologacaoFornecedorId: homLimpaTudo.id,
-    vigenciaInicial: '2026-01-01', vigenciaFinal: diaRelativo(365),
+    vigenciaInicial: diaRelativo(-60), vigenciaFinal: diaRelativo(300), // 1 ano no máximo (Lei 14.133, art. 84)
     orgaos: [{ secretariaId: saude.id, perfil: 'GERENCIADOR' }, { secretariaId: educacao.id, perfil: 'PARTICIPANTE' }],
   } as any);
   const orgaoSaude = ata.orgaos.find((o: any) => o.secretaria.id === saude.id).id;
@@ -116,6 +116,7 @@ async function main() {
   await addItemAta(orgaoEducacao, sabao, 200);
 
   const base = {
+    dataAssinatura: '2026-01-05',
     numeroProcesso: 'PA-002/2026', licitacaoId: licLimpeza.id, formaFaturamento: 'SOB_DEMANDA', situacao: 'VIGENTE', vigenciaInicial: '2026-01-01',
   };
   const itemDe = (h: typeof detergente, quantidade: number) => ({ descricao: h.descricao, unidade: h.unidade!, quantidade, valorUnitario: Number(h.valorUnitario), homologacaoItemId: h.id });
@@ -142,7 +143,7 @@ async function main() {
   // Contratos sem origem para testar vigência: um vence HOJE (ainda vale), um
   // venceu ONTEM (emissão bloqueada, salvo configuração).
   const [licManual] = await db.select().from(schema.licitacoes).where(eq(schema.licitacoes.numero, '001/2026'));
-  const manual = { numeroProcesso: 'PA-001/2026', licitacaoId: licManual.id, orgaoGerenciadorId: administracao.id, fornecedorId: limpaTudo.id, formaFaturamento: 'SOB_DEMANDA', situacao: 'VIGENTE', vigenciaInicial: '2026-01-01' };
+  const manual = { numeroProcesso: 'PA-001/2026', licitacaoId: licManual.id, orgaoGerenciadorId: administracao.id, fornecedorId: limpaTudo.id, formaFaturamento: 'SOB_DEMANDA', situacao: 'VIGENTE', vigenciaInicial: '2026-01-01', dataAssinatura: '2026-01-05' };
   await contratos.create(tenantId, { ...manual, numero: '004/2026', objeto: 'Contrato que vence hoje (último dia de vigência)', vigenciaFinal: diaRelativo(0), itens: [{ descricao: 'Copo descartável 200 ml (pacote)', unidade: 'PCT', quantidade: 100, valorUnitario: 4.5 }] } as any);
   await contratos.create(tenantId, { ...manual, numero: '005/2026', objeto: 'Contrato vencido ontem', vigenciaFinal: diaRelativo(-1), itens: [{ descricao: 'Guardanapo (pacote)', unidade: 'PCT', quantidade: 100, valorUnitario: 3.2 }] } as any);
 

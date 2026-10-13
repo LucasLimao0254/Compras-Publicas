@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../../src/db/schema';
 import { JwtStrategy } from '../../src/auth/jwt.strategy';
 import { UsuariosService } from '../../src/usuarios/usuarios.service';
-import { Ctx, criarAta, criarCenario, criarContrato, criarCtx, dadosAditivo, emitirOrdem, encerrarCtx, esgotarContrato, gerarCpf, rejeicao } from '../helpers';
+import { Ctx, criarAta, criarCenario, criarContrato, criarCtx, dadosAditivo, emitirOrdem, encerrarCtx, esgotarContrato, gerarCpf, rejeicao, VIGENCIA_ATA } from '../helpers';
 
 // Análise de bugs, grupo E (graves): aditivo de valor utilizável, ARP vencida/
 // arquivada/sem homologação, sessão revogável e município sem administrador.
@@ -78,11 +78,11 @@ describe('ARP como origem de contrato', () => {
   it('ARP só com homologação revisada; a antiga, sem homologação, não origina contrato', async () => {
     const c = await criarCenario(ctx);
     const [lic] = await ctx.db.insert(schema.licitacoes).values({ tenantId: c.tenantId, numero: `L-${Date.now()}`, numeroProcesso: 'P', objeto: 'o', modalidade: 'DISPENSA' } as any).returning();
-    const base = { licitacaoId: lic.id, detentorPrincipalId: c.fornecedorId, vigenciaInicial: '2026-01-01', vigenciaFinal: '2099-01-01' };
+    const base = { licitacaoId: lic.id, detentorPrincipalId: c.fornecedorId, vigenciaInicial: VIGENCIA_ATA.inicio, vigenciaFinal: VIGENCIA_ATA.fim };
     expect(await rejeicao(ctx.atas.create(c.tenantId, { ...base, numeroArp: `ARP-X-${Date.now()}` } as any))).toMatch(/ainda não tem homologação revisada/);
 
     // ata antiga, criada antes da regra
-    const [ata] = await ctx.db.insert(schema.atas).values({ tenantId: c.tenantId, numeroArp: `ARP-ANTIGA-${Date.now()}`, ...base, vigenciaInicial: new Date('2026-01-01'), vigenciaFinal: new Date('2099-01-01') } as any).returning();
+    const [ata] = await ctx.db.insert(schema.atas).values({ tenantId: c.tenantId, numeroArp: `ARP-ANTIGA-${Date.now()}`, ...base, vigenciaInicial: new Date(VIGENCIA_ATA.inicio), vigenciaFinal: new Date(VIGENCIA_ATA.fim) } as any).returning();
     const [orgao] = await ctx.db.insert(schema.ataOrgaos).values({ tenantId: c.tenantId, ataId: ata.id, secretariaId: c.secretariaA, perfil: 'GERENCIADOR' }).returning();
     const msg = await rejeicao(ctx.contratos.create(c.tenantId, { numero: `CT-${Date.now()}`, numeroProcesso: 'P', objeto: 'o', licitacaoId: lic.id, orgaoGerenciadorId: c.secretariaA, fornecedorId: c.fornecedorId, ataOrgaoId: orgao.id, vigenciaInicial: '2026-01-01', vigenciaFinal: '2099-01-01', formaFaturamento: 'MENSAL', itens: [{ descricao: 'X', unidade: 'UN', quantidade: 1000, valorUnitario: 2 }] } as any));
     expect(msg).toMatch(/não está vinculada a uma homologação/);

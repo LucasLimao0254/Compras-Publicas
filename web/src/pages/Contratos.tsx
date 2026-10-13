@@ -27,6 +27,7 @@ const FILTROS_PRAZO: { valor: string; rotulo: string; faixas: FaixaPrazo[] }[] =
   { valor: '', rotulo: 'Todas as situações', faixas: ['VIGENTE', 'VENCENDO_30', 'VENCIDO', 'ARQUIVADO'] },
   { valor: 'ATIVOS', rotulo: 'Ativos (não arquivados)', faixas: ['VIGENTE', 'VENCENDO_30', 'VENCIDO'] },
   { valor: 'VIGENTES', rotulo: 'Vigentes', faixas: ['VIGENTE', 'VENCENDO_30'] },
+  { valor: 'VIGENTES_MAIS_30', rotulo: 'Vigentes, vencem em mais de 30 dias', faixas: ['VIGENTE'] },
   { valor: 'VENCENDO_30', rotulo: 'Vencendo em 30 dias', faixas: ['VENCENDO_30'] },
   { valor: 'VENCIDOS', rotulo: 'Vencidos', faixas: ['VENCIDO'] },
   { valor: 'ARQUIVADOS', rotulo: 'Arquivados', faixas: ['ARQUIVADO'] },

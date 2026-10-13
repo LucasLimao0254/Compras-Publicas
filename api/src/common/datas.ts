@@ -53,3 +53,13 @@ export function faixaPrazo(situacao: string, vigenciaFinal: Date | string, hojeD
   limite.setUTCDate(limite.getUTCDate() + 30);
   return vf <= diaDaData(limite) ? 'VENCENDO_30' : 'VIGENTE';
 }
+
+// Último dia de um período de `anos` anos começando em `inicio` (ex.: 1 ano a
+// partir de 01/03/2026 vai até 28/02/2027). Usado no prazo da ata (Lei
+// 14.133, art. 84: 1 ano, prorrogável por igual período).
+export function ultimoDiaDoPeriodo(inicio: Date | string, anos: number): string {
+  const d = new Date(`${diaDaData(inicio)}T00:00:00Z`);
+  d.setUTCFullYear(d.getUTCFullYear() + anos);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return diaDaData(d);
+}

@@ -20,7 +20,7 @@ import {
 } from '../db/schema';
 import { paraNumeroPlanilha } from '../common/numero-planilha';
 import { centavos, centavosDoTotal, reais } from '../common/dinheiro';
-import { periodoValido } from '../common/datas';
+import { diaDaData, formatarDiaBR, periodoValido, ultimoDiaDoPeriodo } from '../common/datas';
 import { numeroJaUsado } from '../common/numeracao';
 import { quantidadeConsumidaDoTeto, SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { ContratosService } from '../contratos/contratos.service';
@@ -34,9 +34,12 @@ export class AtasService {
     private contratosService: ContratosService,
   ) {}
 
-  async list(tenantId: string) {
+  async list(tenantId: string, filtro: { licitacaoId?: string; detentorPrincipalId?: string } = {}) {
+    const condicoes = [eq(atas.tenantId, tenantId)];
+    if (filtro.licitacaoId) condicoes.push(eq(atas.licitacaoId, filtro.licitacaoId));
+    if (filtro.detentorPrincipalId) condicoes.push(eq(atas.detentorPrincipalId, filtro.detentorPrincipalId));
     const rows = await this.db.query.atas.findMany({
-      where: eq(atas.tenantId, tenantId),
+      where: and(...condicoes),
       with: { licitacao: true, detentorPrincipal: true, orgaos: { with: { itens: true } } },
       orderBy: (a, { desc }) => [desc(a.createdAt)],
     });
@@ -143,6 +146,11 @@ export class AtasService {
     if (!licitacao) throw new BadRequestException('Licitação não encontrada para este tenant');
     if (!periodoValido(dto.vigenciaInicial, dto.vigenciaFinal)) {
       throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
+    // Lei 14.133, art. 84: a ata vale 1 ano (prorrogável por igual período).
+    const limiteInicial = ultimoDiaDoPeriodo(dto.vigenciaInicial, 1);
+    if (diaDaData(dto.vigenciaFinal) > limiteInicial) {
+      throw new BadRequestException(`A vigência da ata é de até 1 ano (Lei 14.133, art. 84) — com início em ${formatarDiaBR(dto.vigenciaInicial)}, termina no máximo em ${formatarDiaBR(limiteInicial)}`);
     }
 
     const [detentor] = await this.db.select({ id: fornecedores.id }).from(fornecedores).where(and(eq(fornecedores.id, dto.detentorPrincipalId), eq(fornecedores.tenantId, tenantId)));
@@ -363,8 +371,11 @@ export class AtasService {
         throw new BadRequestException(`Quantidade (${dto.quantidade}) excede o saldo homologado restante para este item (${disponivel})`);
       }
 
-      const existentes = await tx.select().from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
-      const numeroItem = existentes.length + 1;
+      // O número é o do item na homologação (o do edital), para o item 3 ser o
+      // 3 em todo órgão; se faltar ou já estiver ocupado no órgão, o próximo livre.
+      const existentes = await tx.select({ numeroItem: ataItens.numeroItem }).from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
+      const usados = new Set(existentes.map((e) => e.numeroItem));
+      const numeroItem = item.numeroItem != null && !usados.has(item.numeroItem) ? item.numeroItem : Math.max(0, ...usados) + 1;
       const [row] = await tx
         .insert(ataItens)
         .values({
@@ -585,7 +596,13 @@ export class AtasService {
 
       const vigenciaFinalNova = new Date(dto.vigenciaFinal);
       if (vigenciaFinalNova <= new Date(ata.vigenciaFinal)) {
-        throw new BadRequestException(`A nova vigência final (${dto.vigenciaFinal}) precisa ser posterior à atual (${new Date(ata.vigenciaFinal).toISOString().slice(0, 10)})`);
+        throw new BadRequestException(`A nova vigência final (${formatarDiaBR(dto.vigenciaFinal)}) precisa ser posterior à atual (${formatarDiaBR(ata.vigenciaFinal)})`);
+      }
+      // 1 ano + prorrogação por igual período (Lei 14.133, art. 84): no
+      // máximo 2 anos contados do início da vigência.
+      const limite = ultimoDiaDoPeriodo(ata.vigenciaInicial, 2);
+      if (diaDaData(vigenciaFinalNova) > limite) {
+        throw new BadRequestException(`A ata pode ser prorrogada até ${formatarDiaBR(limite)} — 1 ano mais igual período a partir do início da vigência (Lei 14.133, art. 84)`);
       }
 
       await tx.update(atas).set({ vigenciaFinal: vigenciaFinalNova }).where(and(eq(atas.id, ataId), eq(atas.tenantId, tenantId)));
@@ -618,10 +635,7 @@ export class AtasService {
   async contratosDaAta(tenantId: string, ataId: string) {
     await this.get(tenantId, ataId);
     const orgaos = await this.db.select({ id: ataOrgaos.id }).from(ataOrgaos).where(eq(ataOrgaos.ataId, ataId));
-    const orgaoIds = new Set(orgaos.map((o) => o.id));
-    if (!orgaoIds.size) return [];
-    const todosContratos = await this.contratosService.list(tenantId);
-    return todosContratos.filter((c: any) => c.ataOrgaoId && orgaoIds.has(c.ataOrgaoId));
+    return this.contratosService.list(tenantId, { ataOrgaoIds: orgaos.map((o) => o.id) });
   }
 
   // Transfere quantidade contratada de um item para outro (mesmo número,

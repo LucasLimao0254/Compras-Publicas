@@ -19,7 +19,10 @@ export class MinutasController {
     return this.service.marcadoresPorTipo();
   }
 
-  @RequirePermission('compras.configuracoes')
+  // Leitura também para as telas de contrato e ata, que mostram se o
+  // documento pode ser gerado — antes quem não tinha Configurações via o botão
+  // de gerar sempre desabilitado.
+  @RequirePermission(['compras.configuracoes', 'compras.contratos', 'compras.atas'])
   @Get('modelos')
   listarModelos(@CurrentUser() u: AuthUser) {
     return this.service.listarModelos(u.tenantId);

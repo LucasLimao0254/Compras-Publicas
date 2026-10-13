@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import * as bcrypt from 'bcryptjs';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import { permissoes, usuarios } from '../db/schema';
@@ -85,12 +85,12 @@ export class UsuariosService {
     this.validarConcessao(chamador, null, dto.permissoes);
     if (!cpfValido(dto.cpf)) throw new BadRequestException('CPF inválido — informe os 11 dígitos de um CPF válido');
     if (!nomePessoaValido(dto.nome)) throw new BadRequestException('Nome inválido — use apenas letras, sem números');
-    dto = { ...dto, cpf: normalizarCpf(dto.cpf), nome: dto.nome.trim() };
+    dto = { ...dto, cpf: normalizarCpf(dto.cpf), nome: dto.nome.trim(), email: dto.email.trim().toLowerCase() };
 
     const existing = await this.db
       .select()
       .from(usuarios)
-      .where(and(eq(usuarios.tenantId, tenantId), eq(usuarios.email, dto.email)));
+      .where(and(eq(usuarios.tenantId, tenantId), sql`lower(${usuarios.email}) = ${dto.email}`));
     if (existing.length) throw new ConflictException('Já existe um usuário com este e-mail neste município');
 
     await this.validarCpfEntreTenants(tenantId, dto.cpf, chamador.ehAdminPlataforma);
