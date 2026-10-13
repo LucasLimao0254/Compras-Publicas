@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { api } from '../lib/api';
 
@@ -38,6 +38,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const raw = localStorage.getItem('tenant');
     return raw ? JSON.parse(raw) : null;
   });
+
+  // Tipo e permissões podem ter mudado desde o login (o servidor já aplica o
+  // atual a cada requisição) — atualiza o menu ao abrir o sistema.
+  useEffect(() => {
+    if (!localStorage.getItem('token')) return;
+    api.get('/auth/me').then((atual: Usuario) => {
+      localStorage.setItem('usuario', JSON.stringify(atual));
+      setUsuario(atual);
+    }).catch(() => { /* 401 já leva ao login */ });
+  }, []);
 
   async function login(email: string, senha: string, tenantCodigo: number) {
     const data = await api.post('/auth/login', { email, senha, tenantCodigo });

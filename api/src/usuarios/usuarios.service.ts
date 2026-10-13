@@ -14,6 +14,8 @@ import { cpfValido, nomePessoaValido, normalizarCpf } from '../common/documentos
 export interface ChamadorUsuarios {
   tipoUsuario: 'ADMIN' | 'PADRAO';
   ehAdminPlataforma: boolean;
+  userId?: string;
+  permissoes?: string[];
 }
 
 @Injectable()
@@ -55,8 +57,32 @@ export class UsuariosService {
     }
   }
 
+  // Quem não é ADMIN só repassa permissões que ele mesmo tem — sem isso, um
+  // usuário com acesso a Usuários dava a si (ou a um colega) acesso a todas as
+  // telas. E ninguém que não seja ADMIN altera as próprias permissões.
+  private validarConcessao(chamador: ChamadorUsuarios, alvoId: string | null, permissoesNovas: string[] | undefined, permissoesAtuais: string[] = []) {
+    if (!permissoesNovas || chamador.tipoUsuario === 'ADMIN') return;
+    if (alvoId && alvoId === chamador.userId) {
+      const mudou = permissoesNovas.length !== permissoesAtuais.length || permissoesNovas.some((p) => !permissoesAtuais.includes(p));
+      if (mudou) throw new ForbiddenException('Você não pode alterar as próprias permissões — peça a um administrador');
+    }
+    if (!chamador.permissoes) return;
+    const acrescentadas = permissoesNovas.filter((p) => !permissoesAtuais.includes(p));
+    const semPoder = acrescentadas.filter((p) => !chamador.permissoes!.includes(p));
+    if (semPoder.length) throw new ForbiddenException(`Você só pode conceder permissões que você mesmo tem (sem acesso a: ${semPoder.join(', ')})`);
+  }
+
+  // O município nunca pode ficar sem um administrador ativo — senão ninguém
+  // mais cria usuários, sobe modelos de minuta ou exclui registros.
+  private async exigirOutroAdminAtivo(tenantId: string, alvoId: string) {
+    const outros = await this.db.select({ id: usuarios.id }).from(usuarios)
+      .where(and(eq(usuarios.tenantId, tenantId), eq(usuarios.tipoUsuario, 'ADMIN'), eq(usuarios.ativo, true), ne(usuarios.id, alvoId)));
+    if (!outros.length) throw new BadRequestException('Este é o único administrador ativo do município — promova outro usuário a administrador antes');
+  }
+
   async create(tenantId: string, chamador: ChamadorUsuarios, dto: CreateUsuarioDto) {
     if (dto.tipoUsuario === 'ADMIN') this.exigirAdminPara(chamador, 'criar um usuário administrador');
+    this.validarConcessao(chamador, null, dto.permissoes);
     if (!cpfValido(dto.cpf)) throw new BadRequestException('CPF inválido — informe os 11 dígitos de um CPF válido');
     if (!nomePessoaValido(dto.nome)) throw new BadRequestException('Nome inválido — use apenas letras, sem números');
     dto = { ...dto, cpf: normalizarCpf(dto.cpf), nome: dto.nome.trim() };
@@ -97,6 +123,13 @@ export class UsuariosService {
     const alvo = await this.get(tenantId, id); // garante que existe e pertence ao tenant
     if (alvo.tipoUsuario === 'ADMIN') this.exigirAdminPara(chamador, 'alterar um usuário administrador');
     if (dto.tipoUsuario !== undefined && dto.tipoUsuario !== alvo.tipoUsuario) this.exigirAdminPara(chamador, 'alterar o tipo de um usuário');
+    this.validarConcessao(chamador, id, dto.permissoes, alvo.permissoes);
+    const desativa = dto.ativo === false && alvo.ativo;
+    const rebaixa = dto.tipoUsuario === 'PADRAO' && alvo.tipoUsuario === 'ADMIN';
+    if (id === chamador.userId && (desativa || rebaixa)) {
+      throw new BadRequestException(desativa ? 'Você não pode desativar o próprio usuário' : 'Você não pode tirar de si mesmo o tipo Administrador');
+    }
+    if (alvo.tipoUsuario === 'ADMIN' && alvo.ativo && (desativa || rebaixa)) await this.exigirOutroAdminAtivo(tenantId, id);
 
     const patch: Record<string, unknown> = {};
     if (dto.nome !== undefined) {
@@ -127,6 +160,8 @@ export class UsuariosService {
   async remove(tenantId: string, chamador: ChamadorUsuarios, id: string) {
     const alvo = await this.get(tenantId, id);
     if (alvo.tipoUsuario === 'ADMIN') this.exigirAdminPara(chamador, 'remover um usuário administrador');
+    if (id === chamador.userId) throw new BadRequestException('Você não pode excluir o próprio usuário');
+    if (alvo.tipoUsuario === 'ADMIN' && alvo.ativo) await this.exigirOutroAdminAtivo(tenantId, id);
     try {
       await this.db.delete(usuarios).where(and(eq(usuarios.id, id), eq(usuarios.tenantId, tenantId)));
     } catch (err) {

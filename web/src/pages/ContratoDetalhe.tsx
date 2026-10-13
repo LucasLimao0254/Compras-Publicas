@@ -117,9 +117,16 @@ export function ContratoDetalhe() {
   // Supressão em contrato controlado por item informa os itens e quantidades
   // suprimidas (um percentual sobre o valor não reduziria nada que as ordens
   // enxergam); só contrato em modo "Valor global" suprime por percentual.
-  const aditivoPorItens = tipoAditivo === 'QUANTIDADE' || (tipoAditivo === 'SUPRESSAO' && contrato.formaControleSaldo !== 'APENAS_VALOR_TOTAL');
+  // Contrato controlado por item: acréscimo de valor também é lançado em
+  // quantidades (as ordens abatem quantidade, então um acréscimo só em R$
+  // nunca seria usado). Só o "Valor global" trabalha com percentual.
+  const valorGlobal = contrato.formaControleSaldo === 'APENAS_VALOR_TOTAL';
+  const aditivoPorItens = tipoAditivo === 'QUANTIDADE' || (!valorGlobal && (tipoAditivo === 'VALOR' || tipoAditivo === 'ACRESCIMO_ESPECIAL' || tipoAditivo === 'SUPRESSAO'));
   const valorEfetivoDoAditivo = aditivoPorItens ? valorAcrescimoQuantidade : valorAcrescimoPrevisto;
-  const limiteValor = Number(contrato.valorOriginal) * (tipoAditivo === 'ACRESCIMO_ESPECIAL' ? 0.5 : 0.25);
+  const percLimite = tipoAditivo === 'ACRESCIMO_ESPECIAL' ? 50 : 25;
+  const fundamentoLimite = tipoAditivo === 'ACRESCIMO_ESPECIAL' ? 'Art. 65 §1º-B da Lei 14.133/2021' : 'art. 125 da Lei 14.133/2021';
+  // Como o servidor: em centavos, arredondado para baixo (o limite nunca passa do percentual legal).
+  const limiteValor = Math.floor(paraCentavos(Number(contrato.valorOriginal)) * percLimite / 100) / 100;
   // Mesma regra acumulada que o servidor valida (AditivosService.somaAcrescimos):
   // VALOR e QUANTIDADE dividem o mesmo teto de 25% — aumentar quantidade no
   // mesmo preço unitário é, pra lei (art. 125, Lei 14.133/2021), o mesmo que
@@ -311,8 +318,7 @@ export function ContratoDetalhe() {
                     <i className={`ph ${excede ? 'ph-warning-circle' : 'ph-check-circle'}`} style={{ fontSize: 16, color: excede ? 'var(--color-critical)' : 'var(--color-accent)' }} />
                     <div style={{ fontSize: 12.5 }}>
                       {(() => {
-                        const percLimite = tipoAditivo === 'ACRESCIMO_ESPECIAL' ? '50' : '25';
-                        const fundamento = tipoAditivo === 'ACRESCIMO_ESPECIAL' ? 'Art. 65 §1º-B da Lei 14.133/2021' : 'art. 125 da Lei 14.133/2021';
+                        const fundamento = fundamentoLimite;
                         return excede
                           ? `${tipoAditivo === 'SUPRESSAO' ? 'Supressão' : 'Acréscimo'} acumulado excede o limite de ${percLimite}% (${fundamento}) — R$ ${limiteValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. O acumulado ficaria em R$ ${acumuladoComEste.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`
                           : `Dentro do limite de ${percLimite}% (${fundamento}). Restam R$ ${(limiteValor - acumuladoComEste).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} de margem neste tipo de aditivo.`;
@@ -333,7 +339,7 @@ export function ContratoDetalhe() {
 
               {aditivoPorItens && (
                 <div>
-                  <div style={{ fontSize: 12, color: 'color-mix(in srgb, var(--color-text) 70%, transparent)', marginBottom: 6 }}>{tipoAditivo === 'SUPRESSAO' ? 'Quantidades a suprimir (até o disponível — o já consumido em ordens não pode ser suprimido)' : 'Quantidades a acrescer'}</div>
+                  <div style={{ fontSize: 12, color: 'color-mix(in srgb, var(--color-text) 70%, transparent)', marginBottom: 6 }}>{tipoAditivo === 'SUPRESSAO' ? 'Quantidades a suprimir (até o disponível — o já consumido em ordens não pode ser suprimido)' : tipoAditivo === 'QUANTIDADE' ? 'Quantidades a acrescer' : 'Neste contrato o saldo é controlado por item: o acréscimo é lançado em quantidades, no preço unitário de cada item'}</div>
                   <table className="table">
                     <thead><tr><th>Item</th><th style={{ textAlign: 'right' }}>Contratada</th>{tipoAditivo === 'SUPRESSAO' && <th style={{ textAlign: 'right' }}>Disponível</th>}<th style={{ width: 140 }}>{tipoAditivo === 'SUPRESSAO' ? 'Supressão' : 'Acréscimo'}</th></tr></thead>
                     <tbody>
@@ -352,13 +358,14 @@ export function ContratoDetalhe() {
                   <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 14px', borderRadius: 8, marginTop: 12, background: excede ? 'color-mix(in srgb, var(--color-critical) 14%, transparent)' : 'color-mix(in srgb, var(--color-text) 5%, transparent)', boxShadow: `inset 0 0 0 1px ${excede ? 'var(--color-critical)' : 'var(--color-divider)'}` }}>
                     <i className={`ph ${excede ? 'ph-warning-circle' : 'ph-check-circle'}`} style={{ fontSize: 16, color: excede ? 'var(--color-critical)' : 'var(--color-accent)' }} />
                     <div style={{ fontSize: 12.5 }}>
-                      {tipoAditivo === 'SUPRESSAO'
-                        ? (excede
-                          ? `Esta supressão equivale a R$ ${valorAcrescimoQuantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} e excede, somada às supressões anteriores, o limite de 25% do art. 125 da Lei 14.133/2021 (R$ ${limiteValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}). O acumulado ficaria em R$ ${acumuladoComEste.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`
-                          : `Esta supressão equivale a R$ ${valorAcrescimoQuantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Dentro do limite de 25% do art. 125 da Lei 14.133/2021 — restam R$ ${(limiteValor - acumuladoComEste).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} de margem para supressões.`)
-                        : excede
-                        ? `Este acréscimo de quantidade equivale a R$ ${valorAcrescimoQuantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} e excede, somado aos demais aditivos de valor/quantidade, o limite de 25% do art. 125 da Lei 14.133/2021 (R$ ${limiteValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}). O acumulado ficaria em R$ ${acumuladoComEste.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`
-                        : `Este acréscimo equivale a R$ ${valorAcrescimoQuantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Dentro do limite de 25% do art. 125 da Lei 14.133/2021 — restam R$ ${(limiteValor - acumuladoComEste).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} de margem compartilhada com aditivos de valor.`}
+                      {(() => {
+                        const brl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        const nome = tipoAditivo === 'SUPRESSAO' ? 'Esta supressão' : 'Este acréscimo';
+                        const margem = tipoAditivo === 'SUPRESSAO' ? 'para supressões' : tipoAditivo === 'ACRESCIMO_ESPECIAL' ? 'para acréscimos especiais' : 'compartilhada entre aditivos de valor e de quantidade';
+                        return excede
+                          ? `${nome} equivale a ${brl(valorAcrescimoQuantidade)} e excede, somado aos anteriores, o limite de ${percLimite}% do ${fundamentoLimite} (${brl(limiteValor)}). O acumulado ficaria em ${brl(acumuladoComEste)}.`
+                          : `${nome} equivale a ${brl(valorAcrescimoQuantidade)}. Dentro do limite de ${percLimite}% do ${fundamentoLimite} — restam ${brl(limiteValor - acumuladoComEste)} de margem ${margem}.`;
+                      })()}
                     </div>
                   </div>
                 </div>

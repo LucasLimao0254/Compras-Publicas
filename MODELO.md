@@ -74,7 +74,9 @@ Uma licitação pode ter mais de uma homologação ao longo do tempo (reenvio co
 ## 4. Ata de Registro de Preços
 
 Opcional. Quando existe, é **uma por fornecedor**, e seu papel é distribuir entre os órgãos o
-teto que aquele fornecedor recebeu na homologação.
+teto que aquele fornecedor recebeu na homologação — por isso **só existe com homologação
+revisada**: sem ela não há teto por item para abater. Só origina contrato **dentro da sua
+vigência** e se não estiver arquivada (Lei 14.133, art. 84).
 
 A ata tem fornecedor próprio (razão social + CNPJ), visível no cabeçalho e na listagem. O
 formulário de criação impede criar uma segunda ata para o mesmo fornecedor na mesma licitação.
@@ -120,8 +122,10 @@ ata mesmo quando os itens são os mesmos. No formulário de criação, o campo v
 **pré-preenchido com o texto do objeto da licitação**, editável — conveniência de digitação,
 não herança.
 
-**Modo de saldo**: por item (quantidade × valor) ou só quantidade. O modo "Valor global" só
-existe para contrato sem origem em homologação ou ata.
+**Modo de saldo**: por item (quantidade × valor unitário — as ordens abatem quantidade de cada
+item) ou **"Valor global"** (os itens são referência de preço e as ordens abatem R$ do valor do
+contrato). "Valor global" só existe para contrato sem origem em homologação ou ata, é escolhido
+na criação e não muda depois da primeira ordem.
 
 ### 5.1 Aditivos
 
@@ -134,7 +138,16 @@ reequilíbrio econômico-financeiro.
 Regra própria deste projeto (não é da lei): a quantidade do aditivo entra **fora** do teto da
 homologação, e o aditivo que acrescenta valor ou quantidade só pode ser criado quando os três
 saldos — contrato, ata e homologação — estão zerados (prorrogação e supressão ficam de fora;
-ver invariante 6).
+ver invariante 6). Só em contrato **vigente**, e o número do aditivo não se repete no contrato.
+
+**Como o acréscimo é lançado** depende do modo de saldo: em contrato por item, acréscimo de
+valor (25%) e acréscimo especial (50%) são lançados **em itens e quantidades**, no preço
+unitário de cada item — um acréscimo só em R$ viraria saldo que nenhuma ordem consegue usar,
+porque as ordens abatem quantidade. Em "Valor global", os dois são por percentual sobre o valor
+original. Supressão segue a mesma lógica (itens no contrato por item; percentual no global).
+
+**Supressão depois de acréscimo**: a quantidade suprimida sai primeiro do que entrou por
+aditivo (que está fora do teto); só o que passar disso volta ao teto da ata/homologação.
 
 ### 5.2 Apostilamentos
 

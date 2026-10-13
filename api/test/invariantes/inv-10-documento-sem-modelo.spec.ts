@@ -79,7 +79,7 @@ describe('Invariante 10 — documento sem modelo cadastrado não é gerado', () 
     const c = await criarCenario(ctx);
     const contrato = await criarContrato(ctx, c, { origem: { homologacaoFornecedorId: c.homologacaoFornecedorId }, itens: [{ item: 'item1', quantidade: TETO_ITEM_1 }] });
     await esgotarContrato(ctx, c, contrato.id);
-    const aditivo: any = await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'VALOR', percentual: 5 }) as any);
+    const aditivo: any = await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'VALOR', itens: [{ itemContratoId: contrato.itens[0].id, quantidade: 5 }] }) as any);
     const apostilamento = await ctx.apostilamentos.create(c.tenantId, contrato.id, c.usuarioId, { tipo: 'REAJUSTE_REPACTUACAO', descricao: 'Reajuste' });
 
     const s = servico();

@@ -51,6 +51,15 @@ export class AditivosService {
   // justamente para consumir o saldo restante, e suprimir só faz sentido
   // sobre saldo ainda não consumido.
   private async verificarTetoEsgotado(tx: DrizzleDB, tenantId: string, contrato: typeof contratos.$inferSelect) {
+    // Contrato em "Valor global": o saldo é em R$ (as ordens abatem valor, não
+    // quantidade por item).
+    if (contrato.formaControleSaldo === 'APENAS_VALOR_TOTAL') {
+      const saldoEmReais = await this.contratosService.saldoDisponivel(tx, contrato.id);
+      if (centavos(saldoEmReais) > 0) {
+        throw new BadRequestException(`Ainda há saldo disponível neste contrato (${brl(centavos(saldoEmReais))}) — esgote-o antes de abrir um aditivo`);
+      }
+      return;
+    }
     // Por quantidade, item a item — ver ContratosService.itensComSaldoRestante
     // para por que não comparar o saldo em R$ aqui.
     const [comSaldo] = await this.contratosService.itensComSaldoRestante(tx, contrato.id);
@@ -128,6 +137,12 @@ export class AditivosService {
     return this.db.transaction(async (tx) => {
       const [contrato] = await tx.select().from(contratos).where(and(eq(contratos.id, contratoId), eq(contratos.tenantId, tenantId))).for('update');
       if (!contrato) throw new NotFoundException('Contrato não encontrado');
+      if (contrato.situacao !== 'VIGENTE') {
+        throw new BadRequestException(`Este contrato está ${contrato.situacao === 'ARQUIVADO' ? 'arquivado' : 'em minuta'} — aditivos só em contrato vigente`);
+      }
+      const numeroAditivo = dto.numero.trim();
+      const [repetido] = await tx.select({ id: aditivos.id }).from(aditivos).where(and(eq(aditivos.contratoId, contratoId), sql`lower(trim(${aditivos.numero})) = lower(${numeroAditivo})`));
+      if (repetido) throw new BadRequestException(`Este contrato já tem um aditivo de número ${numeroAditivo}`);
       const valorOriginal = centavos(contrato.valorOriginal);
       const percentualLimite = dto.tipo === 'ACRESCIMO_ESPECIAL' ? 50 : 25;
       // Arredonda para baixo: o limite nunca pode passar do percentual legal.
@@ -155,24 +170,38 @@ export class AditivosService {
         }
       };
 
-      if (dto.tipo === 'VALOR' || dto.tipo === 'ACRESCIMO_ESPECIAL' || (dto.tipo === 'SUPRESSAO' && !dto.itens?.length)) {
-        if (dto.tipo === 'SUPRESSAO' && contrato.formaControleSaldo !== 'APENAS_VALOR_TOTAL') {
-          // Contrato controlado por item: um percentual sobre o valor não
-          // reduz nenhuma quantidade, e as ordens continuariam podendo
-          // consumir o item inteiro. A supressão precisa dizer o que sai.
-          throw new BadRequestException('Informe os itens e as quantidades a suprimir');
-        }
+      const valorGlobal = contrato.formaControleSaldo === 'APENAS_VALOR_TOTAL';
+      const rotuloLimite = dto.tipo === 'ACRESCIMO_ESPECIAL' ? 'Acréscimo especial' : 'Acréscimo';
+      // VALOR e QUANTIDADE somam contra o mesmo teto de 25% (art. 125, §1º —
+      // os dois são acréscimo); ACRESCIMO_ESPECIAL (Art. 65 §1º-B) tem o seu,
+      // de 50%; SUPRESSAO, por ser redução, também tem teto próprio.
+      const poolDoAcrescimo: TipoAditivo[] = dto.tipo === 'ACRESCIMO_ESPECIAL' ? ['ACRESCIMO_ESPECIAL'] : ['VALOR', 'QUANTIDADE'];
+
+      if (valorGlobal && (dto.tipo === 'VALOR' || dto.tipo === 'ACRESCIMO_ESPECIAL' || (dto.tipo === 'SUPRESSAO' && !dto.itens?.length))) {
+        // "Valor global": o aditivo mexe no valor do contrato, por percentual
+        // — as ordens abatem R$, então o acréscimo é de fato utilizável.
         if (dto.percentual == null) throw new BadRequestException('Informe o percentual do aditivo');
         percentual = dto.percentual;
         valorAcrescimo = centavos((reais(valorOriginal) * dto.percentual) / 100);
-
-        // Art. 125, §1º da Lei 14.133/2021: VALOR e QUANTIDADE somam contra o
-        // mesmo teto de 25% (os dois são "acréscimo" pra lei); SUPRESSAO, por
-        // ser redução, tem teto próprio; ACRESCIMO_ESPECIAL (Art. 65 §1º-B —
-        // reforma de edifício/equipamento) tem seu próprio teto de 50%,
-        // totalmente separado dos outros dois — ver somaAcrescimos().
-        const tiposAcumulados: TipoAditivo[] = dto.tipo === 'VALOR' ? ['VALOR', 'QUANTIDADE'] : [dto.tipo as TipoAditivo];
-        await verificarLimite(tiposAcumulados, dto.tipo === 'VALOR' ? 'Acréscimo' : dto.tipo === 'SUPRESSAO' ? 'Supressão' : 'Acréscimo especial');
+        await verificarLimite(dto.tipo === 'SUPRESSAO' ? ['SUPRESSAO'] : poolDoAcrescimo, dto.tipo === 'SUPRESSAO' ? 'Supressão' : rotuloLimite);
+      } else if (dto.tipo === 'VALOR' || dto.tipo === 'ACRESCIMO_ESPECIAL' || dto.tipo === 'QUANTIDADE') {
+        // Contrato controlado por item: as ordens são limitadas pela
+        // quantidade de cada item, então um acréscimo só em R$ virava saldo que
+        // nenhuma ordem conseguia usar. O acréscimo diz quais itens crescem e
+        // quanto — o valor sai disso, no preço unitário de cada item.
+        if (!dto.itens?.length) {
+          throw new BadRequestException('Neste contrato o saldo é controlado por item — informe os itens e as quantidades a acrescer');
+        }
+        const itens = await this.travarItensDoContrato(tx, contratoId, dto.itens);
+        ajustesDeItem = itens.map(({ item, quantidade }) => ({ item, delta: quantidade }));
+        valorAcrescimo = itens.reduce((acc, { item, quantidade }) => acc + centavosDoTotal(quantidade, item.valorUnitario), 0);
+        if (dto.tipo !== 'QUANTIDADE' && valorOriginal > 0) percentual = Math.round((valorAcrescimo / valorOriginal) * 10000) / 100;
+        await verificarLimite(poolDoAcrescimo, dto.tipo === 'QUANTIDADE' ? 'O acréscimo de quantidade, somado aos demais aditivos de valor/quantidade,' : rotuloLimite);
+      } else if (dto.tipo === 'SUPRESSAO' && !dto.itens?.length) {
+        // Contrato controlado por item: um percentual sobre o valor não
+        // reduz nenhuma quantidade, e as ordens continuariam podendo
+        // consumir o item inteiro. A supressão precisa dizer o que sai.
+        throw new BadRequestException('Informe os itens e as quantidades a suprimir');
       } else if (dto.tipo === 'SUPRESSAO') {
         // Supressão quantitativa: reduz a quantidade dos itens informados (o
         // que as ordens enxergam), nunca abaixo do já consumido em ordens.
@@ -194,16 +223,6 @@ export class AditivosService {
         vigenciaFinalNova = new Date(contrato.vigenciaFinal);
         vigenciaFinalNova.setUTCDate(vigenciaFinalNova.getUTCDate() + dto.diasProrrogacao); // data de calendário: sempre em UTC (ver common/datas.ts)
         patchContrato.vigenciaFinal = vigenciaFinalNova;
-      } else if (dto.tipo === 'QUANTIDADE') {
-        if (!dto.itens?.length) throw new BadRequestException('Informe ao menos um item para acrescer quantidade');
-        const itens = await this.travarItensDoContrato(tx, contratoId, dto.itens);
-        ajustesDeItem = itens.map(({ item, quantidade }) => ({ item, delta: quantidade }));
-        // Aumentar quantidade no mesmo preço unitário aumenta o valor do
-        // contrato na mesma proporção — precisa do mesmo teto de 25% que um
-        // aditivo de VALOR, senão dá pra contornar o limite legal só trocando
-        // o tipo do aditivo.
-        valorAcrescimo = itens.reduce((acc, { item, quantidade }) => acc + centavosDoTotal(quantidade, item.valorUnitario), 0);
-        await verificarLimite(['VALOR', 'QUANTIDADE'], 'O acréscimo de quantidade, somado aos demais aditivos de valor/quantidade,');
       }
 
       const [aditivo] = await tx
@@ -211,7 +230,7 @@ export class AditivosService {
         .values({
           tenantId,
           contratoId,
-          numero: dto.numero,
+          numero: numeroAditivo,
           tipo: dto.tipo as any,
           dataAssinatura: new Date(dto.dataAssinatura),
           percentual: percentual != null ? String(percentual) : null,

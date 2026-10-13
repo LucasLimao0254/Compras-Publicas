@@ -115,9 +115,12 @@ or `src/ordens/ordens.service.ts` for the pattern before writing a new one — a
 
 ### Auth & permissions (`src/auth/`, `src/common/`)
 
-JWT payload carries `{ sub: usuarioId, tenantId, tipoUsuario, permissoes: string[] }` —
-permissions are baked into the token at login time, not re-checked against the DB per
-request. `JwtAuthGuard` validates the token; `PermissionsGuard` (paired with the
+JWT payload carries `{ sub: usuarioId, tenantId, tipoUsuario, permissoes: string[] }`, but
+`JwtStrategy.validate` re-reads the user (`ativo`, `tipoUsuario`) and their permissions from the
+DB on every request — a deactivated or demoted user loses access immediately, not when the
+8h token expires (the frontend refreshes its copy via `GET /auth/me`). `UsuariosService` never
+lets a tenant end up without an active ADMIN, nobody deactivates/removes themselves, and a
+non-admin only grants permissions they hold (never their own). `JwtAuthGuard` validates the token; `PermissionsGuard` (paired with the
 `@RequirePermission('compras.contratos')` decorator on controllers) checks the resource
 string against `permissoes`, with `tipoUsuario === 'ADMIN'` always bypassing. Permission
 strings mirror the frontend nav structure 1:1 (`administrativo.usuarios`,
@@ -153,12 +156,15 @@ both one day off in Brasília time. A contract's deadline bucket (`VIGENTE`/`VEN
 contract list filters (`/contratos?situacao=`, which the dashboard links to) both use it, so a
 clicked number always matches the filtered list.
 
-**Aditivos vs. teto**: quantity added by a `QUANTIDADE` aditivo is outside the
-ata/homologação ceiling (MODELO.md invariant 6) — ceiling consumption uses
-`quantidadeConsumidaDoTeto` (`saldo-ceiling.service.ts`), never a raw
-`sum(itensContrato.quantidade)`. `SUPRESSAO` takes items + quantities and lowers
-`itensContrato.quantidade` (never below what orders already consumed); only a "Valor
-global" contract suppresses by percentage.
+**Aditivos vs. teto**: quantity added by an aditivo is outside the ata/homologação ceiling
+(MODELO.md invariant 6) — ceiling consumption uses `quantidadeConsumidaDoTeto`
+(`saldo-ceiling.service.ts`: `quantidade − max(0, Σ signed aditivoItens deltas)`, so a
+suppression eats into aditivo quantity first), never a raw `sum(itensContrato.quantidade)`.
+In an item-controlled contract every aditivo that changes value goes through items
+(`VALOR`/`ACRESCIMO_ESPECIAL`/`QUANTIDADE` add quantity, `SUPRESSAO` lowers it, never below what
+orders consumed); only a **"Valor global"** (`APENAS_VALOR_TOTAL`) contract works by percentage
+— and there `OrdensService.validarSaldoValorGlobal` checks orders against the R$ balance
+instead of item quantities.
 
 **ARP / contract numbers** are free text ("012/2026", "ARP 012/2026"); `src/common/numeracao.ts`
 (`chaveNumero`, copy in `web/src/lib/numeracao.ts`) treats same number + year as the same, so

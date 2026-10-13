@@ -43,8 +43,11 @@ describe('Aditivos', () => {
     expect(depois.saldoDisponivel).toBe(0.01); // resíduo de arredondamento, exato em centavos
 
     // Antes, o resíduo (0,0035 em float) bloqueava o aditivo para sempre.
-    const aditivo: any = await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'VALOR', percentual: 10 }) as any);
-    expect(aditivo.valorAcrescimo).toBe('0.37');
+    // Contrato por item: o acréscimo de valor é lançado em quantidade. Passa da
+    // checagem de saldo (o resíduo não trava mais) e esbarra só no limite legal:
+    // 1 × R$ 1,2345 = R$ 1,23 é mais que 25% de R$ 3,70 (R$ 0,92).
+    const msg = await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'VALOR', itens: [{ itemContratoId: contrato.itens[0].id, quantidade: 1 }] }) as any));
+    expect(msg).toMatch(/limite de 25%.*R\$\s0,92.*R\$\s1,23/);
   });
 
   it('aditivo de QUANTIDADE fica fora do teto: homologação e ata não ficam negativas', async () => {
@@ -100,7 +103,8 @@ describe('Aditivos', () => {
 
   it('ACRESCIMO_ESPECIAL entra no valor total do contrato', async () => {
     const c = await criarCenario(ctx);
-    const contrato = await criarContrato(ctx, c, { origem: 'nenhuma', itens: [{ item: 'item1', quantidade: 100 }] });
+    // "Valor global": acréscimo por percentual, que as ordens abatem em R$
+    const contrato = await criarContrato(ctx, c, { origem: 'nenhuma', itens: [{ item: 'item1', quantidade: 100 }], formaControleSaldo: 'APENAS_VALOR_TOTAL' });
     await esgotarContrato(ctx, c, contrato.id); // aditivo de valor exige o saldo zerado (invariante 6)
     await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'ACRESCIMO_ESPECIAL', percentual: 40 }) as any);
     const depois: any = await ctx.contratos.get(c.tenantId, contrato.id);

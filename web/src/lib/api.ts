@@ -42,6 +42,7 @@ async function download(path: string): Promise<{ blob: Blob; filename: string }>
   if (res.status === 401) {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
+    localStorage.removeItem('tenant');
     window.location.href = '/login';
     throw new Error('Sessão expirada');
   }
@@ -79,6 +80,7 @@ async function handleResponse(res: Response, path = '') {
   if (res.status === 401 && !ROTAS_SEM_SESSAO.includes(path)) {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
+    localStorage.removeItem('tenant');
     window.location.href = '/login';
     throw new Error('Sessão expirada');
   }

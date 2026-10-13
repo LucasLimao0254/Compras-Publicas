@@ -69,7 +69,7 @@ export function EditarAtaModal({ ata, numerosExistentes, onFechar, onSalvo }: { 
 
 export interface ContratoEditavel {
   id: string; numero: string; numeroProcesso: string; objeto: string; formaFaturamento: string;
-  vigenciaInicial: string; vigenciaFinal: string; situacao: string;
+  vigenciaInicial: string; vigenciaFinal: string; situacao: string; dataAssinatura?: string | null;
 }
 
 // Licitação, fornecedor e origem ficam fixos (os itens vêm deles). A vigência
@@ -83,11 +83,12 @@ export function EditarContratoModal({ contrato, numerosExistentes, onFechar, onS
   const [vigenciaInicial, setVigenciaInicial] = useState(dia(contrato.vigenciaInicial));
   const [vigenciaFinal, setVigenciaFinal] = useState(dia(contrato.vigenciaFinal));
   const [situacao, setSituacao] = useState(contrato.situacao);
+  const [dataAssinatura, setDataAssinatura] = useState(dia(contrato.dataAssinatura));
   const { salvando, erro, salvar } = useSalvar(onFechar, onSalvo);
   return (
     <Dialogo titulo={`Editar contrato ${contrato.numero}`} idTitulo="titulo-editar-contrato" onFechar={onFechar} salvando={salvando} erro={erro}
       bloqueado={!!numeroRepetido(numerosExistentes, numero, contrato.id)}
-      onSalvar={(e) => { e.preventDefault(); salvar(() => api.patch(`/contratos/${contrato.id}`, { numero, numeroProcesso, objeto, formaFaturamento, vigenciaInicial, vigenciaFinal, situacao })); }}>
+      onSalvar={(e) => { e.preventDefault(); salvar(() => api.patch(`/contratos/${contrato.id}`, { numero, numeroProcesso, objeto, formaFaturamento, vigenciaInicial, vigenciaFinal, situacao, dataAssinatura })); }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
         <CampoNumero id="ed-ct-numero" rotulo="Número do contrato/ano" valor={numero} onChange={setNumero} existentes={numerosExistentes} excetoId={contrato.id} entidade="contrato" />
         <div className="field"><label htmlFor="ed-ct-processo">Número do processo</label>
@@ -105,6 +106,8 @@ export function EditarContratoModal({ contrato, numerosExistentes, onFechar, onS
         <div className="field"><label htmlFor="ed-ct-fim">Vigência final</label>
           <input id="ed-ct-fim" type="date" className="input" value={vigenciaFinal} onChange={(e) => setVigenciaFinal(e.target.value)} required />
           <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Com ordens ou aditivos, prorrogue por aditivo de prazo.</p></div>
+        <div className="field"><label htmlFor="ed-ct-assinatura">Data de assinatura</label>
+          <input id="ed-ct-assinatura" type="date" className="input" value={dataAssinatura} onChange={(e) => setDataAssinatura(e.target.value)} /></div>
       </div>
       <div className="field"><label htmlFor="ed-ct-objeto">Objeto</label>
         <textarea id="ed-ct-objeto" className="input" rows={3} value={objeto} onChange={(e) => setObjeto(e.target.value)} required /></div>

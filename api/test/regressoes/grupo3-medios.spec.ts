@@ -8,7 +8,7 @@ import { diaDaData, formatarDiaBR, hoje, vencida } from '../../src/common/datas'
 import { codigoPostgres } from '../../src/common/postgres-exception.filter';
 import { MinutasService, substituirMarcadores } from '../../src/minutas/minutas.service';
 import { UsuariosService } from '../../src/usuarios/usuarios.service';
-import { Ctx, criarCenario, criarContrato, criarCtx, dadosAditivo, encerrarCtx, esgotarContrato, rejeicao } from '../helpers';
+import { Ctx, criarCenario, criarContrato, criarCtx, dadosAditivo, encerrarCtx, esgotarContrato, gerarCpf, rejeicao } from '../helpers';
 
 // Grupo 3 da revisão de bugs (itens de gravidade média).
 describe('Grupo 3', () => {
@@ -65,10 +65,10 @@ describe('Grupo 3', () => {
       const s = new MinutasService(ctx.db);
       await s.enviarModelo(c.tenantId, c.usuarioId, 'ADMIN', 'CONTRATO', { originalname: 'm.docx', buffer: await zip.generateAsync({ type: 'nodebuffer' }) });
 
-      // valor total ATUAL: 10 × R$ 10 = 100, + aditivo de valor 10% do original = 110
+      // valor total ATUAL: 10 × R$ 10 = 100, + aditivo de valor de 1 unidade (R$ 10) = 110
       // (o aditivo exige o saldo zerado: consome o contrato antes)
       await esgotarContrato(ctx, c, contrato.id);
-      await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'VALOR', percentual: 10 }) as any);
+      await ctx.aditivos.create(c.tenantId, contrato.id, dadosAditivo({ tipo: 'VALOR', itens: [{ itemContratoId: contrato.itens[0].id, quantidade: 1 }] }) as any);
 
       const gerado = await JSZip.loadAsync(await s.gerar(c.tenantId, 'CONTRATO', contrato.id));
       const corpo = await gerado.file('word/document.xml')!.async('string');
@@ -104,6 +104,8 @@ describe('Grupo 3', () => {
     const contrato = await criarContrato(ctx, c, { origem: { homologacaoFornecedorId: c.homologacaoFornecedorId }, itens: [{ item: 'item1', quantidade: 10 }] });
     await ctx.ordens.create(c.tenantId, c.usuarioId, { contratoId: contrato.id, itens: [{ itemContratoId: contrato.itens[0].id, quantidade: 1 }] } as any);
     const usuarios = new UsuariosService(ctx.db);
+    // outro admin ativo: o único administrador não pode ser removido
+    await ctx.db.insert(schema.usuarios).values({ tenantId: c.tenantId, cpf: gerarCpf(), nome: 'Outro Admin', email: `outro-${Date.now()}@teste.gov.br`, senhaHash: 'x', tipoUsuario: 'ADMIN' });
     expect(await rejeicao(usuarios.remove(c.tenantId, { tipoUsuario: 'ADMIN', ehAdminPlataforma: false }, c.usuarioId))).toMatch(/desative-o/);
 
     const erro = await ctx.db.insert(schema.secretarias).values({ tenantId: '00000000-0000-0000-0000-000000000000', titulo: 'x' }).catch((e) => e);

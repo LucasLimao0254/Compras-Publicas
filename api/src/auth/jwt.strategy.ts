@@ -1,4 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
+import { DRIZZLE, DrizzleDB } from '../db/db.module';
+import { permissoes, usuarios } from '../db/schema';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -13,7 +16,7 @@ export interface JwtPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(config: ConfigService) {
+  constructor(config: ConfigService, @Inject(DRIZZLE) private db: DrizzleDB) {
     const secret = config.get<string>('JWT_SECRET');
     // Sem fallback hardcoded de propósito: um valor padrão conhecido no
     // código-fonte permitiria forjar um token válido (qualquer tenant, ADMIN,
@@ -27,15 +30,28 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
+  // O token prova quem é a pessoa; o que ela pode fazer vem do banco a cada
+  // requisição. Antes o tipo e as permissões ficavam congelados no token por
+  // 8 horas: usuário desativado, rebaixado ou com permissão retirada seguia
+  // com acesso até o token expirar. Duas consultas pequenas por requisição.
   async validate(payload: JwtPayload) {
-    // Tudo que a aplicação precisa para checar tenant e permissão em qualquer
-    // rota, sem nova consulta ao banco a cada request.
+    const [user] = await this.db
+      .select({ id: usuarios.id, tenantId: usuarios.tenantId, ativo: usuarios.ativo, tipoUsuario: usuarios.tipoUsuario, ehAdminPlataforma: usuarios.ehAdminPlataforma })
+      .from(usuarios)
+      .where(eq(usuarios.id, payload.sub));
+    if (!user || !user.ativo || user.tenantId !== payload.tenantId) {
+      throw new UnauthorizedException('Sessão encerrada — entre novamente');
+    }
+    const perms = await this.db
+      .select({ recurso: permissoes.recurso })
+      .from(permissoes)
+      .where(and(eq(permissoes.usuarioId, user.id), eq(permissoes.permitido, true)));
     return {
-      userId: payload.sub,
-      tenantId: payload.tenantId,
-      tipoUsuario: payload.tipoUsuario,
-      permissoes: payload.permissoes,
-      ehAdminPlataforma: payload.ehAdminPlataforma,
+      userId: user.id,
+      tenantId: user.tenantId,
+      tipoUsuario: user.tipoUsuario,
+      permissoes: perms.map((p) => p.recurso),
+      ehAdminPlataforma: user.ehAdminPlataforma,
     };
   }
 }

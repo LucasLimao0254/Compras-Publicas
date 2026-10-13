@@ -50,6 +50,8 @@ export class UpdateContratoDto {
   @IsOptional() @IsString() @IsNotEmpty() numeroProcesso?: string;
   @IsOptional() @IsString() objeto?: string;
   @IsOptional() @IsIn(FORMAS_FATURAMENTO) formaFaturamento?: string;
+  // '' limpa a data de assinatura
+  @IsOptional() @IsString() dataAssinatura?: string;
   @IsOptional() @IsDateString() vigenciaInicial?: string;
   @IsOptional() @IsDateString() vigenciaFinal?: string;
   @IsOptional() @IsIn(SITUACOES) situacao?: string;

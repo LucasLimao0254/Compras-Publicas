@@ -21,7 +21,7 @@ import {
 } from '../db/schema';
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { centavos, centavosDoTotal, decimal2, reais } from '../common/dinheiro';
-import { diaDaData, faixaPrazo, hoje, periodoValido } from '../common/datas';
+import { diaDaData, faixaPrazo, formatarDiaBR, hoje, periodoValido, vencida } from '../common/datas';
 import { numeroJaUsado } from '../common/numeracao';
 import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/contrato.dto';
 
@@ -195,13 +195,23 @@ export class ContratosService {
   // vínculo de homologação, itens dela não podem ter homologacaoItemId).
   private async validarAtaOrgao(tx: DrizzleDB, tenantId: string, ataOrgaoId: string, licitacaoId: string, fornecedorId: string) {
     const [row] = await tx
-      .select({ licitacaoId: atas.licitacaoId, detentorPrincipalId: atas.detentorPrincipalId, homologacaoFornecedorId: atas.homologacaoFornecedorId })
+      .select({ licitacaoId: atas.licitacaoId, detentorPrincipalId: atas.detentorPrincipalId, homologacaoFornecedorId: atas.homologacaoFornecedorId, numeroArp: atas.numeroArp, situacao: atas.situacao, vigenciaInicial: atas.vigenciaInicial, vigenciaFinal: atas.vigenciaFinal })
       .from(ataOrgaos)
       .innerJoin(atas, eq(ataOrgaos.ataId, atas.id))
       .where(and(eq(ataOrgaos.id, ataOrgaoId), eq(ataOrgaos.tenantId, tenantId)));
     if (!row) throw new BadRequestException('Órgão de ata não encontrado para este tenant');
     if (row.licitacaoId !== licitacaoId) throw new BadRequestException('O órgão de ata informado não pertence à licitação deste contrato');
     if (row.detentorPrincipalId !== fornecedorId) throw new BadRequestException('O fornecedor do contrato precisa ser o detentor principal desta ata');
+    // A contratação a partir da ata só vale dentro da vigência dela (Lei
+    // 14.133, art. 84) — antes, ata vencida ou arquivada seguia originando
+    // contrato normalmente.
+    if (row.situacao === 'ARQUIVADO') throw new BadRequestException(`A ARP ${row.numeroArp} está arquivada — não pode originar contrato`);
+    if (vencida(row.vigenciaFinal)) throw new BadRequestException(`A ARP ${row.numeroArp} venceu em ${formatarDiaBR(row.vigenciaFinal)} — prorrogue a ata antes de contratar por ela`);
+    if (hoje() < diaDaData(row.vigenciaInicial)) throw new BadRequestException(`A ARP ${row.numeroArp} só começa a valer em ${formatarDiaBR(row.vigenciaInicial)}`);
+    // Ata sem homologação não tem teto por item para abater — contratos
+    // contra ela não consumiam saldo nenhum (MODELO.md, seção 4: a ata
+    // distribui o teto homologado).
+    if (!row.homologacaoFornecedorId) throw new BadRequestException(`A ARP ${row.numeroArp} não está vinculada a uma homologação, então não tem saldo por item para abater — contrate direto pela licitação`);
     return { homologacaoFornecedorId: row.homologacaoFornecedorId };
   }
 
@@ -417,6 +427,13 @@ export class ContratosService {
         throw new BadRequestException('Este contrato já tem ordens ou aditivos — para mudar a vigência final, registre um aditivo de prazo');
       }
     }
+    // Trocar o modo de saldo com ordens já emitidas mudaria, por baixo delas,
+    // o que foi consumido (quantidade por item × R$).
+    if (dto.formaControleSaldo !== undefined && dto.formaControleSaldo !== contrato.formaControleSaldo) {
+      const [{ n }] = await this.db.select({ n: sql<number>`count(*)::int` }).from(ordens).where(and(eq(ordens.tenantId, tenantId), eq(ordens.contratoId, id), ne(ordens.status, 'CANCELADA')));
+      if (n) throw new BadRequestException('Este contrato já tem ordens — o controle de saldo não pode mais ser trocado');
+    }
+    if (dto.dataAssinatura && !/^\d{4}-\d{2}-\d{2}/.test(dto.dataAssinatura)) throw new BadRequestException('Data de assinatura inválida');
     if (dto.numero !== undefined && dto.numero !== contrato.numero) {
       await this.recusarNumeroUsado(tenantId, dto.numero, id);
     }
@@ -425,6 +442,7 @@ export class ContratosService {
     if (dto.numero !== undefined) patch.numero = dto.numero.trim();
     if (dto.numeroProcesso !== undefined) patch.numeroProcesso = dto.numeroProcesso.trim();
     if (dto.formaFaturamento !== undefined) patch.formaFaturamento = dto.formaFaturamento as any;
+    if (dto.dataAssinatura !== undefined) patch.dataAssinatura = dto.dataAssinatura ? new Date(dto.dataAssinatura) : null;
     if (dto.objeto !== undefined) patch.objeto = dto.objeto;
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);
     if (dto.vigenciaFinal !== undefined) patch.vigenciaFinal = new Date(dto.vigenciaFinal);

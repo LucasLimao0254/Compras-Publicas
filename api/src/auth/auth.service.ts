@@ -44,6 +44,12 @@ export class AuthService {
     };
   }
 
+  async me(usuarioId: string, permissoesAtuais: string[]) {
+    const [user] = await this.db.select().from(usuarios).where(eq(usuarios.id, usuarioId));
+    if (!user) throw new UnauthorizedException();
+    return { id: user.id, nome: user.nome, email: user.email, tipoUsuario: user.tipoUsuario, permissoes: permissoesAtuais, ehAdminPlataforma: user.ehAdminPlataforma };
+  }
+
   async login(dto: LoginDto) {
     const [tenant] = await this.db.select().from(tenants).where(eq(tenants.codigo, dto.tenantCodigo));
     if (!tenant) throw new UnauthorizedException('Município não encontrado');

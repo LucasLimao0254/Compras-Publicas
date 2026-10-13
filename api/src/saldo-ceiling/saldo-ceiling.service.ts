@@ -4,16 +4,19 @@ import { DrizzleDB } from '../db/db.module';
 import { ataItens, contratos, homologacaoItens, itensContrato } from '../db/schema';
 
 // Quanto uma linha de contrato consome do teto da ata/homologação: a
-// quantidade atual MENOS o que entrou por aditivo de QUANTIDADE — pelo
-// invariante 6, a quantidade do aditivo é acrescida FORA do teto. Sem isso,
-// cada aditivo deixava o saldo da ata e da homologação negativo. Supressão
-// reduz a própria quantidade do item, então devolve ao teto o que foi
-// suprimido (o que deixou de ser contratado volta a estar disponível).
-export const quantidadeConsumidaDoTeto = sql<string>`greatest(${itensContrato.quantidade} - coalesce((
+// quantidade atual MENOS o que entrou por aditivo de acréscimo (QUANTIDADE, e
+// VALOR/ACRESCIMO_ESPECIAL lançados por item) — pelo invariante 6, o
+// acréscimo do aditivo fica FORA do teto. A supressão por item abate primeiro
+// dessa parcela de fora do teto: só o que passar dela volta ao teto. Com
+// aditivoItens guardando o delta com sinal (+ acréscimo, − supressão):
+//   consumo = quantidade − max(0, soma dos deltas)
+// Ex.: 100 contratados, +30 por aditivo, −20 suprimidos → 110 no contrato,
+// 100 no teto (os 20 saíram dos 30 do aditivo); −40 → 90, 90 no teto.
+export const quantidadeConsumidaDoTeto = sql<string>`greatest(${itensContrato.quantidade} - greatest(coalesce((
   select sum(ai.quantidade_acrescida) from aditivo_itens ai
   inner join aditivos a on a.id = ai.aditivo_id
-  where ai.item_contrato_id = ${itensContrato.id} and a.tipo = 'QUANTIDADE'
-), 0), 0)`;
+  where ai.item_contrato_id = ${itensContrato.id}
+), 0), 0), 0)`;
 
 // Serviço compartilhado de teto/saldo da cadeia Homologação → Ata → Contrato.
 // Todo método recebe `tx` explicitamente (nunca usa uma conexão própria) —

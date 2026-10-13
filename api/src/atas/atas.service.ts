@@ -145,10 +145,15 @@ export class AtasService {
     // Licitação com homologação revisada: o detentor precisa ser um dos
     // vencedores homologados, e a ata nasce vinculada a ele (MODELO.md,
     // invariantes 2 e 4) — antes dava para escolher qualquer fornecedor.
+    // A ata distribui entre os órgãos o teto que o fornecedor recebeu na
+    // homologação (MODELO.md, seção 4) — sem homologação não há teto, e os
+    // contratos contra a ata não abatiam saldo nenhum.
     if (!dto.homologacaoFornecedorId) {
       const [revisada] = await this.db.select({ id: licitacaoHomologacoes.id }).from(licitacaoHomologacoes)
         .where(and(eq(licitacaoHomologacoes.tenantId, tenantId), eq(licitacaoHomologacoes.licitacaoId, dto.licitacaoId), eq(licitacaoHomologacoes.status, 'revisado')));
-      if (revisada) throw new BadRequestException('Esta licitação tem homologação — o detentor principal precisa ser um dos fornecedores homologados');
+      throw new BadRequestException(revisada
+        ? 'Esta licitação tem homologação — o detentor principal precisa ser um dos fornecedores homologados'
+        : 'Esta licitação ainda não tem homologação revisada — envie e revise a homologação em Licitações antes de criar a ata');
     }
 
     if (dto.homologacaoFornecedorId) {

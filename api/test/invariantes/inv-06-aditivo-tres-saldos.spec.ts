@@ -18,9 +18,10 @@ describe('Invariante 6 — aditivo só com os três saldos zerados', () => {
   beforeAll(() => { ctx = criarCtx(); });
   afterAll(() => encerrarCtx(ctx));
 
-  const aditivoDeValor = () => dadosAditivo({ tipo: 'VALOR', percentual: 5 });
+  // contrato com origem controla saldo por item: acréscimo de valor é lançado em quantidades
+  const aditivoDeValor = (itemContratoId: string) => dadosAditivo({ tipo: 'VALOR', itens: [{ itemContratoId, quantidade: 5 }] });
   const aditivoDeQuantidade = (itemContratoId: string) => dadosAditivo({ tipo: 'QUANTIDADE', itens: [{ itemContratoId, quantidade: 10 }] });
-  const aditivoEspecial = () => dadosAditivo({ tipo: 'ACRESCIMO_ESPECIAL', percentual: 10 });
+  const aditivoEspecial = (itemContratoId: string) => dadosAditivo({ tipo: 'ACRESCIMO_ESPECIAL', itens: [{ itemContratoId, quantidade: 10 }] });
 
   // Cenário com ata: teto 100 do item 1; a ata reserva `reservaAta`, o contrato
   // (do órgão A) pega `noContrato`, e `ordenado` é o que já foi efetivamente pedido.
@@ -57,12 +58,12 @@ describe('Invariante 6 — aditivo só com os três saldos zerados', () => {
     // contrato (é o objetivo dele), então o segundo aditivo no mesmo contrato
     // seria — corretamente — barrado de novo.
     it.each([
-      ['VALOR', () => aditivoDeValor()],
-      ['ACRESCIMO_ESPECIAL', () => aditivoEspecial()],
+      ['VALOR', (id: string) => aditivoDeValor(id)],
+      ['ACRESCIMO_ESPECIAL', (id: string) => aditivoEspecial(id)],
     ])('caminho feliz: os TRÊS saldos zerados → aceita aditivo %s', async (_tipo, dados) => {
-      const { c, contrato } = await comAta(TETO_ITEM_1, TETO_ITEM_1, TETO_ITEM_1);
+      const { c, contrato, itemContratoId } = await comAta(TETO_ITEM_1, TETO_ITEM_1, TETO_ITEM_1);
       expect((await ctx.contratos.get(c.tenantId, contrato.id)).saldoDisponivel).toBe(0);
-      await ctx.aditivos.create(c.tenantId, contrato.id, dados() as any);
+      await ctx.aditivos.create(c.tenantId, contrato.id, dados(itemContratoId) as any);
       expect(await ctx.aditivos.list(c.tenantId, contrato.id)).toHaveLength(1);
     });
 
@@ -79,16 +80,16 @@ describe('Invariante 6 — aditivo só com os três saldos zerados', () => {
 
     it('violação: saldo do CONTRATO diferente de zero → rejeita', async () => {
       const { c, contrato, itemContratoId } = await comAta(TETO_ITEM_1, TETO_ITEM_1, 90); // sobram 10 no contrato
-      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor() as any));
+      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor(itemContratoId) as any));
       await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeQuantidade(itemContratoId) as any));
-      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoEspecial() as any));
+      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoEspecial(itemContratoId) as any));
     });
 
     it('violação: saldo da ATA diferente de zero (contrato e homologação zerados) → rejeita', async () => {
       // ata reserva os 100; o contrato pega só 60 e o esgota → contrato 0, homologação 0, ata sobra 40
       const { c, contrato, itemContratoId } = await comAta(TETO_ITEM_1, 60, 60);
       expect((await ctx.contratos.get(c.tenantId, contrato.id)).saldoDisponivel).toBe(0);
-      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor() as any));
+      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor(itemContratoId) as any));
       await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeQuantidade(itemContratoId) as any));
     });
 
@@ -96,34 +97,34 @@ describe('Invariante 6 — aditivo só com os três saldos zerados', () => {
       // ata reserva só 60 dos 100; contrato pega os 60 e esgota → contrato 0, ata 0, homologação sobra 40
       const { c, contrato, itemContratoId } = await comAta(60, 60, 60);
       expect((await ctx.contratos.get(c.tenantId, contrato.id)).saldoDisponivel).toBe(0);
-      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor() as any));
+      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor(itemContratoId) as any));
       await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeQuantidade(itemContratoId) as any));
     });
   });
 
   describe('sem ata (contrato direto da homologação)', () => {
     it('caminho feliz: contrato e homologação zerados → aceita', async () => {
-      const { c, contrato } = await diretoDaHomologacao(TETO_ITEM_1, TETO_ITEM_1);
-      await ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor() as any);
+      const { c, contrato, itemContratoId } = await diretoDaHomologacao(TETO_ITEM_1, TETO_ITEM_1);
+      await ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor(itemContratoId) as any);
     });
 
     it('violação: saldo da HOMOLOGAÇÃO ainda não consumido → rejeita', async () => {
       const { c, contrato, itemContratoId } = await diretoDaHomologacao(60, 60); // contrato zerado, homologação sobra 40
-      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor() as any));
+      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor(itemContratoId) as any));
       await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeQuantidade(itemContratoId) as any));
     });
 
     it('violação: saldo do CONTRATO ainda não consumido → rejeita', async () => {
-      const { c, contrato } = await diretoDaHomologacao(TETO_ITEM_1, 50);
-      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor() as any));
+      const { c, contrato, itemContratoId } = await diretoDaHomologacao(TETO_ITEM_1, 50);
+      await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor(itemContratoId) as any));
     });
   });
 
   it('sem tolerância percentual: 1% de saldo restante já bloqueia o aditivo', async () => {
-    const { c, contrato } = await diretoDaHomologacao(TETO_ITEM_1, 99); // sobra 1 unidade (1% do contrato)
+    const { c, contrato, itemContratoId } = await diretoDaHomologacao(TETO_ITEM_1, 99); // sobra 1 unidade (1% do contrato)
     const saldo = (await ctx.contratos.get(c.tenantId, contrato.id)).saldoDisponivel;
     expect(saldo).toBeGreaterThan(0);
-    await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor() as any));
+    await rejeicao(ctx.aditivos.create(c.tenantId, contrato.id, aditivoDeValor(itemContratoId) as any));
   });
 
   it('a rejeição não deixa rastro: nenhum aditivo gravado e nenhuma quantidade alterada', async () => {

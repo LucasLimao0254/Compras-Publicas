@@ -2,6 +2,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { formatarDia } from '../lib/datas';
+import { rotuloDotacao } from '../lib/dotacoes';
 import { api } from '../lib/api';
 import { ImportarHomologacaoModal } from '../components/ImportarHomologacaoModal';
 import { DescricaoResumida } from '../components/DescricaoResumida';
@@ -34,7 +35,7 @@ const FILTROS_PRAZO: { valor: string; rotulo: string; faixas: FaixaPrazo[] }[] =
 interface ContratoResumo {
   id: string; numero: string; objeto: string; situacao: string;
   vigenciaFinal: string; faixaPrazo: FaixaPrazo; fornecedorId: string;
-  vigenciaInicial: string; numeroProcesso: string; formaFaturamento: string;
+  vigenciaInicial: string; numeroProcesso: string; formaFaturamento: string; dataAssinatura?: string | null;
   valorTotal: number; saldoDisponivel: number;
   fornecedor: { razaoSocial: string };
   orgaoGerenciador: { titulo: string };
@@ -69,6 +70,10 @@ export function Contratos() {
   const [vigenciaInicial, setVigenciaInicial] = useState('');
   const [vigenciaFinal, setVigenciaFinal] = useState('');
   const [formaFaturamento, setFormaFaturamento] = useState(FORMAS_FATURAMENTO[4]);
+  const [dataAssinatura, setDataAssinatura] = useState('');
+  const [formaControleSaldo, setFormaControleSaldo] = useState('NORMAL');
+  const [dotacoesDisponiveis, setDotacoesDisponiveis] = useState<Opcao[]>([]);
+  const [dotacaoIds, setDotacaoIds] = useState<string[]>([]);
   const [itens, setItens] = useState<ItemForm[]>([{ descricao: '', unidade: '', quantidade: '', valorUnitario: '' }]);
   const [fornecedoresHomologados, setFornecedoresHomologados] = useState<FornecedorHomologado[]>([]);
   const [mostrarImportar, setMostrarImportar] = useState(false);
@@ -100,6 +105,9 @@ export function Contratos() {
     : temHomologacao
       ? fornecedores.filter((f) => fornecedoresHomologados.some((h) => h.id === f.id) && !fornecedoresComAta.has(f.id))
       : fornecedores;
+
+  // Sem ARP e sem homologação: contrato manual, o único que pode ser "Valor global".
+  const semOrigem = ataId === SEM_ARP && !temHomologacao;
 
   function escolherAta(id: string) {
     setAtaId(id);
@@ -144,9 +152,10 @@ export function Contratos() {
   }
 
   async function carregar() {
-    const [c, l, s, f, a] = await Promise.all([
-      api.get('/contratos'), api.get('/licitacoes'), api.get('/secretarias'), api.get('/fornecedores'), api.get('/atas').catch(() => []),
+    const [c, l, s, f, a, d] = await Promise.all([
+      api.get('/contratos'), api.get('/licitacoes'), api.get('/secretarias'), api.get('/fornecedores'), api.get('/atas').catch(() => []), api.get('/dotacoes').catch(() => []),
     ]);
+    setDotacoesDisponiveis(d.map((x: any) => ({ id: x.id, label: rotuloDotacao(x) })));
     setTodasAtas(a);
     setLista(c);
     setLicitacoes(l.map((x: any) => ({ id: x.id, label: `${x.numero} — ${x.modalidade.replaceAll('_',' ')}`, numeroProcesso: x.numeroProcesso ?? '', objeto: x.objeto ?? '' })));
@@ -168,6 +177,9 @@ export function Contratos() {
       await api.post('/contratos', {
         numero, numeroProcesso, objeto, licitacaoId, orgaoGerenciadorId, fornecedorId,
         vigenciaInicial, vigenciaFinal, formaFaturamento, situacao: 'VIGENTE',
+        dataAssinatura: dataAssinatura || undefined,
+        formaControleSaldo: semOrigem ? formaControleSaldo : 'NORMAL',
+        dotacaoIds: dotacaoIds.length ? dotacaoIds : undefined,
         ataOrgaoId: ataEscolhida ? ataOrgaoId : undefined,
         homologacaoFornecedorId: !ataEscolhida ? homologacaoFornecedorId : undefined,
         itens: itens
@@ -176,6 +188,7 @@ export function Contratos() {
       });
       setMostrarForm(false);
       setNumero(''); setNumeroProcesso(''); setObjeto(''); setAtaId(''); setAtaOrgaoId(''); setFornecedorId('');
+      setDataAssinatura(''); setFormaControleSaldo('NORMAL'); setDotacaoIds([]);
       setItens([{ descricao: '', unidade: '', quantidade: '', valorUnitario: '' }]);
       carregar();
     } catch (err) {
@@ -242,7 +255,31 @@ export function Contratos() {
               <input type="date" className="input" value={vigenciaInicial} onChange={(e) => setVigenciaInicial(e.target.value)} required /></div>
             <div className="field"><label>Vigência final</label>
               <input type="date" className="input" value={vigenciaFinal} onChange={(e) => setVigenciaFinal(e.target.value)} required /></div>
+            <div className="field"><label htmlFor="contrato-assinatura">Data de assinatura</label>
+              <input id="contrato-assinatura" type="date" className="input" value={dataAssinatura} onChange={(e) => setDataAssinatura(e.target.value)} />
+              <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Sai na minuta como {'{{data_assinatura}}'}.</p></div>
+            {semOrigem && (
+              <div className="field"><label htmlFor="contrato-controle">Controle de saldo</label>
+                <select id="contrato-controle" className="input" value={formaControleSaldo} onChange={(e) => setFormaControleSaldo(e.target.value)}>
+                  <option value="NORMAL">Por item (quantidade × valor unitário)</option>
+                  <option value="APENAS_VALOR_TOTAL">Valor global (as ordens abatem R$)</option>
+                </select>
+                <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Contrato de ARP ou homologação é sempre por item.</p></div>
+            )}
           </div>
+          {dotacoesDisponiveis.length > 0 && (
+            <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend style={{ fontSize: 12.5, marginBottom: 6 }}>Dotações orçamentárias do contrato <span className="text-muted">(as ordens sugerem estas)</span></legend>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+                {dotacoesDisponiveis.map((d) => (
+                  <label key={d.id} className="radio" style={{ fontSize: 12.5 }}>
+                    <input type="checkbox" checked={dotacaoIds.includes(d.id)} onChange={(e) => setDotacaoIds(e.target.checked ? [...dotacaoIds, d.id] : dotacaoIds.filter((x) => x !== d.id))} />
+                    <span className="dot" />{d.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <div className="field">
             <label>Objeto</label>
             <textarea className="input" value={objeto} onChange={(e) => setObjeto(e.target.value)} required />
