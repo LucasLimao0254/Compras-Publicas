@@ -145,7 +145,8 @@ line (`quantidade × valorUnitario`) to cents *before* summing, exactly like the
 `precoTotal` stored on each order line. Summing floats with 4-decimal unit prices left
 fractions of a cent that never reached zero. "Is this contract exhausted?" is answered by
 quantity per item (`ContratosService.itensComSaldoRestante`), not by the R$ balance —
-per-order rounding can legitimately leave ±R$ 0,01.
+per-order rounding can legitimately leave ±R$ 0,01. The ata totals (`AtasService.valorReservado`/`valorContratado`) and the
+homologação `valorTotal` follow the same rule.
 
 **Calendar dates** (vigência, assinatura) arrive as `AAAA-MM-DD` and are stored as UTC
 midnight: compare and format them by day with `src/common/datas.ts` (`vencida`,
@@ -180,6 +181,10 @@ and its items — all inside one `db.transaction()`. Anything read inside that t
 that needs to see the not-yet-committed rows must query via the `tx` handle, not the
 outer `this.db` (a separate connection can't see uncommitted writes — this bit us once
 during development; see the `findDetalhada(dbOrTx, ...)` helper pattern used to avoid it).
+
+**Fornecedor documents** go through `documentoFornecedor` (`src/common/documentos.ts`): valid CNPJ
+or CPF, stored in one masked format, duplicates detected by digits (`soDigitos`) — also for the
+quick-register in the homologação review. Scenario/fixture CNPJs are real-valid for that reason.
 
 ### Postgres errors come wrapped
 

@@ -68,8 +68,8 @@ async function main() {
   const [saude] = await db.insert(schema.secretarias).values({ tenantId, titulo: 'Secretaria Municipal de Saúde' }).returning();
   const [educacao] = await db.insert(schema.secretarias).values({ tenantId, titulo: 'Secretaria Municipal de Educação' }).returning();
 
-  const [limpaTudo] = await db.insert(schema.fornecedores).values({ tenantId, cnpjCpf: '12.345.678/0001-90', razaoSocial: 'Limpa Tudo Comércio LTDA' }).returning();
-  const [protege] = await db.insert(schema.fornecedores).values({ tenantId, cnpjCpf: '98.765.432/0001-10', razaoSocial: 'Protege EPI Distribuidora LTDA' }).returning();
+  const [limpaTudo] = await db.insert(schema.fornecedores).values({ tenantId, cnpjCpf: '12.345.678/0001-95', razaoSocial: 'Limpa Tudo Comércio LTDA' }).returning();
+  const [protege] = await db.insert(schema.fornecedores).values({ tenantId, cnpjCpf: '98.765.432/0001-98', razaoSocial: 'Protege EPI Distribuidora LTDA' }).returning();
 
   const dotacoes = await db.insert(schema.dotacoes).values([
     { tenantId, gestaoUnidade: '02.01 — Administração', fonteRecursos: '1500 — Recursos livres', programaTrabalho: '04.122.0001.2001', elementoDespesa: '3.3.90.30' },
@@ -78,7 +78,7 @@ async function main() {
   const dotacaoSaude = dotacoes[1];
 
   await db.insert(schema.unidadesExecutoras).values({
-    tenantId, cnpj: '11.222.333/0001-44', razaoSocial: 'Fundo Municipal de Saúde', endereco: 'Rua das Flores, 100 — Centro', cep: '00000-000',
+    tenantId, cnpj: '11.222.333/0001-81', razaoSocial: 'Fundo Municipal de Saúde', endereco: 'Rua das Flores, 100 — Centro', cep: '00000-000',
     email: 'fms@demo.gov.br', ordenadorNome: 'Maria Ordenadora', ordenadorCargo: 'Secretária de Saúde', ordenadorPortaria: 'Portaria 12/2026',
   });
 
@@ -153,7 +153,7 @@ async function main() {
   const [homAlimentos] = await db.insert(schema.licitacaoHomologacoes).values({
     tenantId, licitacaoId: licAlimentos.id, arquivoNome: 'homologacao_003_2026.xlsx', arquivoPath: '/dev/null', tamanhoBytes: 0, enviadoPor: admin.id, status: 'pronto_para_revisao',
   }).returning();
-  const [homAlimForn] = await db.insert(schema.homologacaoFornecedores).values({ tenantId, homologacaoId: homAlimentos.id, nomeExtraido: 'ALIMENTOS BOM PRATO LTDA', cnpjExtraido: '55.444.333/0001-22' }).returning();
+  const [homAlimForn] = await db.insert(schema.homologacaoFornecedores).values({ tenantId, homologacaoId: homAlimentos.id, nomeExtraido: 'ALIMENTOS BOM PRATO LTDA', cnpjExtraido: '55.444.333/0001-00' }).returning();
   await db.insert(schema.homologacaoItens).values([
     { tenantId, homologacaoFornecedorId: homAlimForn.id, numeroItem: 1, descricao: 'Arroz tipo 1 (5 kg), agulhinha, longo fino, polido, com no mínimo 90% de grãos inteiros, isento de sujidades, parasitas, larvas, mofo e substâncias estranhas; embalagem plástica resistente, atóxica, íntegra e bem vedada, com identificação do produto, marca, lote, data de fabricação e validade mínima de 6 meses a contar da entrega', unidade: 'PCT', quantidade: '800', valorUnitario: '27.90', valorTotal: '22320.00', confiancaExtracao: 'alta' },
     // falta a unidade de propósito: a revisão precisa apontar e exigir

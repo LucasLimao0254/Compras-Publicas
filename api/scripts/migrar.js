@@ -15,6 +15,17 @@ const MIGRACOES = [
   'ALTER TABLE IF EXISTS minuta_modelos DROP CONSTRAINT IF EXISTS minuta_modelos_tenant_id_tipo_unique',
   "ALTER TABLE IF EXISTS minuta_modelos ADD COLUMN IF NOT EXISTS nome text NOT NULL DEFAULT ''",
   "ALTER TABLE IF EXISTS minuta_modelos ADD COLUMN IF NOT EXISTS modalidades jsonb NOT NULL DEFAULT '[]'::jsonb",
+  // Um item homologado só uma vez por órgão da ata. Se o banco já tiver
+  // duplicatas (a corrida que isto evita), não derruba a subida: fica sem a
+  // constraint até alguém limpar.
+  `DO $$ BEGIN
+     IF to_regclass('public.ata_itens') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ata_itens_ata_orgao_id_homologacao_item_id_unique') THEN
+       BEGIN
+         ALTER TABLE ata_itens ADD CONSTRAINT ata_itens_ata_orgao_id_homologacao_item_id_unique UNIQUE (ata_orgao_id, homologacao_item_id);
+       EXCEPTION WHEN unique_violation THEN RAISE NOTICE 'ata_itens com item homologado duplicado — constraint não criada';
+       END;
+     END IF;
+   END $$`,
   // Status de homologação substituída por reenvio
   "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'homologacao_status') THEN ALTER TYPE homologacao_status ADD VALUE IF NOT EXISTS 'substituido'; END IF; END $$",
 ];

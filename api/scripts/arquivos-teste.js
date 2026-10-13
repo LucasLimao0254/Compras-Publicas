@@ -31,12 +31,12 @@ async function gerarArquivos(ARQUIVOS) {
 
   const cabecalho = ['ITEM', 'QUANTIDADE', 'UNIDADE', 'DESCRIÇÃO', 'MARCA', 'MODELO', 'UNITÁRIO ADJUDICADO', 'TOTAL ADJUDICADO'];
   salvar('homologacao_exemplo.xlsx', [
-    ['Fornecedor: FORNECEDOR MODELO LTDA- 00.000.000/0001-00'],
+    ['Fornecedor: FORNECEDOR MODELO LTDA- 00.000.000/0001-91'],
     cabecalho,
     [1, 1500, 'RESMA', 'Papel A4 75 g (resma com 500 folhas)', 'Chamex', 'A4', 21.9, 32850],
     [2, 2000, 'UN', 'Caneta esferográfica azul', 'Bic', 'Cristal', 1.8765, 3753],
     [],
-    ['Fornecedor: PAPELARIA CENTRAL LTDA- 44.555.666/0001-77'],
+    ['Fornecedor: PAPELARIA CENTRAL LTDA- 44.555.666/0001-81'],
     cabecalho,
     [3, 300, 'CX', 'Grampo 26/6 (caixa com 5000)', 'Jocar', '26/6', 6.5, 1950],
   ], [1, 6, 7]);

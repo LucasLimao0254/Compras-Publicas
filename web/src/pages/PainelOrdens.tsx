@@ -74,6 +74,8 @@ export function PainelOrdens() {
   const [confirmandoCancelar, setConfirmandoCancelar] = useState<string | null>(null);
   const [editandoOrdemId, setEditandoOrdemId] = useState<string | null>(null);
   const [itensOrdemIdPorItem, setItensOrdemIdPorItem] = useState<Record<string, string>>({});
+  // Na edição, o que a própria ordem já consome volta a estar disponível para ela.
+  const [quantidadesOriginais, setQuantidadesOriginais] = useState<Record<string, number>>({});
 
   // Stub intencional — sem lógica ainda, não "consertar". Painel visual
   // pronto, mas nenhuma chamada de API por trás; enviar não faz nada além de
@@ -167,7 +169,7 @@ export function PainelOrdens() {
   function resetWizard() {
     setPasso(1); setContratoId('');
     setItens([]); setQuantidades({}); setDotacoesForm([{ dotacaoId: '', valorRateado: '' }]); setUnidadeExecutoraId(''); setEmitirAgora(true); setErro(null);
-    setEditandoOrdemId(null); setItensOrdemIdPorItem({});
+    setEditandoOrdemId(null); setItensOrdemIdPorItem({}); setQuantidadesOriginais({});
   }
 
   async function editarOrdemExistente(o: OrdemRow) {
@@ -186,7 +188,10 @@ export function PainelOrdens() {
       setQuantidades(q);
     }
     setItensOrdemIdPorItem(mapa);
+    setQuantidadesOriginais(Object.fromEntries(Object.entries(mapa).map(([itemId]) => [itemId, Number(detalhe.itens.find((l: any) => l.itemContratoId === itemId)?.quantidade ?? 0)])));
     if (detalhe.unidadeExecutora) setUnidadeExecutoraId(detalhe.unidadeExecutora.id);
+    const dots = (detalhe.dotacoes ?? []).map((d: any) => ({ dotacaoId: d.dotacaoId, valorRateado: d.valorRateado != null ? String(Number(d.valorRateado)) : '' }));
+    setDotacoesForm(dots.length ? dots : [{ dotacaoId: '', valorRateado: '' }]);
     setPasso(2);
   }
 
@@ -195,11 +200,17 @@ export function PainelOrdens() {
     setErro(null);
     setSalvando(true);
     try {
+      // Toda linha da ordem vai na edição — vazia ou 0 tira o item da ordem
+      // (antes era ignorada e a quantidade antiga continuava, sem aviso).
       const itensPayload = itens
-        .filter((it) => Number(quantidades[it.id]) > 0 && itensOrdemIdPorItem[it.id])
-        .map((it) => ({ itemOrdemId: itensOrdemIdPorItem[it.id], quantidade: Number(quantidades[it.id]) }));
-      if (!itensPayload.length) throw new Error('Selecione ao menos um item já pertencente a esta ordem');
-      await api.patch(`/ordens/${editandoOrdemId}`, { itens: itensPayload });
+        .filter((it) => itensOrdemIdPorItem[it.id])
+        .map((it) => ({ itemOrdemId: itensOrdemIdPorItem[it.id], quantidade: Number(quantidades[it.id]) || 0 }));
+      if (!itensPayload.some((i) => i.quantidade > 0)) throw new Error('A ordem precisa manter ao menos um item — para desfazê-la, cancele a ordem');
+      await api.patch(`/ordens/${editandoOrdemId}`, {
+        itens: itensPayload,
+        unidadeExecutoraId: unidadeExecutoraId || '',
+        dotacoes: dotacoesForm.filter((d) => d.dotacaoId).map((d) => ({ dotacaoId: d.dotacaoId, valorRateado: d.valorRateado ? Number(d.valorRateado) : undefined })),
+      });
       setMostrarWizard(false);
       resetWizard();
       carregarListaBase();
@@ -440,9 +451,11 @@ export function PainelOrdens() {
                   {itens.map((it) => (
                     <tr key={it.id}>
                       <td style={{ fontSize: 13.5, minWidth: 0 }}><DescricaoResumida texto={it.descricao} /> <span className="text-muted">({it.unidade})</span></td>
-                      <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeDisponivel)}</td>
+                      <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeDisponivel + (quantidadesOriginais[it.id] ?? 0))}</td>
                       <td className="num" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatarValor(it.valorUnitario)}</td>
-                      <td><input className="input num" type="number" min={0} max={it.quantidadeDisponivel} style={{ textAlign: 'right' }}
+                      <td><input className="input num" type="number" min={0} max={it.quantidadeDisponivel + (quantidadesOriginais[it.id] ?? 0)} style={{ textAlign: 'right' }}
+                        aria-label={`Quantidade de ${it.descricao.slice(0, 40)}`}
+                        title={editandoOrdemId && !itensOrdemIdPorItem[it.id] ? 'Na edição só mudam os itens que já estão na ordem — para outro item, emita uma nova ordem' : editandoOrdemId ? '0 tira o item da ordem' : undefined}
                         disabled={!!editandoOrdemId && !itensOrdemIdPorItem[it.id]}
                         value={quantidades[it.id] || ''} onChange={(e) => setQuantidades({ ...quantidades, [it.id]: e.target.value })} /></td>
                     </tr>

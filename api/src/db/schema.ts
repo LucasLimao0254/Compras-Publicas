@@ -406,6 +406,9 @@ export const ataItens = pgTable('ata_itens', {
   homologacaoItemId: uuid('homologacao_item_id').references(() => homologacaoItens.id),
 }, (t) => ({
   uniqNumero: unique().on(t.ataOrgaoId, t.numeroItem),
+  // Um item homologado só uma vez por órgão (SaldoCeilingService exige uma
+  // linha); NULL (item sem homologação) não conflita.
+  uniqItemHomologado: unique().on(t.ataOrgaoId, t.homologacaoItemId),
 }));
 
 // Log imutável, só insert — histórico auditável de prorrogações de prazo.

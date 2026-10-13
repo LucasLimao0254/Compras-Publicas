@@ -19,6 +19,7 @@ import {
   secretarias,
 } from '../db/schema';
 import { paraNumeroPlanilha } from '../common/numero-planilha';
+import { centavos, centavosDoTotal, reais } from '../common/dinheiro';
 import { periodoValido } from '../common/datas';
 import { numeroJaUsado } from '../common/numeracao';
 import { quantidadeConsumidaDoTeto, SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
@@ -54,40 +55,40 @@ export class AtasService {
     const contratadas = await this.quantidadeContratadaPorItens(this.db, row.orgaos.flatMap((o) => o.itens.map((i) => i.id)));
     const orgaosComSaldo = await Promise.all(
       row.orgaos.map(async (o) => {
+        // Em centavos (common/dinheiro.ts), como o resto do sistema — somar
+        // reais em float dava 0.30000000000000004.
         const utilizado = this.valorContratado(o.itens, contratadas);
-        const valorTotal = o.itens.reduce((acc, it) => acc + Number(it.quantidadeContratada) * Number(it.valorUnitario), 0);
+        const valorTotal = this.valorReservado(o.itens);
         return {
           id: o.id,
           secretaria: o.secretaria,
           perfil: o.perfil,
           quantidadeItens: o.itens.length,
-          valorTotal,
-          valorUtilizado: utilizado,
-          saldoDisponivel: valorTotal - utilizado,
+          valorTotal: reais(valorTotal),
+          valorUtilizado: reais(utilizado),
+          saldoDisponivel: reais(valorTotal - utilizado),
         };
       }),
     );
 
-    const valorTotal = orgaosComSaldo.reduce((acc, o) => acc + o.valorTotal, 0);
-    const valorUtilizado = orgaosComSaldo.reduce((acc, o) => acc + o.valorUtilizado, 0);
+    const valorTotal = orgaosComSaldo.reduce((acc, o) => acc + centavos(o.valorTotal), 0);
+    const valorUtilizado = orgaosComSaldo.reduce((acc, o) => acc + centavos(o.valorUtilizado), 0);
     const { orgaos, ...rest } = row;
-    return { ...rest, orgaos: orgaosComSaldo, valorTotal, valorUtilizado, saldoDisponivel: valorTotal - valorUtilizado };
+    return { ...rest, orgaos: orgaosComSaldo, valorTotal: reais(valorTotal), valorUtilizado: reais(valorUtilizado), saldoDisponivel: reais(valorTotal - valorUtilizado) };
   }
 
   // Resumo usado na listagem: mesmo cálculo de saldo, sem detalhar por órgão.
   private comSaldoResumo<T extends { orgaos: { itens: { quantidadeContratada: string; valorUnitario: string; id: string }[] }[] }>(ata: T, contratadas: Map<string, number>) {
-    const valorTotal = ata.orgaos.reduce(
-      (acc, o) => acc + o.itens.reduce((a2, it) => a2 + Number(it.quantidadeContratada) * Number(it.valorUnitario), 0),
-      0,
-    );
-    const utilizado = this.valorContratado(ata.orgaos.flatMap((o) => o.itens), contratadas);
+    const todosItens = ata.orgaos.flatMap((o) => o.itens);
+    const valorTotal = this.valorReservado(todosItens);
+    const utilizado = this.valorContratado(todosItens, contratadas);
     const { orgaos, ...rest } = ata;
     return {
       ...rest,
       quantidadeOrgaos: orgaos.length,
-      valorTotal,
-      valorUtilizado: utilizado,
-      saldoDisponivel: valorTotal - utilizado,
+      valorTotal: reais(valorTotal),
+      valorUtilizado: reais(utilizado),
+      saldoDisponivel: reais(valorTotal - utilizado),
     };
   }
 
@@ -110,8 +111,13 @@ export class AtasService {
   // Valor (quantidade contratada × preço do item na ata) — o mesmo preço usado
   // para o valor reservado, para o saldo da ata nunca ficar negativo só porque
   // o preço digitado no contrato difere.
+  // Em centavos, cada item arredondado antes de somar (common/dinheiro.ts).
   private valorContratado(itens: { id: string; valorUnitario: string }[], contratadas: Map<string, number>) {
-    return itens.reduce((acc, it) => acc + (contratadas.get(it.id) ?? 0) * Number(it.valorUnitario), 0);
+    return itens.reduce((acc, it) => acc + centavosDoTotal(contratadas.get(it.id) ?? 0, it.valorUnitario), 0);
+  }
+
+  private valorReservado(itens: { quantidadeContratada: string; valorUnitario: string }[]) {
+    return itens.reduce((acc, it) => acc + centavosDoTotal(it.quantidadeContratada, it.valorUnitario), 0);
   }
 
   // Quantidade (não valor monetário) já consumida de um único item da ata:
@@ -336,6 +342,10 @@ export class AtasService {
     return this.db.transaction(async (tx) => {
       const ataHomologacaoFornecedorId = await this.homologacaoFornecedorDaAta(tx, tenantId, ataId);
       const item = await this.itemHomologadoDaAta(tx, tenantId, ataHomologacaoFornecedorId, dto.homologacaoItemId!);
+      // Trava o item homologado ANTES de procurar duplicata: dois envios ao
+      // mesmo tempo passavam os dois pela checagem e gravavam o item duas vezes
+      // (a UNIQUE de ataItens fecha o resto).
+      const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, item.id);
 
       // Um item homologado aparece uma única vez por órgão —
       // SaldoCeilingService.ataItemSaldoDisponivel exige exatamente 1 linha
@@ -349,7 +359,6 @@ export class AtasService {
         throw new BadRequestException('Este item homologado já está neste órgão — edite a quantidade do item existente');
       }
 
-      const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, item.id);
       if (dto.quantidade > disponivel) {
         throw new BadRequestException(`Quantidade (${dto.quantidade}) excede o saldo homologado restante para este item (${disponivel})`);
       }

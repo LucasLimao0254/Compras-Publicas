@@ -1,5 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, inArray, ne } from 'drizzle-orm';
+import { centavosDoTotal, decimal2 } from '../common/dinheiro';
+import { documentoFornecedor, soDigitos } from '../common/documentos';
 import { readFile } from 'fs/promises';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import {
@@ -142,7 +144,7 @@ export class LicitacoesHomologacaoService {
             unidade,
             quantidade: quantidade != null ? String(quantidade) : null,
             valorUnitario: valorUnitario != null ? String(valorUnitario) : null,
-            valorTotal: quantidade != null && valorUnitario != null ? String(quantidade * valorUnitario) : null,
+            valorTotal: quantidade != null && valorUnitario != null ? decimal2(centavosDoTotal(quantidade, valorUnitario)) : null,
             confiancaExtracao: this.confiancaDoItem({ descricao: it.descricao, unidade, quantidade, valorUnitario }),
           };
         }),
@@ -171,13 +173,18 @@ export class LicitacoesHomologacaoService {
 
     let fornecedorId = dto.fornecedorId;
     if (dto.novoFornecedor) {
-      const dup = await this.db.select().from(fornecedores).where(and(eq(fornecedores.tenantId, tenantId), eq(fornecedores.cnpjCpf, dto.novoFornecedor.cnpjCpf)));
-      if (dup.length) {
-        fornecedorId = dup[0].id;
+      // Mesma regra do cadastro de fornecedores: CNPJ/CPF válido, num formato
+      // só, e quem já existe (pelos dígitos) é reaproveitado.
+      const cnpjCpf = documentoFornecedor(dto.novoFornecedor.cnpjCpf);
+      if (!cnpjCpf) throw new BadRequestException('CNPJ/CPF do novo fornecedor inválido — confira os dígitos');
+      const todos = await this.db.select({ id: fornecedores.id, cnpjCpf: fornecedores.cnpjCpf }).from(fornecedores).where(eq(fornecedores.tenantId, tenantId));
+      const dup = todos.find((f) => soDigitos(f.cnpjCpf) === soDigitos(cnpjCpf));
+      if (dup) {
+        fornecedorId = dup.id;
       } else {
         const [novo] = await this.db
           .insert(fornecedores)
-          .values({ tenantId, cnpjCpf: dto.novoFornecedor.cnpjCpf, razaoSocial: dto.novoFornecedor.razaoSocial })
+          .values({ tenantId, cnpjCpf, razaoSocial: dto.novoFornecedor.razaoSocial.trim() })
           .returning();
         fornecedorId = novo.id;
       }
@@ -221,7 +228,7 @@ export class LicitacoesHomologacaoService {
     // que String(null) produziria.
     if (dto.quantidade !== undefined) patch.quantidade = dto.quantidade == null ? null : String(dto.quantidade);
     if (dto.valorUnitario !== undefined) patch.valorUnitario = dto.valorUnitario == null ? null : String(dto.valorUnitario);
-    patch.valorTotal = novaQuantidade != null && novoValorUnitario != null ? String(novaQuantidade * novoValorUnitario) : null;
+    patch.valorTotal = novaQuantidade != null && novoValorUnitario != null ? decimal2(centavosDoTotal(novaQuantidade, novoValorUnitario)) : null;
     patch.confiancaExtracao = this.confiancaDoItem({ descricao: novaDescricao, unidade: novaUnidade, quantidade: novaQuantidade, valorUnitario: novoValorUnitario });
 
     await this.db.update(homologacaoItens).set(patch).where(and(eq(homologacaoItens.id, itemId), eq(homologacaoItens.tenantId, tenantId)));
@@ -237,6 +244,16 @@ export class LicitacoesHomologacaoService {
 
     if (!detalhe.fornecedores.length) {
       throw new BadRequestException('Esta homologação não tem nenhum fornecedor extraído');
+    }
+    // Dois blocos da planilha vinculados ao mesmo fornecedor: depois de
+    // revisada, só o primeiro seria encontrado (ata/contrato/importação), e os
+    // itens do segundo ficariam inacessíveis.
+    const vinculados = new Map<string, string>();
+    for (const f of detalhe.fornecedores) {
+      if (!f.fornecedorId) continue;
+      const anterior = vinculados.get(f.fornecedorId);
+      if (anterior) throw new BadRequestException(`"${anterior}" e "${f.nomeExtraido}" estão vinculados ao mesmo fornecedor cadastrado — cada bloco da planilha precisa de um fornecedor diferente`);
+      vinculados.set(f.fornecedorId, f.nomeExtraido);
     }
     for (const f of detalhe.fornecedores) {
       if (!f.fornecedorId) {
