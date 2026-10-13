@@ -1,11 +1,15 @@
 {
   "name": "compras-publicas-mvp",
   "private": true,
-  "workspaces": ["api", "web"],
+  "workspaces": [
+    "api",
+    "web"
+  ],
   "scripts": {
     "dev:api": "npm run start:dev --workspace=api",
     "dev:web": "npm run dev --workspace=web",
     "build:api": "npm run build --workspace=api",
-    "build:web": "npm run build --workspace=web"
+    "build:web": "npm run build --workspace=web",
+    "teste:interno": "node api/scripts/ambiente-teste.js"
   }
 }

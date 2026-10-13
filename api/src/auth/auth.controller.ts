@@ -14,6 +14,15 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  // Dados atuais do usuário logado (tipo e permissões lidos agora do banco) —
+  // o frontend atualiza o menu com isto ao abrir, em vez de confiar no que
+  // guardou no login.
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  me(@CurrentUser() u: AuthUser) {
+    return this.authService.me(u.userId, u.permissoes);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('tenants-disponiveis')
   tenantsDisponiveis(@CurrentUser() u: AuthUser) {

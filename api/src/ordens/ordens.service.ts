@@ -5,17 +5,22 @@ import { ConfiguracoesService } from '../configuracoes/configuracoes.service';
 import {
   contadores,
   contratos,
+  dotacoes,
   itensContrato,
   itensOrdem,
   ordemDotacoes,
   ordemHistorico,
   ordens,
+  statusOrdemEnum,
   unidadesExecutoras,
 } from '../db/schema';
 import { CreateOrdemDto, UpdateOrdemDto } from './dto/ordem.dto';
+import { centavos, centavosDoTotal, decimal2, reais } from '../common/dinheiro';
+import { calcularSaldoContrato } from '../contratos/contratos.service';
+import { vencida } from '../common/datas';
 
 type ItemCalculado = { itemContratoId: string; quantidade: string; precoUnitario: string; precoTotal: string };
-type LinhaArmazenada = { itemContratoId: string | null; quantidade: string };
+type LinhaArmazenada = { itemContratoId: string | null; quantidade: string; precoTotal?: string };
 
 // Letra de exibição estilo planilha (A, B, ..., Z, AA, AB, ...) — usada para
 // compor o número exibido de uma ordem como "{número do contrato} {letra}"
@@ -44,6 +49,14 @@ export class OrdensService {
   constructor(@Inject(DRIZZLE) private db: DrizzleDB, private configuracoes: ConfiguracoesService) {}
 
   async list(tenantId: string, filtro: ListaOrdensFiltro = {}) {
+    // Filtro inválido é 400 com mensagem — antes ia direto para o Postgres
+    // (valor fora do enum, número NaN) e voltava 500.
+    if (filtro.status && !statusOrdemEnum.enumValues.includes(filtro.status as any)) {
+      throw new BadRequestException(`Status inválido: ${filtro.status}`);
+    }
+    if (filtro.numero && !/^\d+$/.test(filtro.numero)) {
+      throw new BadRequestException('O número da ordem precisa ser um inteiro');
+    }
     const condicoes = [eq(ordens.tenantId, tenantId)];
     if (filtro.status) condicoes.push(eq(ordens.status, filtro.status as any));
     if (filtro.numero) condicoes.push(eq(ordens.numero, Number(filtro.numero)));
@@ -131,14 +144,18 @@ export class OrdensService {
   }
 
   // Contador sequencial por tenant — cria com valor inicial 1 na primeira ordem.
+  // Incremento atômico (UPDATE ... SET x = x + 1 RETURNING): o UPDATE trava a
+  // linha do contador até o fim da transação, então duas emissões
+  // simultâneas serializam aqui. O antigo "lê e depois grava" deixava as duas
+  // lerem o mesmo número e uma delas estourar a UNIQUE (tenant, numero).
   private async proximoNumero(tx: DrizzleDB, tenantId: string) {
-    const [contador] = await tx.select().from(contadores).where(eq(contadores.tenantId, tenantId));
-    if (!contador) {
-      await tx.insert(contadores).values({ tenantId, proximaOrdem: 2 });
-      return 1;
-    }
-    await tx.update(contadores).set({ proximaOrdem: contador.proximaOrdem + 1 }).where(eq(contadores.tenantId, tenantId));
-    return contador.proximaOrdem;
+    await tx.insert(contadores).values({ tenantId, proximaOrdem: 1 }).onConflictDoNothing({ target: contadores.tenantId });
+    const [row] = await tx
+      .update(contadores)
+      .set({ proximaOrdem: sql`${contadores.proximaOrdem} + 1` })
+      .where(eq(contadores.tenantId, tenantId))
+      .returning({ proximaOrdem: contadores.proximaOrdem });
+    return row.proximaOrdem - 1;
   }
 
   // Emite uma ordem a partir de um contrato — ordem só nasce de contrato (ver
@@ -162,6 +179,9 @@ export class OrdensService {
       }
 
       const { itensCalculados } = await this.validarOrigemContrato(tx, tenantId, dto, emitirAgora, config.permitirOrdemContratoVencido);
+      if (dto.dotacoes?.length) {
+        await this.validarDotacoes(tx, tenantId, dto.dotacoes, itensCalculados.reduce((acc, it) => acc + centavos(it.precoTotal), 0));
+      }
 
       const numero = await this.proximoNumero(tx, tenantId);
 
@@ -198,13 +218,50 @@ export class OrdensService {
     });
   }
 
+  // Dotações da ordem: do próprio município (sem isso, um dotacaoId de outro
+  // tenant era gravado), sem repetir, e — quando o rateio é informado em todas
+  // — somando exatamente o valor da ordem. Rateio parcial (só em algumas) é
+  // recusado: não dá para saber de onde sai o resto.
+  private async validarDotacoes(tx: DrizzleDB, tenantId: string, linhas: { dotacaoId: string; valorRateado?: number }[], totalCentavos: number) {
+    if (!linhas.length) return;
+    const ids = linhas.map((d) => d.dotacaoId);
+    if (new Set(ids).size !== ids.length) throw new BadRequestException('A mesma dotação aparece mais de uma vez');
+    const encontradas = await tx.select({ id: dotacoes.id }).from(dotacoes).where(and(inArray(dotacoes.id, ids), eq(dotacoes.tenantId, tenantId)));
+    if (encontradas.length !== ids.length) throw new BadRequestException('Dotação orçamentária não encontrada para este tenant');
+    const comRateio = linhas.filter((d) => d.valorRateado != null);
+    if (!comRateio.length) return;
+    if (comRateio.length !== linhas.length) throw new BadRequestException('Informe o valor rateado em todas as dotações, ou em nenhuma');
+    if (comRateio.some((d) => d.valorRateado! <= 0)) throw new BadRequestException('O valor rateado precisa ser maior que zero');
+    const soma = comRateio.reduce((acc, d) => acc + centavos(d.valorRateado), 0);
+    if (soma !== totalCentavos) {
+      const brl = (c: number) => reais(c).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      throw new BadRequestException(`O rateio das dotações soma ${brl(soma)}, mas a ordem vale ${brl(totalCentavos)}`);
+    }
+  }
+
+  // Contrato em "Valor global" (APENAS_VALOR_TOTAL, só sem origem em ata/
+  // homologação): os itens são referência de preço e a ordem abate R$ do
+  // valor do contrato (itens + aditivos por percentual), não quantidade por
+  // item. Trava a linha do contrato para duas emissões não passarem juntas.
+  // `excetoCentavos` devolve ao saldo o que a própria ordem já consome
+  // (edição de ordem emitida).
+  private async validarSaldoValorGlobal(tx: DrizzleDB, contratoId: string, totalCentavos: number, excetoCentavos = 0) {
+    await tx.select({ id: contratos.id }).from(contratos).where(eq(contratos.id, contratoId)).for('update');
+    const { saldoDisponivel } = await calcularSaldoContrato(tx, contratoId);
+    const disponivel = centavos(saldoDisponivel) + excetoCentavos;
+    if (totalCentavos > disponivel) {
+      const brl = (c: number) => reais(c).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      throw new BadRequestException(`O valor da ordem (${brl(totalCentavos)}) excede o saldo do contrato (${brl(disponivel)})`);
+    }
+  }
+
   private async validarOrigemContrato(tx: DrizzleDB, tenantId: string, dto: CreateOrdemDto, validarSaldo: boolean, permitirVencido: boolean) {
     const [contrato] = await tx.select().from(contratos).where(and(eq(contratos.tenantId, tenantId), eq(contratos.id, dto.contratoId)));
     if (!contrato) throw new NotFoundException('Contrato não encontrado');
     if (contrato.situacao === 'ARQUIVADO' || contrato.situacao === 'MINUTA') {
       throw new BadRequestException('Não é possível emitir ordem para um contrato arquivado ou em minuta');
     }
-    if (!permitirVencido && new Date(contrato.vigenciaFinal) < new Date()) {
+    if (!permitirVencido && vencida(contrato.vigenciaFinal)) {
       throw new BadRequestException('Contrato vencido: emissão de ordens bloqueada (habilite em Configurações se necessário)');
     }
 
@@ -218,6 +275,7 @@ export class OrdensService {
     }
 
     const itensCalculados: ItemCalculado[] = [];
+    const valorGlobal = contrato.formaControleSaldo === 'APENAS_VALOR_TOTAL';
 
     for (const [itemContratoId, quantidade] of quantidadePorItem) {
       // SELECT ... FOR UPDATE trava a linha do item pelo resto da transação:
@@ -225,14 +283,14 @@ export class OrdensService {
       // ambas lerem o mesmo saldo disponível e passarem na validação. Um
       // rascunho (validarSaldo=false) não consome nada ainda, então não
       // precisa da trava.
-      const [item] = validarSaldo
+      const [item] = validarSaldo && !valorGlobal
         ? await tx.select().from(itensContrato).where(eq(itensContrato.id, itemContratoId)).for('update')
         : await tx.select().from(itensContrato).where(eq(itensContrato.id, itemContratoId));
       if (!item || item.contratoId !== dto.contratoId) {
         throw new BadRequestException('Item não pertence ao contrato selecionado');
       }
 
-      if (validarSaldo) {
+      if (validarSaldo && !valorGlobal) {
         const [usadoRow] = await tx
           .select({ total: sql<string>`coalesce(sum(${itensOrdem.quantidade}), 0)` })
           .from(itensOrdem)
@@ -253,8 +311,12 @@ export class OrdensService {
         itemContratoId: item.id,
         quantidade: String(quantidade),
         precoUnitario: String(precoUnitario),
-        precoTotal: (precoUnitario * quantidade).toFixed(2),
+        precoTotal: decimal2(centavosDoTotal(quantidade, precoUnitario)),
       });
+    }
+
+    if (validarSaldo && valorGlobal) {
+      await this.validarSaldoValorGlobal(tx, contrato.id, itensCalculados.reduce((acc, it) => acc + centavos(it.precoTotal), 0));
     }
 
     return { itensCalculados };
@@ -287,8 +349,14 @@ export class OrdensService {
     if (contrato.situacao === 'ARQUIVADO' || contrato.situacao === 'MINUTA') {
       throw new BadRequestException('Não é possível emitir ordem para um contrato arquivado ou em minuta');
     }
-    if (!permitirVencido && new Date(contrato.vigenciaFinal) < new Date()) {
+    if (!permitirVencido && vencida(contrato.vigenciaFinal)) {
       throw new BadRequestException('Contrato vencido: emissão de ordens bloqueada (habilite em Configurações se necessário)');
+    }
+
+    if (contrato.formaControleSaldo === 'APENAS_VALOR_TOTAL') {
+      const total = (linhas as { precoTotal?: string }[]).reduce((acc, l) => acc + centavos(l.precoTotal), 0);
+      await this.validarSaldoValorGlobal(tx, contratoId, total);
+      return;
     }
 
     for (const linha of linhas) {
@@ -338,7 +406,7 @@ export class OrdensService {
       if (contrato.situacao === 'ARQUIVADO' || contrato.situacao === 'MINUTA') {
         throw new BadRequestException('Não é possível editar ordem de um contrato arquivado ou em minuta');
       }
-      if (!config.permitirOrdemContratoVencido && new Date(contrato.vigenciaFinal) < new Date()) {
+      if (!config.permitirOrdemContratoVencido && vencida(contrato.vigenciaFinal)) {
         throw new BadRequestException('Contrato vencido: edição de ordens bloqueada (habilite em Configurações se necessário)');
       }
 
@@ -346,30 +414,75 @@ export class OrdensService {
       const linhaPorId = new Map(linhasAtuais.map((l) => [l.id, l]));
       const antes = linhasAtuais.map((l) => ({ itensOrdemId: l.id, quantidade: l.quantidade }));
       const depois: { itensOrdemId: string; quantidade: string }[] = [];
+      const valorGlobal = contrato.formaControleSaldo === 'APENAS_VALOR_TOTAL';
+
+      // Quantidade 0 tira a linha da ordem (antes era ignorada sem aviso e a
+      // quantidade antiga continuava); a ordem precisa ficar com ao menos uma.
+      const vistos = new Set<string>();
+      for (const alteracao of dto.itens) {
+        if (vistos.has(alteracao.itemOrdemId)) throw new BadRequestException('O mesmo item aparece mais de uma vez na edição');
+        vistos.add(alteracao.itemOrdemId);
+        if (!linhaPorId.has(alteracao.itemOrdemId)) throw new BadRequestException('Item não pertence a esta ordem');
+      }
+      const quantidadeFinal = new Map(linhasAtuais.map((l) => [l.id, Number(l.quantidade)]));
+      for (const alteracao of dto.itens) quantidadeFinal.set(alteracao.itemOrdemId, alteracao.quantidade);
+      if (![...quantidadeFinal.values()].some((q) => q > 0)) {
+        throw new BadRequestException('A ordem precisa manter ao menos um item — para desfazê-la inteira, cancele a ordem');
+      }
 
       for (const alteracao of dto.itens) {
-        const linha = linhaPorId.get(alteracao.itemOrdemId);
-        if (!linha) throw new BadRequestException('Item não pertence a esta ordem');
+        const linha = linhaPorId.get(alteracao.itemOrdemId)!;
+        if (alteracao.quantidade === 0) {
+          await tx.delete(itensOrdem).where(eq(itensOrdem.id, linha.id));
+          depois.push({ itensOrdemId: linha.id, quantidade: '0' });
+          continue;
+        }
 
         const [item] = await tx.select().from(itensContrato).where(eq(itensContrato.id, linha.itemContratoId!)).for('update');
         if (!item) throw new BadRequestException('Item do contrato não encontrado');
-        const [usadoRow] = await tx
-          .select({ total: sql<string>`coalesce(sum(${itensOrdem.quantidade}), 0)` })
-          .from(itensOrdem)
-          .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
-          .where(and(eq(ordens.contratoId, ordem.contratoId!), eq(ordens.status, 'EMITIDA'), eq(itensOrdem.itemContratoId, item.id), ne(itensOrdem.ordemId, id)));
-        const disponivel = Number(item.quantidade) - Number(usadoRow?.total ?? 0);
-
-        if (alteracao.quantidade > disponivel) {
-          throw new BadRequestException(`Quantidade solicitada para "${item.descricao}" (${alteracao.quantidade}) excede o saldo disponível (${disponivel})`);
+        if (!valorGlobal) {
+          const [usadoRow] = await tx
+            .select({ total: sql<string>`coalesce(sum(${itensOrdem.quantidade}), 0)` })
+            .from(itensOrdem)
+            .innerJoin(ordens, eq(itensOrdem.ordemId, ordens.id))
+            .where(and(eq(ordens.contratoId, ordem.contratoId!), eq(ordens.status, 'EMITIDA'), eq(itensOrdem.itemContratoId, item.id), ne(itensOrdem.ordemId, id)));
+          const disponivel = Number(item.quantidade) - Number(usadoRow?.total ?? 0);
+          if (alteracao.quantidade > disponivel) {
+            throw new BadRequestException(`Quantidade solicitada para "${item.descricao}" (${alteracao.quantidade}) excede o saldo disponível (${disponivel})`);
+          }
         }
 
         const precoUnitario = Number(linha.precoUnitario);
         await tx
           .update(itensOrdem)
-          .set({ quantidade: String(alteracao.quantidade), precoTotal: (precoUnitario * alteracao.quantidade).toFixed(2) })
+          .set({ quantidade: String(alteracao.quantidade), precoTotal: decimal2(centavosDoTotal(alteracao.quantidade, precoUnitario)) })
           .where(eq(itensOrdem.id, linha.id));
         depois.push({ itensOrdemId: linha.id, quantidade: String(alteracao.quantidade) });
+      }
+
+      if (valorGlobal) {
+        const totalAntes = linhasAtuais.reduce((acc, l) => acc + centavos(l.precoTotal), 0);
+        const totalDepois = linhasAtuais.reduce((acc, l) => acc + centavosDoTotal(quantidadeFinal.get(l.id) ?? 0, l.precoUnitario), 0);
+        await this.validarSaldoValorGlobal(tx, ordem.contratoId!, totalDepois, totalAntes);
+      }
+
+      // Unidade executora e dotações também são editáveis (a tela mostrava os
+      // campos, mas a edição só gravava quantidades).
+      if (dto.unidadeExecutoraId !== undefined) {
+        if (dto.unidadeExecutoraId) {
+          const [unidade] = await tx.select({ id: unidadesExecutoras.id }).from(unidadesExecutoras).where(and(eq(unidadesExecutoras.id, dto.unidadeExecutoraId), eq(unidadesExecutoras.tenantId, tenantId)));
+          if (!unidade) throw new BadRequestException('Unidade executora não encontrada para este tenant');
+        }
+        await tx.update(ordens).set({ unidadeExecutoraId: dto.unidadeExecutoraId || null }).where(eq(ordens.id, id));
+      }
+      if (dto.dotacoes !== undefined) {
+        if (config.dotacaoObrigatoria && !dto.dotacoes.length) throw new BadRequestException('Selecione ao menos uma dotação orçamentária');
+        const totalOrdem = linhasAtuais.reduce((acc, l) => acc + centavosDoTotal(quantidadeFinal.get(l.id) ?? 0, l.precoUnitario), 0);
+        await this.validarDotacoes(tx, tenantId, dto.dotacoes, totalOrdem);
+        await tx.delete(ordemDotacoes).where(eq(ordemDotacoes.ordemId, id));
+        if (dto.dotacoes.length) {
+          await tx.insert(ordemDotacoes).values(dto.dotacoes.map((d) => ({ tenantId, ordemId: id, dotacaoId: d.dotacaoId, valorRateado: d.valorRateado != null ? String(d.valorRateado) : null })));
+        }
       }
 
       await tx.insert(ordemHistorico).values({ tenantId, ordemId: id, tipoEvento: 'editou_ordem', usuarioId, dadosSnapshot: { antes, depois } });
@@ -382,13 +495,22 @@ export class OrdensService {
   // histórico. Não existe decremento a "desfazer" explicitamente: o saldo é
   // sempre derivado filtrando status='EMITIDA', então uma ordem cancelada
   // simplesmente para de contar — o saldo volta sozinho.
-  async cancelar(tenantId: string, usuarioId: string, id: string) {
-    const ordem = await this.get(tenantId, id);
-    if (ordem.status === 'CANCELADA') {
-      throw new BadRequestException('Esta ordem já está cancelada');
-    }
-    await this.db.update(ordens).set({ status: 'CANCELADA' }).where(and(eq(ordens.id, id), eq(ordens.tenantId, tenantId)));
-    await this.db.insert(ordemHistorico).values({ tenantId, ordemId: id, tipoEvento: 'cancelou', usuarioId });
+  // Cancelar uma ordem JÁ EMITIDA é a "exclusão pós-emissão" do MODELO.md
+  // (seção 6): exclusiva do Administrador do tenant. Rascunho qualquer
+  // usuário do módulo descarta. Antes a regra só existia na interface.
+  async cancelar(tenantId: string, usuarioId: string, id: string, tipoUsuario: 'ADMIN' | 'PADRAO') {
+    await this.db.transaction(async (tx) => {
+      const [ordem] = await tx.select().from(ordens).where(and(eq(ordens.tenantId, tenantId), eq(ordens.id, id))).for('update');
+      if (!ordem) throw new NotFoundException('Ordem não encontrada');
+      if (ordem.status === 'CANCELADA') {
+        throw new BadRequestException('Esta ordem já está cancelada');
+      }
+      if (ordem.status === 'EMITIDA' && tipoUsuario !== 'ADMIN') {
+        throw new ForbiddenException('Somente administradores do tenant podem excluir uma ordem já emitida');
+      }
+      await tx.update(ordens).set({ status: 'CANCELADA' }).where(and(eq(ordens.id, id), eq(ordens.tenantId, tenantId)));
+      await tx.insert(ordemHistorico).values({ tenantId, ordemId: id, tipoEvento: 'cancelou', usuarioId });
+    });
     return this.get(tenantId, id);
   }
 

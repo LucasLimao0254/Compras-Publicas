@@ -1,0 +1,37 @@
+# Ambiente de teste hospedado no Render — um link só para os testadores.
+# Um serviço web (API em /api + frontend + arquivos de exemplo) e um Postgres.
+# Passo a passo em TESTE_INTERNO.md, seção "Ambiente hospedado".
+databases:
+  - name: compras-teste-db
+    plan: free
+    # O nome precisa conter "teste": seed-teste.ts se recusa a rodar em
+    # qualquer outro banco.
+    databaseName: compras_teste
+    user: compras
+
+services:
+  - type: web
+    name: compras-teste
+    runtime: node
+    plan: free
+    buildCommand: >-
+      npm ci --include=dev &&
+      npm run build --workspace=api &&
+      npm run build --workspace=web &&
+      cd api && npx drizzle-kit export --config=drizzle.config.ts > dist/schema.sql
+    startCommand: node api/scripts/iniciar-demo.js
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: compras-teste-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      # true = apaga tudo e recria o cenário na próxima inicialização
+      - key: RESETAR_DADOS
+        value: "false"
+      - key: TZ_NEGOCIO
+        value: America/Sao_Paulo

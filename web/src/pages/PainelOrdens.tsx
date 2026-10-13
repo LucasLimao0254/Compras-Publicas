@@ -4,11 +4,24 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { HistoricoOrdemModal } from '../components/HistoricoOrdemModal';
 import { ImportarPlanilhaDemandaButton } from '../components/ImportarPlanilhaDemandaButton';
+import { DescricaoResumida } from '../components/DescricaoResumida';
+import { formatarQuantidade, formatarValor } from '../lib/numeros';
+import { rotuloDotacao } from '../lib/dotacoes';
 
 type Aba = 'CONTRATOS' | 'BUSCAR' | 'RASCUNHO' | 'EMITIDA' | 'CANCELADA';
 
 interface Opcao { id: string; label: string; }
-interface ContratoOpcao { id: string; numero: string; objeto: string; fornecedor: { razaoSocial: string }; saldoDisponivel: number; situacao: string; }
+interface ContratoOpcao { id: string; numero: string; objeto: string; fornecedor: { razaoSocial: string }; saldoDisponivel: number; situacao: string; faixaPrazo: string; }
+
+// Por que um contrato não pode receber ordem agora — o mesmo que o servidor
+// recusaria ao salvar; antes a lista oferecia todos e o erro só vinha no fim.
+function motivoSemOrdem(c: ContratoOpcao, permitirVencido: boolean): string | null {
+  if (c.situacao === 'ARQUIVADO') return 'arquivado';
+  if (c.situacao === 'MINUTA') return 'em minuta';
+  if (c.faixaPrazo === 'VENCIDO' && !permitirVencido) return 'vencido';
+  if (c.saldoDisponivel < 0.01) return 'sem saldo';
+  return null;
+}
 interface ItemDisp { id: string; numero: number; descricao: string; unidade: string; valorUnitario: string; quantidadeDisponivel: number; }
 interface DotacaoLinha { dotacaoId: string; valorRateado: string; }
 
@@ -36,7 +49,11 @@ export function PainelOrdens() {
   const { usuario } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [ordens, setOrdens] = useState<OrdemRow[]>([]);
-  const [aba, setAba] = useState<Aba>('CONTRATOS');
+  // ?aba=EMITIDA etc. — a Visão geral abre o painel direto na aba do número clicado
+  const [aba, setAba] = useState<Aba>(() => {
+    const a = searchParams.get('aba');
+    return a === 'RASCUNHO' || a === 'EMITIDA' || a === 'CANCELADA' || a === 'BUSCAR' ? a : 'CONTRATOS';
+  });
   const [contratoAberto, setContratoAberto] = useState<string | null>(null);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [fNumero, setFNumero] = useState('');
@@ -68,12 +85,11 @@ export function PainelOrdens() {
   const [confirmandoCancelar, setConfirmandoCancelar] = useState<string | null>(null);
   const [editandoOrdemId, setEditandoOrdemId] = useState<string | null>(null);
   const [itensOrdemIdPorItem, setItensOrdemIdPorItem] = useState<Record<string, string>>({});
+  // Na edição, o que a própria ordem já consome volta a estar disponível para ela.
+  const [quantidadesOriginais, setQuantidadesOriginais] = useState<Record<string, number>>({});
 
-  // Stub intencional — sem lógica ainda, não "consertar". Painel visual
-  // pronto, mas nenhuma chamada de API por trás; enviar não faz nada além de
-  // limpar o campo.
-  const [mostrarAssistente, setMostrarAssistente] = useState(false);
-  const [textoAssistente, setTextoAssistente] = useState('');
+  const [dotacoesDoContrato, setDotacoesDoContrato] = useState<string[]>([]);
+  const [permitirVencido, setPermitirVencido] = useState(false);
 
   async function carregarListaBase() {
     const params = new URLSearchParams();
@@ -94,8 +110,9 @@ export function PainelOrdens() {
     setLicitacoes(l.map((x: any) => ({ id: x.id, label: `${x.numero} — ${x.modalidade.replaceAll('_', ' ')}` })));
     setSecretarias(s.map((x: any) => ({ id: x.id, label: x.titulo })));
     setFornecedores(f.map((x: any) => ({ id: x.id, label: `${x.razaoSocial} (${x.cnpjCpf})` })));
-    setDotacoesDisponiveis(d.map((x: any) => ({ id: x.id, label: `${x.gestaoUnidade}.${x.fonteRecursos}.${x.programaTrabalho}` })));
+    setDotacoesDisponiveis(d.map((x: any) => ({ id: x.id, label: rotuloDotacao(x) })));
     setUnidadesExecutoras(u.map((x: any) => ({ id: x.id, label: `${x.razaoSocial} (${x.cnpj})` })));
+    api.get('/configuracoes/compras').then((cfg) => setPermitirVencido(!!cfg.permitirOrdemContratoVencido)).catch(() => {});
   }
 
   useEffect(() => { carregarOpcoes(); }, []);
@@ -161,7 +178,7 @@ export function PainelOrdens() {
   function resetWizard() {
     setPasso(1); setContratoId('');
     setItens([]); setQuantidades({}); setDotacoesForm([{ dotacaoId: '', valorRateado: '' }]); setUnidadeExecutoraId(''); setEmitirAgora(true); setErro(null);
-    setEditandoOrdemId(null); setItensOrdemIdPorItem({});
+    setEditandoOrdemId(null); setItensOrdemIdPorItem({}); setQuantidadesOriginais({});
   }
 
   async function editarOrdemExistente(o: OrdemRow) {
@@ -180,7 +197,10 @@ export function PainelOrdens() {
       setQuantidades(q);
     }
     setItensOrdemIdPorItem(mapa);
+    setQuantidadesOriginais(Object.fromEntries(Object.entries(mapa).map(([itemId]) => [itemId, Number(detalhe.itens.find((l: any) => l.itemContratoId === itemId)?.quantidade ?? 0)])));
     if (detalhe.unidadeExecutora) setUnidadeExecutoraId(detalhe.unidadeExecutora.id);
+    const dots = (detalhe.dotacoes ?? []).map((d: any) => ({ dotacaoId: d.dotacaoId, valorRateado: d.valorRateado != null ? String(Number(d.valorRateado)) : '' }));
+    setDotacoesForm(dots.length ? dots : [{ dotacaoId: '', valorRateado: '' }]);
     setPasso(2);
   }
 
@@ -189,11 +209,17 @@ export function PainelOrdens() {
     setErro(null);
     setSalvando(true);
     try {
+      // Toda linha da ordem vai na edição — vazia ou 0 tira o item da ordem
+      // (antes era ignorada e a quantidade antiga continuava, sem aviso).
       const itensPayload = itens
-        .filter((it) => Number(quantidades[it.id]) > 0 && itensOrdemIdPorItem[it.id])
-        .map((it) => ({ itemOrdemId: itensOrdemIdPorItem[it.id], quantidade: Number(quantidades[it.id]) }));
-      if (!itensPayload.length) throw new Error('Selecione ao menos um item já pertencente a esta ordem');
-      await api.patch(`/ordens/${editandoOrdemId}`, { itens: itensPayload });
+        .filter((it) => itensOrdemIdPorItem[it.id])
+        .map((it) => ({ itemOrdemId: itensOrdemIdPorItem[it.id], quantidade: Number(quantidades[it.id]) || 0 }));
+      if (!itensPayload.some((i) => i.quantidade > 0)) throw new Error('A ordem precisa manter ao menos um item — para desfazê-la, cancele a ordem');
+      await api.patch(`/ordens/${editandoOrdemId}`, {
+        itens: itensPayload,
+        unidadeExecutoraId: unidadeExecutoraId || '',
+        dotacoes: dotacoesForm.filter((d) => d.dotacaoId).map((d) => ({ dotacaoId: d.dotacaoId, valorRateado: d.valorRateado ? Number(d.valorRateado) : undefined })),
+      });
       setMostrarWizard(false);
       resetWizard();
       carregarListaBase();
@@ -206,8 +232,12 @@ export function PainelOrdens() {
 
   async function irParaPasso2() {
     if (!contratoId) return;
-    const dados = await api.get(`/contratos/${contratoId}/itens`);
+    const [dados, contrato] = await Promise.all([api.get(`/contratos/${contratoId}/itens`), api.get(`/contratos/${contratoId}`)]);
     setItens(dados);
+    // Dotações do contrato aparecem primeiro; com uma só, já vem preenchida.
+    const doContrato: string[] = (contrato.dotacoes ?? []).map((d: any) => d.dotacaoId);
+    setDotacoesDoContrato(doContrato);
+    if (doContrato.length === 1) setDotacoesForm([{ dotacaoId: doContrato[0], valorRateado: '' }]);
     setPasso(2);
   }
 
@@ -234,7 +264,14 @@ export function PainelOrdens() {
     setPasso(2);
   }
 
-  const valorTotal = itens.reduce((acc, it) => acc + (Number(quantidades[it.id] || 0) * Number(it.valorUnitario)), 0);
+  // Como o servidor: cada linha arredondada para centavos antes de somar.
+  const valorTotal = itens.reduce((acc, it) => acc + Math.round(Number((Number(quantidades[it.id] || 0) * Number(it.valorUnitario) * 100).toPrecision(15))), 0) / 100;
+  const dotacoesOrdenadas = [
+    ...dotacoesDisponiveis.filter((d) => dotacoesDoContrato.includes(d.id)).map((d) => ({ ...d, label: `${d.label} (do contrato)` })),
+    ...dotacoesDisponiveis.filter((d) => !dotacoesDoContrato.includes(d.id)),
+  ];
+  const somaRateio = dotacoesForm.filter((d) => d.dotacaoId && d.valorRateado).reduce((acc, d) => acc + Math.round(Number(d.valorRateado) * 100), 0) / 100;
+  const rateioInformado = dotacoesForm.some((d) => d.dotacaoId && d.valorRateado);
   const itensSelecionados = Object.values(quantidades).filter((q) => Number(q) > 0).length;
 
   function addDotacaoRow() { setDotacoesForm([...dotacoesForm, { dotacaoId: '', valorRateado: '' }]); }
@@ -299,13 +336,13 @@ export function PainelOrdens() {
     return (
       <tr key={o.id} style={{ position: 'relative' }}>
         <td>
-          <i className="ph ph-dots-three-vertical" style={{ fontSize: 18, cursor: 'pointer', color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}
-            onClick={() => setMenuAbertoId(menuAbertoId === o.id ? null : o.id)} />
+          <button type="button" className="icone-acao" aria-label={`Ações da ordem ${o.numeroExibicao ?? o.numero}`} aria-expanded={menuAbertoId === o.id}
+            onClick={() => setMenuAbertoId(menuAbertoId === o.id ? null : o.id)}><i className="ph ph-dots-three-vertical" /></button>
           {menuAbertoId === o.id && (
             <div style={{ position: 'absolute', zIndex: 10, marginTop: 4, background: 'var(--color-surface)', boxShadow: 'var(--shadow-md)', borderRadius: 8, padding: 6, minWidth: 170 }}>
-              <div onClick={() => copiarOrdem(o)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer' }}>Copiar ordem</div>
+              <button type="button" className="item-menu" onClick={() => copiarOrdem(o)}>Copiar ordem</button>
               {o.status === 'RASCUNHO' && (
-                <div onClick={() => emitirOrdemExistente(o.id)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer', color: 'var(--color-accent)' }}>Emitir ordem</div>
+                <button type="button" className="item-menu" onClick={() => emitirOrdemExistente(o.id)} style={{ color: 'var(--color-accent)' }}>Emitir ordem</button>
               )}
               {/* Rascunho — qualquer usuário pode descartar. Ordem já emitida —
                   editar/excluir fica restrito a Administrador do tenant; os
@@ -316,33 +353,33 @@ export function PainelOrdens() {
                   <div style={{ padding: '8px 10px' }}>
                     <div className="text-muted" style={{ fontSize: 11.5, marginBottom: 4 }}>Confirma cancelar?</div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <span onClick={() => confirmarCancelar(o.id)} style={{ fontSize: 11.5, color: 'var(--color-critical)', cursor: 'pointer' }}>Sim, cancelar</span>
-                      <span onClick={() => setConfirmandoCancelar(null)} className="text-muted" style={{ fontSize: 11.5, cursor: 'pointer' }}>Voltar</span>
+                      <button type="button" className="link-acao" onClick={() => confirmarCancelar(o.id)} style={{ color: 'var(--color-critical)' }}>Sim, cancelar</button>
+                      <button type="button" className="link-acao text-muted" onClick={() => setConfirmandoCancelar(null)}>Voltar</button>
                     </div>
                   </div>
                 ) : (
-                  <div onClick={() => setConfirmandoCancelar(o.id)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer', color: 'var(--color-critical)' }}>Cancelar</div>
+                  <button type="button" className="item-menu" onClick={() => setConfirmandoCancelar(o.id)} style={{ color: 'var(--color-critical)' }}>Cancelar</button>
                 )
               )}
               {o.status === 'EMITIDA' && usuario?.tipoUsuario === 'ADMIN' && (
                 <>
-                  <div onClick={() => editarOrdemExistente(o)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer' }}>Editar</div>
+                  <button type="button" className="item-menu" onClick={() => editarOrdemExistente(o)}>Editar</button>
                   {confirmandoCancelar === o.id ? (
                     <div style={{ padding: '8px 10px' }}>
                       <div className="text-muted" style={{ fontSize: 11.5, marginBottom: 4 }}>Confirma excluir?</div>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <span onClick={() => confirmarCancelar(o.id)} style={{ fontSize: 11.5, color: 'var(--color-critical)', cursor: 'pointer' }}>Sim, excluir</span>
-                        <span onClick={() => setConfirmandoCancelar(null)} className="text-muted" style={{ fontSize: 11.5, cursor: 'pointer' }}>Voltar</span>
+                        <button type="button" className="link-acao" onClick={() => confirmarCancelar(o.id)} style={{ color: 'var(--color-critical)' }}>Sim, excluir</button>
+                        <button type="button" className="link-acao text-muted" onClick={() => setConfirmandoCancelar(null)}>Voltar</button>
                       </div>
                     </div>
                   ) : (
-                    <div onClick={() => setConfirmandoCancelar(o.id)} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer', color: 'var(--color-critical)' }}>Excluir</div>
+                    <button type="button" className="item-menu" onClick={() => setConfirmandoCancelar(o.id)} style={{ color: 'var(--color-critical)' }}>Excluir</button>
                   )}
                 </>
               )}
-              <div onClick={() => { setHistoricoOrdem(o); setMenuAbertoId(null); }} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer' }}>Ver histórico</div>
+              <button type="button" className="item-menu" onClick={() => { setHistoricoOrdem(o); setMenuAbertoId(null); }}>Ver histórico</button>
               {o.status === 'EMITIDA' && (
-                <div onClick={() => { window.print(); setMenuAbertoId(null); }} style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer' }}>Imprimir</div>
+                <button type="button" className="item-menu" onClick={() => { window.print(); setMenuAbertoId(null); }}>Imprimir</button>
               )}
             </div>
           )}
@@ -373,31 +410,15 @@ export function PainelOrdens() {
 
       {mostrarWizard && (
         <div className="card elev-md" style={{ padding: 20, marginBottom: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: mostrarAssistente ? 12 : 0 }}>
-            <button type="button" className="btn btn-ghost" onClick={() => setMostrarAssistente((v) => !v)}>
-              <i className="ph ph-sparkle" />{mostrarAssistente ? 'Fechar assistente' : 'Assistente'}
-            </button>
-          </div>
-          {mostrarAssistente && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', borderRadius: 8, background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)', boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 20%, transparent)', padding: 12, marginBottom: 16 }}>
-              <input
-                className="input"
-                placeholder="Em breve: descreva o que precisa e eu monto a ordem para você"
-                value={textoAssistente}
-                onChange={(e) => setTextoAssistente(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <button type="button" className="btn btn-secondary" onClick={() => setTextoAssistente('')}>
-                <i className="ph ph-paper-plane-tilt" />Enviar
-              </button>
-            </div>
-          )}
           {passo === 1 && (
             <div>
               <h4 style={{ fontSize: 15, marginBottom: 12 }}>1. Selecione o contrato</h4>
               <select className="input" style={{ marginBottom: 16 }} value={contratoId} onChange={(e) => setContratoId(e.target.value)}>
                 <option value="">Nº do contrato ou fornecedor</option>
-                {contratos.map((c) => <option key={c.id} value={c.id}>{c.numero} — {c.fornecedor.razaoSocial}</option>)}
+                {contratos.map((c) => {
+                  const motivo = motivoSemOrdem(c, permitirVencido);
+                  return <option key={c.id} value={c.id} disabled={!!motivo}>{c.numero} — {c.fornecedor.razaoSocial}{motivo ? ` (${motivo})` : ''}</option>;
+                })}
               </select>
 
               <button className="btn btn-primary" onClick={irParaPasso2} disabled={!contratoId}>
@@ -433,10 +454,12 @@ export function PainelOrdens() {
                 <tbody>
                   {itens.map((it) => (
                     <tr key={it.id}>
-                      <td style={{ fontSize: 13.5 }}>{it.descricao} <span className="text-muted">({it.unidade})</span></td>
-                      <td className="num" style={{ textAlign: 'right' }}>{it.quantidadeDisponivel}</td>
-                      <td className="num" style={{ textAlign: 'right' }}>R$ {Number(it.valorUnitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      <td><input className="input num" type="number" min={0} max={it.quantidadeDisponivel} style={{ textAlign: 'right' }}
+                      <td style={{ fontSize: 13.5, minWidth: 0 }}><DescricaoResumida texto={it.descricao} /> <span className="text-muted">({it.unidade})</span></td>
+                      <td className="num" style={{ textAlign: 'right' }}>{formatarQuantidade(it.quantidadeDisponivel + (quantidadesOriginais[it.id] ?? 0))}</td>
+                      <td className="num" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatarValor(it.valorUnitario)}</td>
+                      <td><input className="input num" type="number" min={0} max={it.quantidadeDisponivel + (quantidadesOriginais[it.id] ?? 0)} style={{ textAlign: 'right' }}
+                        aria-label={`Quantidade de ${it.descricao.slice(0, 40)}`}
+                        title={editandoOrdemId && !itensOrdemIdPorItem[it.id] ? 'Na edição só mudam os itens que já estão na ordem — para outro item, emita uma nova ordem' : editandoOrdemId ? '0 tira o item da ordem' : undefined}
                         disabled={!!editandoOrdemId && !itensOrdemIdPorItem[it.id]}
                         value={quantidades[it.id] || ''} onChange={(e) => setQuantidades({ ...quantidades, [it.id]: e.target.value })} /></td>
                     </tr>
@@ -454,13 +477,18 @@ export function PainelOrdens() {
                     <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 200px 32px', gap: 8, alignItems: 'center' }}>
                       <select className="input" value={d.dotacaoId} onChange={(e) => updateDotacaoRow(idx, { dotacaoId: e.target.value })}>
                         <option value="">Selecionar dotação {idx + 1}</option>
-                        {dotacoesDisponiveis.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                        {dotacoesOrdenadas.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                       </select>
                       <input className="input num" placeholder="Valor rateado (opcional)" type="number" step="0.01" value={d.valorRateado} onChange={(e) => updateDotacaoRow(idx, { valorRateado: e.target.value })} />
-                      <i className="ph ph-trash" onClick={() => removeDotacaoRow(idx)} style={{ fontSize: 15, cursor: 'pointer', color: 'color-mix(in srgb, var(--color-text) 45%, transparent)' }} />
+                      <button type="button" className="icone-acao" aria-label={`Remover dotação ${idx + 1}`} onClick={() => removeDotacaoRow(idx)}><i className="ph ph-trash" /></button>
                     </div>
                   ))}
                 </div>
+                {rateioInformado && Math.abs(somaRateio - valorTotal) >= 0.005 && (
+                  <p role="alert" style={{ fontSize: 12, color: 'var(--color-warn)', margin: '8px 0 0' }}>
+                    O rateio soma R$ {somaRateio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, mas a ordem vale R$ {valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} — informe o valor em todas as dotações, somando o total, ou deixe o rateio em branco.
+                  </p>
+                )}
               </div>
 
               {!editandoOrdemId && (

@@ -29,6 +29,6 @@ export class OrdensController {
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: CreateOrdemDto) { return this.service.create(u.tenantId, u.userId, dto); }
   @Post(':id/emitir') emitir(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.emitir(u.tenantId, u.userId, id); }
   @Patch(':id') update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: UpdateOrdemDto) { return this.service.update(u.tenantId, u.userId, u.tipoUsuario, id, dto); }
-  @Patch(':id/cancelar') cancelar(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.cancelar(u.tenantId, u.userId, id); }
+  @Patch(':id/cancelar') cancelar(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.cancelar(u.tenantId, u.userId, id, u.tipoUsuario); }
   @Get(':id/historico') historico(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.historico(u.tenantId, id); }
 }

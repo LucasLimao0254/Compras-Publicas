@@ -14,7 +14,7 @@ interface Licitacao {
 }
 
 interface Homologacao {
-  id: string; arquivoNome: string; enviadoEm: string; status: 'processando' | 'pronto_para_revisao' | 'revisado' | 'erro'; erroDetalhe: string | null;
+  id: string; arquivoNome: string; enviadoEm: string; status: 'processando' | 'pronto_para_revisao' | 'revisado' | 'erro' | 'substituido'; erroDetalhe: string | null;
 }
 
 const STATUS_HOMOLOGACAO: Record<Homologacao['status'], { label: string; tag: string }> = {
@@ -22,6 +22,7 @@ const STATUS_HOMOLOGACAO: Record<Homologacao['status'], { label: string; tag: st
   pronto_para_revisao: { label: 'Pronto para revisão', tag: 'tag tag-warn' },
   revisado: { label: 'Revisado', tag: 'tag tag-ok' },
   erro: { label: 'Erro na extração', tag: 'tag tag-critical' },
+  substituido: { label: 'Substituída por reenvio', tag: 'tag tag-neutral' },
 };
 
 export function Licitacoes() {

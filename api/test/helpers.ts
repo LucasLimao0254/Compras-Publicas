@@ -44,7 +44,7 @@ export function criarCtx(): Ctx {
     aditivos: new AditivosService(db, contratos, saldo),
     apostilamentos: new ApostilamentosService(db),
     ordens: new OrdensService(db, configuracoes),
-    homologacao: new LicitacoesHomologacaoService(db, new ExtracaoHomologacaoService()),
+    homologacao: new LicitacoesHomologacaoService(db, new ExtracaoHomologacaoService(), saldo),
   };
 }
 
@@ -159,6 +159,9 @@ export interface AtaCriada {
 
 // Cria uma ata do fornecedor homologado, com os dois órgãos (A gerenciador, B
 // participante). `distribuicao` reserva quantidade de cada item em cada órgão.
+const diaISO = (deslocamentoDias: number) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + deslocamentoDias); return d.toISOString().slice(0, 10); };
+export const VIGENCIA_ATA = (() => { const inicio = diaISO(-30); const f = new Date(`${inicio}T00:00:00Z`); f.setUTCFullYear(f.getUTCFullYear() + 1); f.setUTCDate(f.getUTCDate() - 1); return { inicio, fim: f.toISOString().slice(0, 10) }; })();
+
 export async function criarAta(
   ctx: Ctx,
   c: Cenario,
@@ -170,8 +173,9 @@ export async function criarAta(
     licitacaoId: c.licitacaoId,
     detentorPrincipalId: c.fornecedorId,
     homologacaoFornecedorId: c.homologacaoFornecedorId,
-    vigenciaInicial: '2026-01-01',
-    vigenciaFinal: '2099-12-31',
+    // vigência real de ata (1 ano, Lei 14.133 art. 84), em curso hoje
+    vigenciaInicial: VIGENCIA_ATA.inicio,
+    vigenciaFinal: VIGENCIA_ATA.fim,
     orgaos: [
       { secretariaId: c.secretariaA, perfil: 'GERENCIADOR' },
       { secretariaId: c.secretariaB, perfil: 'PARTICIPANTE' },
@@ -252,4 +256,18 @@ export async function rejeicao(promessa: Promise<unknown>): Promise<string> {
     return err instanceof Error ? err.message : String(err);
   }
   throw new Error('A operação deveria ter sido rejeitada, mas foi aceita');
+}
+
+// CPF válido (com dígitos verificadores) para testes que criam usuário pelo
+// service, que recusa CPF inválido.
+let seqCpf = 0;
+export function gerarCpf(): string {
+  const base = String(100000000 + ((Date.now() + seqCpf++ * 7919) % 899999999)).slice(0, 9);
+  const digito = (b: string) => {
+    const soma = b.split('').reduce((acc, d, i) => acc + Number(d) * (b.length + 1 - i), 0);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  const d1 = digito(base);
+  return base + d1 + digito(base + d1);
 }

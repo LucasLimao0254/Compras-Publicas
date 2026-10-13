@@ -47,10 +47,10 @@ export class LicitacoesService {
   // AtasService.list/ContratosService.list, não duplica cálculo de saldo.
   async derivados(tenantId: string, licitacaoId: string) {
     await this.get(tenantId, licitacaoId);
-    const [todasAtas, todosContratos] = await Promise.all([this.atasService.list(tenantId), this.contratosService.list(tenantId)]);
-    return {
-      atas: todasAtas.filter((a) => a.licitacaoId === licitacaoId),
-      contratos: todosContratos.filter((c) => c.licitacaoId === licitacaoId),
-    };
+    const [atasDaLicitacao, contratosDaLicitacao] = await Promise.all([
+      this.atasService.list(tenantId, { licitacaoId }),
+      this.contratosService.list(tenantId, { licitacaoId }),
+    ]);
+    return { atas: atasDaLicitacao, contratos: contratosDaLicitacao };
   }
 }

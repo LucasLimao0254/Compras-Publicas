@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsNumber, IsOptional, IsPositive, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // Ordem só nasce de contrato (ver MODELO.md, seção 2) — itemContratoId é a
@@ -33,7 +33,8 @@ export class CreateOrdemDto {
 
 export class AlteracaoItemOrdemInput {
   @IsString() itemOrdemId: string;
-  @IsNumber() @IsPositive() quantidade: number;
+  // 0 tira a linha da ordem (ver OrdensService.update)
+  @IsNumber() @Min(0) quantidade: number;
 }
 
 // Edição pós-emissão — só quantidade muda; preço unitário e origem
@@ -44,4 +45,11 @@ export class UpdateOrdemDto {
   @ValidateNested({ each: true })
   @Type(() => AlteracaoItemOrdemInput)
   itens: AlteracaoItemOrdemInput[];
+  // Ausente = não mexe; '' = remove a unidade executora.
+  @IsOptional() @IsString() unidadeExecutoraId?: string;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DotacaoOrdemInput)
+  dotacoes?: DotacaoOrdemInput[];
 }

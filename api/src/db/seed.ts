@@ -122,7 +122,7 @@ async function main() {
 
   const [fornecedor] = await db
     .insert(schema.fornecedores)
-    .values({ tenantId: tenant.id, cnpjCpf: '00.000.000/0001-00', razaoSocial: 'Fornecedor Modelo LTDA' })
+    .values({ tenantId: tenant.id, cnpjCpf: '00.000.000/0001-91', razaoSocial: 'Fornecedor Modelo LTDA' })
     .returning();
 
   const [licitacao] = await db

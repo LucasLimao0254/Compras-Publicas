@@ -24,16 +24,16 @@ export class UsuariosController {
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateUsuarioDto) {
-    return this.service.create(user.tenantId, user.ehAdminPlataforma, dto);
+    return this.service.create(user.tenantId, user, dto);
   }
 
   @Patch(':id')
   update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: UpdateUsuarioDto) {
-    return this.service.update(user.tenantId, id, dto);
+    return this.service.update(user.tenantId, user, id, dto);
   }
 
   @Delete(':id')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.service.remove(user.tenantId, id);
+    return this.service.remove(user.tenantId, user, id);
   }
 }

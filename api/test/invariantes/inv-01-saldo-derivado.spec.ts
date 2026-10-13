@@ -36,7 +36,7 @@ describe('Invariante 1 — saldo derivado, nunca armazenado', () => {
     expect(durante.saldoDisponivel).toBeCloseTo(250); // 400 − 15 × 10
     expect(durante.valorUtilizado).toBeCloseTo(150);
 
-    await ctx.ordens.cancelar(c.tenantId, c.usuarioId, ordem.id);
+    await ctx.ordens.cancelar(c.tenantId, c.usuarioId, ordem.id, 'ADMIN');
     const depois = await ctx.contratos.get(c.tenantId, contrato.id);
     expect(depois.saldoDisponivel).toBeCloseTo(400);
   });

@@ -72,7 +72,7 @@ describe('Invariante 9 — toda ordem tem histórico', () => {
   it('o cancelamento também fica registrado', async () => {
     const { c, contrato, itemContratoId } = await contratoComItem();
     const ordem = await emitirOrdem(ctx, c, contrato, [{ itemContratoId, quantidade: 5 }]);
-    await ctx.ordens.cancelar(c.tenantId, c.usuarioId, ordem.id);
+    await ctx.ordens.cancelar(c.tenantId, c.usuarioId, ordem.id, 'ADMIN');
     expect(await eventos(c, ordem.id)).toContain('cancelou');
   });
 });

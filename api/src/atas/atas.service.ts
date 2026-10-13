@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
@@ -18,24 +18,13 @@ import {
   licitacoes,
   secretarias,
 } from '../db/schema';
-import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
+import { paraNumeroPlanilha } from '../common/numero-planilha';
+import { centavos, centavosDoTotal, reais } from '../common/dinheiro';
+import { diaDaData, formatarDiaBR, periodoValido, ultimoDiaDoPeriodo } from '../common/datas';
+import { numeroJaUsado } from '../common/numeracao';
+import { quantidadeConsumidaDoTeto, SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { ContratosService } from '../contratos/contratos.service';
 import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
-
-// Números de planilha podem vir como texto formatado em padrão BR ("1.234,56")
-// OU como célula numérica comum do Excel, que o SheetJS (com raw:false)
-// renderiza sem separador de milhar ("10.5") — nesses casos o ponto É o
-// separador decimal. Remover todo ponto incondicionalmente (como o parser
-// original fazia) transforma "10.5" em 105: um erro silencioso de 10x a
-// 1000x. A vírgula é o sinal inequívoco de formatação BR — só stripa pontos
-// quando ela está presente.
-function paraNumeroPlanilha(valor: unknown): number | null {
-  if (valor == null) return null;
-  const texto = String(valor).trim().replace(/^R\$\s*/i, '');
-  if (!texto || texto === '-') return null;
-  const numero = texto.includes(',') ? Number(texto.replace(/\./g, '').replace(',', '.')) : Number(texto);
-  return Number.isFinite(numero) ? numero : null;
-}
 
 @Injectable()
 export class AtasService {
@@ -45,13 +34,18 @@ export class AtasService {
     private contratosService: ContratosService,
   ) {}
 
-  async list(tenantId: string) {
+  async list(tenantId: string, filtro: { licitacaoId?: string; detentorPrincipalId?: string } = {}) {
+    const condicoes = [eq(atas.tenantId, tenantId)];
+    if (filtro.licitacaoId) condicoes.push(eq(atas.licitacaoId, filtro.licitacaoId));
+    if (filtro.detentorPrincipalId) condicoes.push(eq(atas.detentorPrincipalId, filtro.detentorPrincipalId));
     const rows = await this.db.query.atas.findMany({
-      where: eq(atas.tenantId, tenantId),
+      where: and(...condicoes),
       with: { licitacao: true, detentorPrincipal: true, orgaos: { with: { itens: true } } },
       orderBy: (a, { desc }) => [desc(a.createdAt)],
     });
-    return Promise.all(rows.map((r) => this.comSaldoResumo(r)));
+    // Uma consulta de consumo para todas as atas (antes, uma por ata).
+    const contratadas = await this.quantidadeContratadaPorItens(this.db, rows.flatMap((r) => r.orgaos.flatMap((o) => o.itens.map((i) => i.id))));
+    return rows.map((r) => this.comSaldoResumo(r, contratadas));
   }
 
   async get(tenantId: string, id: string) {
@@ -64,42 +58,40 @@ export class AtasService {
     const contratadas = await this.quantidadeContratadaPorItens(this.db, row.orgaos.flatMap((o) => o.itens.map((i) => i.id)));
     const orgaosComSaldo = await Promise.all(
       row.orgaos.map(async (o) => {
+        // Em centavos (common/dinheiro.ts), como o resto do sistema — somar
+        // reais em float dava 0.30000000000000004.
         const utilizado = this.valorContratado(o.itens, contratadas);
-        const valorTotal = o.itens.reduce((acc, it) => acc + Number(it.quantidadeContratada) * Number(it.valorUnitario), 0);
+        const valorTotal = this.valorReservado(o.itens);
         return {
           id: o.id,
           secretaria: o.secretaria,
           perfil: o.perfil,
           quantidadeItens: o.itens.length,
-          valorTotal,
-          valorUtilizado: utilizado,
-          saldoDisponivel: valorTotal - utilizado,
+          valorTotal: reais(valorTotal),
+          valorUtilizado: reais(utilizado),
+          saldoDisponivel: reais(valorTotal - utilizado),
         };
       }),
     );
 
-    const valorTotal = orgaosComSaldo.reduce((acc, o) => acc + o.valorTotal, 0);
-    const valorUtilizado = orgaosComSaldo.reduce((acc, o) => acc + o.valorUtilizado, 0);
+    const valorTotal = orgaosComSaldo.reduce((acc, o) => acc + centavos(o.valorTotal), 0);
+    const valorUtilizado = orgaosComSaldo.reduce((acc, o) => acc + centavos(o.valorUtilizado), 0);
     const { orgaos, ...rest } = row;
-    return { ...rest, orgaos: orgaosComSaldo, valorTotal, valorUtilizado, saldoDisponivel: valorTotal - valorUtilizado };
+    return { ...rest, orgaos: orgaosComSaldo, valorTotal: reais(valorTotal), valorUtilizado: reais(valorUtilizado), saldoDisponivel: reais(valorTotal - valorUtilizado) };
   }
 
   // Resumo usado na listagem: mesmo cálculo de saldo, sem detalhar por órgão.
-  private async comSaldoResumo<T extends { orgaos: { itens: { quantidadeContratada: string; valorUnitario: string; id: string }[] }[] }>(ata: T) {
-    const ataItemIds = ata.orgaos.flatMap((o) => o.itens.map((i) => i.id));
-    const valorTotal = ata.orgaos.reduce(
-      (acc, o) => acc + o.itens.reduce((a2, it) => a2 + Number(it.quantidadeContratada) * Number(it.valorUnitario), 0),
-      0,
-    );
-    const contratadas = await this.quantidadeContratadaPorItens(this.db, ataItemIds);
-    const utilizado = this.valorContratado(ata.orgaos.flatMap((o) => o.itens), contratadas);
+  private comSaldoResumo<T extends { orgaos: { itens: { quantidadeContratada: string; valorUnitario: string; id: string }[] }[] }>(ata: T, contratadas: Map<string, number>) {
+    const todosItens = ata.orgaos.flatMap((o) => o.itens);
+    const valorTotal = this.valorReservado(todosItens);
+    const utilizado = this.valorContratado(todosItens, contratadas);
     const { orgaos, ...rest } = ata;
     return {
       ...rest,
       quantidadeOrgaos: orgaos.length,
-      valorTotal,
-      valorUtilizado: utilizado,
-      saldoDisponivel: valorTotal - utilizado,
+      valorTotal: reais(valorTotal),
+      valorUtilizado: reais(utilizado),
+      saldoDisponivel: reais(valorTotal - utilizado),
     };
   }
 
@@ -110,7 +102,7 @@ export class AtasService {
   private async quantidadeContratadaPorItens(dbOrTx: DrizzleDB, ataItemIds: string[]) {
     if (!ataItemIds.length) return new Map<string, number>();
     const rows = await dbOrTx
-      .select({ ataItemId: ataItens.id, total: sql<string>`coalesce(sum(${itensContrato.quantidade}), 0)` })
+      .select({ ataItemId: ataItens.id, total: sql<string>`coalesce(sum(${quantidadeConsumidaDoTeto}), 0)` })
       .from(ataItens)
       .innerJoin(itensContrato, eq(itensContrato.homologacaoItemId, ataItens.homologacaoItemId))
       .innerJoin(contratos, and(eq(itensContrato.contratoId, contratos.id), eq(contratos.ataOrgaoId, ataItens.ataOrgaoId)))
@@ -122,8 +114,13 @@ export class AtasService {
   // Valor (quantidade contratada × preço do item na ata) — o mesmo preço usado
   // para o valor reservado, para o saldo da ata nunca ficar negativo só porque
   // o preço digitado no contrato difere.
+  // Em centavos, cada item arredondado antes de somar (common/dinheiro.ts).
   private valorContratado(itens: { id: string; valorUnitario: string }[], contratadas: Map<string, number>) {
-    return itens.reduce((acc, it) => acc + (contratadas.get(it.id) ?? 0) * Number(it.valorUnitario), 0);
+    return itens.reduce((acc, it) => acc + centavosDoTotal(contratadas.get(it.id) ?? 0, it.valorUnitario), 0);
+  }
+
+  private valorReservado(itens: { quantidadeContratada: string; valorUnitario: string }[]) {
+    return itens.reduce((acc, it) => acc + centavosDoTotal(it.quantidadeContratada, it.valorUnitario), 0);
   }
 
   // Quantidade (não valor monetário) já consumida de um único item da ata:
@@ -143,14 +140,35 @@ export class AtasService {
   }
 
   async create(tenantId: string, dto: CreateAtaDto) {
-    const dup = await this.db.select().from(atas).where(and(eq(atas.tenantId, tenantId), eq(atas.numeroArp, dto.numeroArp)));
-    if (dup.length) throw new ConflictException('Já existe uma ata com este número ARP');
+    await this.recusarNumeroUsado(tenantId, dto.numeroArp);
 
     const [licitacao] = await this.db.select({ id: licitacoes.id }).from(licitacoes).where(and(eq(licitacoes.id, dto.licitacaoId), eq(licitacoes.tenantId, tenantId)));
     if (!licitacao) throw new BadRequestException('Licitação não encontrada para este tenant');
+    if (!periodoValido(dto.vigenciaInicial, dto.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
+    // Lei 14.133, art. 84: a ata vale 1 ano (prorrogável por igual período).
+    const limiteInicial = ultimoDiaDoPeriodo(dto.vigenciaInicial, 1);
+    if (diaDaData(dto.vigenciaFinal) > limiteInicial) {
+      throw new BadRequestException(`A vigência da ata é de até 1 ano (Lei 14.133, art. 84) — com início em ${formatarDiaBR(dto.vigenciaInicial)}, termina no máximo em ${formatarDiaBR(limiteInicial)}`);
+    }
 
     const [detentor] = await this.db.select({ id: fornecedores.id }).from(fornecedores).where(and(eq(fornecedores.id, dto.detentorPrincipalId), eq(fornecedores.tenantId, tenantId)));
     if (!detentor) throw new BadRequestException('Detentor principal não encontrado para este tenant');
+
+    // Licitação com homologação revisada: o detentor precisa ser um dos
+    // vencedores homologados, e a ata nasce vinculada a ele (MODELO.md,
+    // invariantes 2 e 4) — antes dava para escolher qualquer fornecedor.
+    // A ata distribui entre os órgãos o teto que o fornecedor recebeu na
+    // homologação (MODELO.md, seção 4) — sem homologação não há teto, e os
+    // contratos contra a ata não abatiam saldo nenhum.
+    if (!dto.homologacaoFornecedorId) {
+      const [revisada] = await this.db.select({ id: licitacaoHomologacoes.id }).from(licitacaoHomologacoes)
+        .where(and(eq(licitacaoHomologacoes.tenantId, tenantId), eq(licitacaoHomologacoes.licitacaoId, dto.licitacaoId), eq(licitacaoHomologacoes.status, 'revisado')));
+      throw new BadRequestException(revisada
+        ? 'Esta licitação tem homologação — o detentor principal precisa ser um dos fornecedores homologados'
+        : 'Esta licitação ainda não tem homologação revisada — envie e revise a homologação em Licitações antes de criar a ata');
+    }
 
     if (dto.homologacaoFornecedorId) {
       await this.validarHomologacaoFornecedor(tenantId, dto.homologacaoFornecedorId, dto.licitacaoId, dto.detentorPrincipalId);
@@ -211,16 +229,46 @@ export class AtasService {
     }
   }
 
+  // Número já usado por outra ata do tenant — inclusive escrito de outro jeito
+  // ("12/2026" × "ARP 012/2026"), ver common/numeracao.ts.
+  private async recusarNumeroUsado(tenantId: string, numeroArp: string, excetoId?: string) {
+    const existentes = await this.db.select({ id: atas.id, numero: atas.numeroArp }).from(atas).where(eq(atas.tenantId, tenantId));
+    const usado = numeroJaUsado(existentes, numeroArp, excetoId);
+    if (usado) throw new ConflictException(`O número ${usado} já foi usado por outra ata — escolha um número que ainda não existe`);
+  }
+
   async update(tenantId: string, id: string, dto: UpdateAtaDto) {
-    await this.get(tenantId, id);
+    const ata = await this.get(tenantId, id);
+    if (dto.vigenciaInicial !== undefined && !periodoValido(dto.vigenciaInicial, ata.vigenciaFinal)) {
+      throw new BadRequestException('A vigência inicial não pode ser posterior à vigência final');
+    }
+    if (dto.numeroArp !== undefined && dto.numeroArp !== ata.numeroArp) {
+      await this.recusarNumeroUsado(tenantId, dto.numeroArp, id);
+    }
     const patch: Record<string, unknown> = {};
-    if (dto.numeroArp !== undefined) patch.numeroArp = dto.numeroArp;
+    if (dto.numeroArp !== undefined) patch.numeroArp = dto.numeroArp.trim();
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);
     if (dto.situacao !== undefined) patch.situacao = dto.situacao as any;
     if (Object.keys(patch).length) {
       await this.db.update(atas).set(patch).where(and(eq(atas.id, id), eq(atas.tenantId, tenantId)));
     }
     return this.get(tenantId, id);
+  }
+
+  // Exclusão só pelo Administrador e só de ata da qual nenhum contrato abate.
+  // Órgãos, itens, lotes, prorrogações e remanejamentos vão junto (ON DELETE
+  // CASCADE); o teto da homologação volta a ficar livre para uma nova ata.
+  async remover(tenantId: string, tipoUsuario: string, id: string) {
+    if (tipoUsuario !== 'ADMIN') throw new ForbiddenException('Somente o Administrador do tenant exclui atas');
+    await this.get(tenantId, id);
+    const vinculados = await this.db.select({ numero: contratos.numero }).from(contratos)
+      .innerJoin(ataOrgaos, eq(contratos.ataOrgaoId, ataOrgaos.id))
+      .where(and(eq(contratos.tenantId, tenantId), eq(ataOrgaos.ataId, id)));
+    if (vinculados.length) {
+      throw new BadRequestException(`Esta ata tem contrato vinculado (${vinculados.map((c) => c.numero).join(', ')}) — não pode ser excluída. Para tirá-la de uso, mude a situação para Arquivada`);
+    }
+    await this.db.delete(atas).where(and(eq(atas.id, id), eq(atas.tenantId, tenantId)));
+    return { ok: true };
   }
 
   async addOrgao(tenantId: string, ataId: string, dto: OrgaoAtaInput) {
@@ -244,10 +292,43 @@ export class AtasService {
     });
   }
 
+  // Ata vinculada a uma homologação só aceita itens que referenciam um item
+  // homologado do próprio fornecedor, com descrição/unidade/valor unitário
+  // tirados da homologação (MODELO.md, invariante 2) — nunca do que o
+  // cliente digitou. Ata comum (sem homologação) segue aceitando item livre.
+  private async itemHomologadoDaAta(tx: DrizzleDB, tenantId: string, ataHomologacaoFornecedorId: string | null, homologacaoItemId: string) {
+    const [item] = await tx
+      .select()
+      .from(homologacaoItens)
+      .where(and(eq(homologacaoItens.id, homologacaoItemId), eq(homologacaoItens.tenantId, tenantId)));
+    if (!item) throw new BadRequestException('Item homologado não encontrado');
+    if (!ataHomologacaoFornecedorId || item.homologacaoFornecedorId !== ataHomologacaoFornecedorId) {
+      throw new BadRequestException('Este item homologado não pertence ao fornecedor desta ata');
+    }
+    return item;
+  }
+
+  // O lote informado precisa ser desta mesma ata — sem isso um item podia
+  // apontar para o lote de outra ata (ou de outro tenant).
+  private async validarLote(dbOrTx: DrizzleDB, tenantId: string, ataId: string, loteId: string | undefined) {
+    if (!loteId) return;
+    const [lote] = await dbOrTx.select({ id: ataLotes.id }).from(ataLotes).where(and(eq(ataLotes.id, loteId), eq(ataLotes.ataId, ataId), eq(ataLotes.tenantId, tenantId)));
+    if (!lote) throw new BadRequestException('Lote não encontrado nesta ata');
+  }
+
+  private async homologacaoFornecedorDaAta(dbOrTx: DrizzleDB, tenantId: string, ataId: string) {
+    const [ata] = await dbOrTx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(atas).where(and(eq(atas.id, ataId), eq(atas.tenantId, tenantId)));
+    return ata?.homologacaoFornecedorId ?? null;
+  }
+
   async addItem(tenantId: string, ataId: string, ataOrgaoId: string, dto: ItemAtaInput) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    await this.validarLote(this.db, tenantId, ataId, dto.loteId);
 
     if (!dto.homologacaoItemId) {
+      if (await this.homologacaoFornecedorDaAta(this.db, tenantId, ataId)) {
+        throw new BadRequestException('Esta ata está vinculada a uma homologação — selecione um item homologado em vez de digitar o item');
+      }
       const existentes = await this.db.select().from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
       const numeroItem = existentes.length + 1;
       const [row] = await this.db
@@ -267,35 +348,46 @@ export class AtasService {
     }
 
     return this.db.transaction(async (tx) => {
-      const [ata] = await tx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(atas).where(eq(atas.id, ataId));
-      const [item] = await tx
-        .select({ homologacaoFornecedorId: homologacaoItens.homologacaoFornecedorId, quantidade: homologacaoItens.quantidade })
-        .from(homologacaoItens)
-        .where(and(eq(homologacaoItens.id, dto.homologacaoItemId!), eq(homologacaoItens.tenantId, tenantId)));
-      if (!item) throw new BadRequestException('Item homologado não encontrado');
-      if (!ata?.homologacaoFornecedorId || item.homologacaoFornecedorId !== ata.homologacaoFornecedorId) {
-        throw new BadRequestException('Este item homologado não pertence ao fornecedor desta ata');
+      const ataHomologacaoFornecedorId = await this.homologacaoFornecedorDaAta(tx, tenantId, ataId);
+      const item = await this.itemHomologadoDaAta(tx, tenantId, ataHomologacaoFornecedorId, dto.homologacaoItemId!);
+      // Trava o item homologado ANTES de procurar duplicata: dois envios ao
+      // mesmo tempo passavam os dois pela checagem e gravavam o item duas vezes
+      // (a UNIQUE de ataItens fecha o resto).
+      const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, item.id);
+
+      // Um item homologado aparece uma única vez por órgão —
+      // SaldoCeilingService.ataItemSaldoDisponivel exige exatamente 1 linha
+      // por (ataOrgaoId, homologacaoItemId), e não existe endpoint para apagar
+      // item: a duplicata travaria todo contrato contra esse item.
+      const [duplicado] = await tx
+        .select({ id: ataItens.id })
+        .from(ataItens)
+        .where(and(eq(ataItens.ataOrgaoId, ataOrgaoId), eq(ataItens.homologacaoItemId, item.id)));
+      if (duplicado) {
+        throw new BadRequestException('Este item homologado já está neste órgão — edite a quantidade do item existente');
       }
 
-      const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, dto.homologacaoItemId!);
       if (dto.quantidade > disponivel) {
         throw new BadRequestException(`Quantidade (${dto.quantidade}) excede o saldo homologado restante para este item (${disponivel})`);
       }
 
-      const existentes = await tx.select().from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
-      const numeroItem = existentes.length + 1;
+      // O número é o do item na homologação (o do edital), para o item 3 ser o
+      // 3 em todo órgão; se faltar ou já estiver ocupado no órgão, o próximo livre.
+      const existentes = await tx.select({ numeroItem: ataItens.numeroItem }).from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
+      const usados = new Set(existentes.map((e) => e.numeroItem));
+      const numeroItem = item.numeroItem != null && !usados.has(item.numeroItem) ? item.numeroItem : Math.max(0, ...usados) + 1;
       const [row] = await tx
         .insert(ataItens)
         .values({
           tenantId,
           ataOrgaoId,
           numeroItem,
-          descricao: dto.descricao,
-          unidade: dto.unidade,
+          descricao: item.descricao,
+          unidade: item.unidade ?? dto.unidade,
           loteId: dto.loteId,
           quantidadeContratada: String(dto.quantidade),
-          valorUnitario: String(dto.valorUnitario),
-          homologacaoItemId: dto.homologacaoItemId,
+          valorUnitario: String(item.valorUnitario),
+          homologacaoItemId: item.id,
         })
         .returning();
       return row;
@@ -309,6 +401,7 @@ export class AtasService {
   // compararia contra si mesmo e nunca deixaria editar pra cima.
   async editarItem(tenantId: string, ataId: string, ataOrgaoId: string, itemId: string, dto: ItemAtaInput) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    await this.validarLote(this.db, tenantId, ataId, dto.loteId);
 
     return this.db.transaction(async (tx) => {
       const [existente] = await tx
@@ -327,8 +420,12 @@ export class AtasService {
       }
 
       const homologacaoItemId = dto.homologacaoItemId ?? existente.homologacaoItemId ?? undefined;
+      const ataHomologacaoFornecedorId = await this.homologacaoFornecedorDaAta(tx, tenantId, ataId);
 
       if (!homologacaoItemId) {
+        if (ataHomologacaoFornecedorId) {
+          throw new BadRequestException('Esta ata está vinculada a uma homologação — o item precisa referenciar um item homologado');
+        }
         const [row] = await tx
           .update(ataItens)
           .set({ descricao: dto.descricao, unidade: dto.unidade, loteId: dto.loteId, quantidadeContratada: String(dto.quantidade), valorUnitario: String(dto.valorUnitario), homologacaoItemId: null })
@@ -351,12 +448,7 @@ export class AtasService {
         throw new BadRequestException('Já existe outro item deste órgão vinculado ao mesmo item homologado');
       }
 
-      const [ata] = await tx.select({ homologacaoFornecedorId: atas.homologacaoFornecedorId }).from(atas).where(eq(atas.id, ataId));
-      const [item] = await tx.select({ homologacaoFornecedorId: homologacaoItens.homologacaoFornecedorId }).from(homologacaoItens).where(and(eq(homologacaoItens.id, homologacaoItemId), eq(homologacaoItens.tenantId, tenantId)));
-      if (!item) throw new BadRequestException('Item homologado não encontrado');
-      if (!ata?.homologacaoFornecedorId || item.homologacaoFornecedorId !== ata.homologacaoFornecedorId) {
-        throw new BadRequestException('Este item homologado não pertence ao fornecedor desta ata');
-      }
+      const item = await this.itemHomologadoDaAta(tx, tenantId, ataHomologacaoFornecedorId, homologacaoItemId);
 
       const { disponivel } = await this.saldoCeiling.homologacaoItemSaldoDisponivel(tx, tenantId, homologacaoItemId);
       const quantidadeAntigaMesmoItem = existente.homologacaoItemId === homologacaoItemId ? Number(existente.quantidadeContratada) : 0;
@@ -367,7 +459,7 @@ export class AtasService {
 
       const [row] = await tx
         .update(ataItens)
-        .set({ descricao: dto.descricao, unidade: dto.unidade, loteId: dto.loteId, quantidadeContratada: String(dto.quantidade), valorUnitario: String(dto.valorUnitario), homologacaoItemId })
+        .set({ descricao: item.descricao, unidade: item.unidade ?? dto.unidade, loteId: dto.loteId, quantidadeContratada: String(dto.quantidade), valorUnitario: String(item.valorUnitario), homologacaoItemId })
         .where(and(eq(ataItens.id, itemId), eq(ataItens.tenantId, tenantId)))
         .returning();
       return row;
@@ -433,6 +525,11 @@ export class AtasService {
   // homologação, ver ExtracaoHomologacaoService).
   async importarItens(tenantId: string, ataId: string, ataOrgaoId: string, buffer: Buffer) {
     await this.validarOrgao(tenantId, ataId, ataOrgaoId);
+    // Esta planilha cadastra itens livres (descrição/preço digitados) — numa
+    // ata vinculada a homologação o item só pode vir da homologação.
+    if (await this.homologacaoFornecedorDaAta(this.db, tenantId, ataId)) {
+      throw new BadRequestException('Esta ata está vinculada a uma homologação — os itens vêm da homologação, não de planilha');
+    }
 
     let workbook: XLSX.WorkBook;
     try {
@@ -442,7 +539,8 @@ export class AtasService {
     }
     const nomeAba = workbook.SheetNames[0];
     if (!nomeAba) throw new BadRequestException('A planilha não tem nenhuma aba');
-    const linhas: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, raw: false, defval: '' });
+    // raw: true — célula numérica chega como number (ver common/numero-planilha.ts).
+    const linhas: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, raw: true, defval: '' });
 
     const existentes = await this.db.select({ numeroItem: ataItens.numeroItem }).from(ataItens).where(eq(ataItens.ataOrgaoId, ataOrgaoId));
     let proximoNumero = existentes.length + 1;
@@ -455,7 +553,7 @@ export class AtasService {
       const [, descricao, unidade, quantidadeStr, precoStr] = linha;
       const descricaoTexto = String(descricao ?? '').trim();
       const unidadeTexto = String(unidade ?? '').trim();
-      if (!descricaoTexto && !unidadeTexto && !quantidadeStr && !precoStr) continue; // linha em branco
+      if (!descricaoTexto && !unidadeTexto && quantidadeStr === '' && precoStr === '') continue; // linha em branco
 
       const quantidade = paraNumeroPlanilha(quantidadeStr);
       const precoUnitario = paraNumeroPlanilha(precoStr);
@@ -498,7 +596,13 @@ export class AtasService {
 
       const vigenciaFinalNova = new Date(dto.vigenciaFinal);
       if (vigenciaFinalNova <= new Date(ata.vigenciaFinal)) {
-        throw new BadRequestException(`A nova vigência final (${dto.vigenciaFinal}) precisa ser posterior à atual (${new Date(ata.vigenciaFinal).toISOString().slice(0, 10)})`);
+        throw new BadRequestException(`A nova vigência final (${formatarDiaBR(dto.vigenciaFinal)}) precisa ser posterior à atual (${formatarDiaBR(ata.vigenciaFinal)})`);
+      }
+      // 1 ano + prorrogação por igual período (Lei 14.133, art. 84): no
+      // máximo 2 anos contados do início da vigência.
+      const limite = ultimoDiaDoPeriodo(ata.vigenciaInicial, 2);
+      if (diaDaData(vigenciaFinalNova) > limite) {
+        throw new BadRequestException(`A ata pode ser prorrogada até ${formatarDiaBR(limite)} — 1 ano mais igual período a partir do início da vigência (Lei 14.133, art. 84)`);
       }
 
       await tx.update(atas).set({ vigenciaFinal: vigenciaFinalNova }).where(and(eq(atas.id, ataId), eq(atas.tenantId, tenantId)));
@@ -531,10 +635,7 @@ export class AtasService {
   async contratosDaAta(tenantId: string, ataId: string) {
     await this.get(tenantId, ataId);
     const orgaos = await this.db.select({ id: ataOrgaos.id }).from(ataOrgaos).where(eq(ataOrgaos.ataId, ataId));
-    const orgaoIds = new Set(orgaos.map((o) => o.id));
-    if (!orgaoIds.size) return [];
-    const todosContratos = await this.contratosService.list(tenantId);
-    return todosContratos.filter((c: any) => c.ataOrgaoId && orgaoIds.has(c.ataOrgaoId));
+    return this.contratosService.list(tenantId, { ataOrgaoIds: orgaos.map((o) => o.id) });
   }
 
   // Transfere quantidade contratada de um item para outro (mesmo número,

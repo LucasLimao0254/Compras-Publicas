@@ -14,27 +14,29 @@ export class PermissionsGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const recurso = this.reflector.getAllAndOverride<string>(PERMISSION_KEY, [
+    const exigido = this.reflector.getAllAndOverride<string | string[]>(PERMISSION_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!recurso) return true;
+    if (!exigido) return true;
+    const recursos = Array.isArray(exigido) ? exigido : [exigido];
 
     const req = context.switchToHttp().getRequest();
     const user: AuthUser | undefined = req.user;
     if (!user) return false;
 
-    const temPermissao = user.tipoUsuario === 'ADMIN' || user.permissoes.includes(recurso);
-    if (!temPermissao) throw new ForbiddenException(`Usuário sem permissão para o recurso "${recurso}"`);
+    // Lista = "qualquer um destes": passa se o usuário tem ao menos um recurso
+    // que ele tenha permissão E cujo setor o tenant contratou.
+    const candidatos = user.tipoUsuario === 'ADMIN' ? recursos : recursos.filter((r) => user.permissoes.includes(r));
+    if (!candidatos.length) throw new ForbiddenException(`Usuário sem permissão para o recurso "${recursos.join('" ou "')}"`);
 
     // Trava de nível "o que este tenant contratou" — independente de ser
     // ADMIN do tenant. Sem isso, desabilitar um setor em /plataforma só
     // escondia o item de menu; a API por trás continuava totalmente aberta.
-    if (!(await this.setorHabilitado(user.tenantId, recurso))) {
-      throw new ForbiddenException(`O recurso "${recurso}" não está disponível para o seu município`);
+    for (const recurso of candidatos) {
+      if (await this.setorHabilitado(user.tenantId, recurso)) return true;
     }
-
-    return true;
+    throw new ForbiddenException(`O recurso "${candidatos[0]}" não está disponível para o seu município`);
   }
 
   private async setorHabilitado(tenantId: string, recurso: string): Promise<boolean> {

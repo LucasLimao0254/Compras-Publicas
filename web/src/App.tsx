@@ -31,6 +31,33 @@ function RotaPlataforma({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Ordem de preferência da tela inicial. Quem não tem a Visão geral (ex.: um
+// usuário só de RH) era mandado para ela depois do login e via a tela
+// quebrar com "sem permissão"; agora vai para a primeira que pode abrir.
+const TELAS_INICIAIS: [string, string][] = [
+  ['compras.dashboard', '/'],
+  ['compras.ordens', '/ordens'],
+  ['compras.contratos', '/contratos'],
+  ['compras.atas', '/atas'],
+  ['compras.licitacoes', '/licitacoes'],
+  ['compras.fornecedores', '/fornecedores'],
+  ['compras.configuracoes', '/configuracoes'],
+  ['administrativo.usuarios', '/usuarios'],
+  ['administrativo.secretarias', '/secretarias'],
+];
+
+function PaginaInicial() {
+  const { temPermissao } = useAuth();
+  if (temPermissao('compras.dashboard')) return <Dashboard />;
+  const destino = TELAS_INICIAIS.find(([recurso]) => temPermissao(recurso));
+  if (destino) return <Navigate to={destino[1]} replace />;
+  return (
+    <div className="content-page text-muted">
+      Seu usuário ainda não tem acesso a nenhum módulo. Peça ao administrador do município para liberar.
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <Routes>
@@ -42,7 +69,7 @@ export default function App() {
           </RotaPrivada>
         }
       >
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<PaginaInicial />} />
         <Route path="/ordens" element={<PainelOrdens />} />
         <Route path="/contratos" element={<Contratos />} />
         <Route path="/contratos/:id" element={<ContratoDetalhe />} />

@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { PermissionsGuard } from '../common/permissions.guard';
-import { RequirePermission } from '../common/require-permission.decorator';
+import { RequirePermission, TELAS_QUE_LEEM_CADASTROS_DE_APOIO } from '../common/require-permission.decorator';
 import { CurrentUser, AuthUser } from '../common/current-user.decorator';
 import { FornecedoresService } from './fornecedores.service';
 import { FornecedorDto } from './dto/fornecedor.dto';
@@ -12,7 +12,9 @@ import { FornecedorDto } from './dto/fornecedor.dto';
 export class FornecedoresController {
   constructor(private service: FornecedoresService) {}
 
+  @RequirePermission(['compras.fornecedores', ...TELAS_QUE_LEEM_CADASTROS_DE_APOIO])
   @Get() list(@CurrentUser() u: AuthUser) { return this.service.list(u.tenantId); }
+  @RequirePermission(['compras.fornecedores', ...TELAS_QUE_LEEM_CADASTROS_DE_APOIO])
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: FornecedorDto) { return this.service.create(u.tenantId, dto); }
   @Patch(':id') update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: FornecedorDto) { return this.service.update(u.tenantId, id, dto); }

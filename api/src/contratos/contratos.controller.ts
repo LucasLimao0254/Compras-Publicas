@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { PermissionsGuard } from '../common/permissions.guard';
 import { RequirePermission } from '../common/require-permission.decorator';
@@ -16,6 +16,7 @@ export class ContratosController {
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.get(u.tenantId, id); }
   @Post() create(@CurrentUser() u: AuthUser, @Body() dto: CreateContratoDto) { return this.service.create(u.tenantId, dto); }
   @Patch(':id') update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: UpdateContratoDto) { return this.service.update(u.tenantId, id, dto); }
+  @Delete(':id') remover(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.service.remover(u.tenantId, u.tipoUsuario, id); }
 
   @Get(':id/itens')
   itens(@CurrentUser() u: AuthUser, @Param('id') id: string) {
