@@ -187,6 +187,14 @@ export class OrdensService {
 
       const { itensCalculados } = await this.validarOrigemContrato(tx, tenantId, dto, emitirAgora, config.permitirOrdemContratoVencido);
 
+      // O rateio entre dotações não pode passar do valor da ordem — um rateio
+      // maior empenharia mais do que a ordem custa.
+      const totalOrdem = itensCalculados.reduce((acc, it) => acc + Number(it.precoTotal), 0);
+      const totalRateado = (dto.dotacoes ?? []).reduce((acc, d) => acc + (d.valorRateado ?? 0), 0);
+      if (totalRateado > totalOrdem + 0.005) {
+        throw new BadRequestException(`O valor rateado entre as dotações (R$ ${totalRateado.toFixed(2)}) é maior que o valor da ordem (R$ ${totalOrdem.toFixed(2)})`);
+      }
+
       const numero = await this.proximoNumero(tx, tenantId);
 
       const [ordem] = await tx

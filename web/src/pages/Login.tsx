@@ -6,9 +6,12 @@ import { useAuth } from '../auth/AuthContext';
 export function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@demo.gov.br');
-  const [senha, setSenha] = useState('demo123');
-  const [tenantCodigo, setTenantCodigo] = useState('1');
+  // Pré-preenchido com o usuário do seed só no servidor de desenvolvimento
+  // (vite dev) — o build de produção abre a tela em branco e sem a dica.
+  const demo = import.meta.env.DEV;
+  const [email, setEmail] = useState(demo ? 'admin@demo.gov.br' : '');
+  const [senha, setSenha] = useState(demo ? 'demo123' : '');
+  const [tenantCodigo, setTenantCodigo] = useState(demo ? '1' : '');
   const [erro, setErro] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -56,9 +59,9 @@ export function Login() {
             {loading ? 'Entrando...' : 'Entrar'}
             <i className="ph ph-arrow-right" />
           </button>
-          <div style={{ fontSize: 11.5, color: 'color-mix(in srgb, var(--color-text) 42%, transparent)', marginTop: 4 }}>
+          {demo && <div style={{ fontSize: 11.5, color: 'color-mix(in srgb, var(--color-text) 42%, transparent)', marginTop: 4 }}>
             Demonstração — código 1, admin@demo.gov.br / demo123
-          </div>
+          </div>}
         </form>
       </div>
 

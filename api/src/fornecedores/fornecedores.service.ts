@@ -1,10 +1,11 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import { fornecedores, licitacoes } from '../db/schema';
 import { AtasService } from '../atas/atas.service';
 import { ContratosService } from '../contratos/contratos.service';
 import { FornecedorDto } from './dto/fornecedor.dto';
+import { normalizarDocumento, somenteDigitos } from '../common/documentos';
 
 @Injectable()
 export class FornecedoresService {
@@ -24,16 +25,27 @@ export class FornecedoresService {
     return row;
   }
 
+  // Mesmo documento com ou sem máscara é o mesmo fornecedor — a comparação é
+  // pelos dígitos, para pegar também registros antigos gravados sem máscara.
+  private async existeComDocumento(tenantId: string, cnpjCpf: string, ignorarId?: string) {
+    const condicoes = [eq(fornecedores.tenantId, tenantId), sql`regexp_replace(${fornecedores.cnpjCpf}, '[^0-9]', '', 'g') = ${somenteDigitos(cnpjCpf)}`];
+    if (ignorarId) condicoes.push(ne(fornecedores.id, ignorarId));
+    const [dup] = await this.db.select({ id: fornecedores.id }).from(fornecedores).where(and(...condicoes));
+    return !!dup;
+  }
+
   async create(tenantId: string, dto: FornecedorDto) {
-    const dup = await this.db.select().from(fornecedores).where(and(eq(fornecedores.tenantId, tenantId), eq(fornecedores.cnpjCpf, dto.cnpjCpf)));
-    if (dup.length) throw new ConflictException('Já existe um fornecedor com este CNPJ/CPF');
-    const [row] = await this.db.insert(fornecedores).values({ tenantId, ...dto }).returning();
+    const cnpjCpf = normalizarDocumento(dto.cnpjCpf);
+    if (await this.existeComDocumento(tenantId, cnpjCpf)) throw new ConflictException('Já existe um fornecedor com este CNPJ/CPF');
+    const [row] = await this.db.insert(fornecedores).values({ tenantId, cnpjCpf, razaoSocial: dto.razaoSocial }).returning();
     return row;
   }
 
   async update(tenantId: string, id: string, dto: FornecedorDto) {
     await this.get(tenantId, id);
-    const [row] = await this.db.update(fornecedores).set(dto).where(and(eq(fornecedores.id, id), eq(fornecedores.tenantId, tenantId))).returning();
+    const cnpjCpf = normalizarDocumento(dto.cnpjCpf);
+    if (await this.existeComDocumento(tenantId, cnpjCpf, id)) throw new ConflictException('Já existe um fornecedor com este CNPJ/CPF');
+    const [row] = await this.db.update(fornecedores).set({ cnpjCpf, razaoSocial: dto.razaoSocial }).where(and(eq(fornecedores.id, id), eq(fornecedores.tenantId, tenantId))).returning();
     return row;
   }
 

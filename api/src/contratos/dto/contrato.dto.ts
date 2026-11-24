@@ -38,10 +38,12 @@ export class CreateContratoDto {
   @IsOptional() @IsArray() dotacaoIds?: string[];
 }
 
+// vigenciaFinal não entra aqui de propósito — estender o prazo de um contrato
+// é aditivo de PRAZO (AditivosService), que registra o termo e a vigência
+// anterior. Um PATCH genérico permitia mudar o prazo sem deixar rastro.
 export class UpdateContratoDto {
   @IsOptional() @IsString() objeto?: string;
   @IsOptional() @IsDateString() vigenciaInicial?: string;
-  @IsOptional() @IsDateString() vigenciaFinal?: string;
   @IsOptional() @IsIn(SITUACOES) situacao?: string;
   // Trocar para 'APENAS_VALOR_TOTAL' é rejeitado quando o contrato tem
   // origem (ataOrgaoId/homologacaoFornecedorId) — ver

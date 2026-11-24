@@ -7,17 +7,24 @@ interface TenantLinha { id: string; codigo: number; nome: string; tipo: string |
 export function Plataforma() {
   const [tenants, setTenants] = useState<TenantLinha[]>([]);
   const [carregando, setCarregando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
 
   async function carregar() { setTenants(await api.get('/plataforma/tenants')); }
   useEffect(() => { carregar(); }, []);
 
-  async function alternar(tenantId: string, setor: SetorTenant) {
-    if (!setor.disponivel) return;
-    const chave = `${tenantId}:${setor.id}`;
+  async function alternar(tenant: TenantLinha, setor: SetorTenant) {
+    if (!setor.disponivel || carregando) return;
+    // Desligar um setor tira na hora o acesso de todos os usuários daquele
+    // município a todos os módulos dele — pede confirmação explícita.
+    if (setor.habilitado && !window.confirm(`Desabilitar o setor "${setor.nome}" para ${tenant.nome}? Todos os usuários desse município perdem o acesso aos módulos do setor imediatamente.`)) return;
+    const chave = `${tenant.id}:${setor.id}`;
     setCarregando(chave);
+    setErro(null);
     try {
-      await api.patch(`/plataforma/tenants/${tenantId}/setores/${setor.id}`, { habilitado: !setor.habilitado });
+      await api.patch(`/plataforma/tenants/${tenant.id}/setores/${setor.id}`, { habilitado: !setor.habilitado });
       await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Erro ao alterar o setor');
     } finally {
       setCarregando(null);
     }
@@ -33,7 +40,8 @@ export function Plataforma() {
       <div className="content-page">
         <div className="eyebrow">Plataforma</div>
         <h2 className="page-title">Setores e módulos por tenant</h2>
-        <p className="text-muted" style={{ fontSize: 13.5, margin: '8px 0 26px' }}>Habilita setores inteiros por município. Alterações aqui afetam o que cada tenant pode ver.</p>
+        <p className="text-muted" style={{ fontSize: 13.5, margin: '8px 0 22px' }}>Habilita setores inteiros por município. Alterações aqui afetam o que cada tenant pode ver.</p>
+        {erro && <p style={{ fontSize: 12.5, color: 'var(--color-critical)', margin: '-10px 0 16px' }}>{erro}</p>}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
           {tenants.map((t) => (
@@ -48,7 +56,7 @@ export function Plataforma() {
                   return (
                     <div
                       key={s.id}
-                      onClick={() => alternar(t.id, s)}
+                      onClick={() => alternar(t, s)}
                       className="card"
                       style={{
                         padding: '11px 14px',

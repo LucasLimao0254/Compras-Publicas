@@ -52,11 +52,14 @@ describe('Correções da análise de 07/10/2026', () => {
   });
 
   describe('filtro de erros do Postgres', () => {
+    // Intercepta o que o filtro repassa ao tratamento padrão do Nest — com
+    // jest.spyOn, restaurado ao fim de cada teste (antes o protótipo da classe
+    // base ficava alterado para o resto do arquivo).
+    afterEach(() => jest.restoreAllMocks());
     const traduzir = (erro: unknown) => {
       let recebido: unknown;
       const filtro = new PostgresExceptionFilter({ reply: () => undefined, isHeadersSent: () => false, end: () => undefined } as any);
-      // intercepta o que o filtro repassa ao tratamento padrão do Nest
-      Object.getPrototypeOf(PostgresExceptionFilter.prototype).catch = (e: unknown) => { recebido = e; };
+      jest.spyOn(Object.getPrototypeOf(PostgresExceptionFilter.prototype), 'catch').mockImplementation((e: unknown) => { recebido = e; });
       filtro.catch(erro, {} as ArgumentsHost);
       return recebido;
     };

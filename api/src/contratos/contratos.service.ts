@@ -21,6 +21,14 @@ import {
 } from '../db/schema';
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
 import { CreateContratoDto, ItemContratoInput, UpdateContratoDto } from './dto/contrato.dto';
+import { diaIso } from '../common/datas';
+
+// Vigência final nunca antes da inicial (o mesmo dia é permitido).
+export function validarPeriodo(inicial: Date | string, final: Date | string) {
+  if (diaIso(final) < diaIso(inicial)) {
+    throw new BadRequestException('A vigência final não pode ser anterior à vigência inicial');
+  }
+}
 
 @Injectable()
 export class ContratosService {
@@ -241,6 +249,7 @@ export class ContratosService {
       throw new BadRequestException('Informe no máximo uma origem de saldo: ataOrgaoId ou homologacaoFornecedorId, não os dois');
     }
     this.validarFormaControleSaldo(dto.formaControleSaldo, dto.ataOrgaoId, dto.homologacaoFornecedorId);
+    validarPeriodo(dto.vigenciaInicial, dto.vigenciaFinal);
 
     // Snapshot do valor original — base para o limite de 25%/50% do art. 125
     // da Lei 14.133/2021 nos aditivos de valor (AditivosService), que nunca
@@ -316,11 +325,11 @@ export class ContratosService {
   async update(tenantId: string, id: string, dto: UpdateContratoDto) {
     const contrato = await this.get(tenantId, id);
     this.validarFormaControleSaldo(dto.formaControleSaldo, contrato.ataOrgaoId, contrato.homologacaoFornecedorId);
+    if (dto.vigenciaInicial !== undefined) validarPeriodo(dto.vigenciaInicial, contrato.vigenciaFinal);
 
     const patch: Record<string, unknown> = {};
     if (dto.objeto !== undefined) patch.objeto = dto.objeto;
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);
-    if (dto.vigenciaFinal !== undefined) patch.vigenciaFinal = new Date(dto.vigenciaFinal);
     if (dto.situacao !== undefined) patch.situacao = dto.situacao as any;
     if (dto.formaControleSaldo !== undefined) patch.formaControleSaldo = dto.formaControleSaldo as any;
     if (Object.keys(patch).length) {

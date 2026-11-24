@@ -78,7 +78,14 @@ async function handleResponse(res: Response) {
     throw new Error('Sessão expirada');
   }
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // Corpo que não é JSON (página de erro de proxy, servidor fora do ar):
+    // antes aparecia para o usuário como "Unexpected token <".
+    throw new Error(res.ok ? 'Resposta inesperada do servidor' : `Falha na comunicação com o servidor (código ${res.status}). Tente novamente em instantes.`);
+  }
   if (!res.ok) {
     const message = Array.isArray(data?.message) ? data.message.join('; ') : data?.message;
     throw new Error(message || 'Erro na requisição');

@@ -19,7 +19,7 @@ import {
   secretarias,
 } from '../db/schema';
 import { SaldoCeilingService } from '../saldo-ceiling/saldo-ceiling.service';
-import { ContratosService } from '../contratos/contratos.service';
+import { ContratosService, validarPeriodo } from '../contratos/contratos.service';
 import { CreateAtaDto, ItemAtaInput, LoteAtaInput, OrgaoAtaInput, ProrrogarAtaDto, RemanejarSaldoDto, UpdateAtaDto } from './dto/ata.dto';
 
 // Números de planilha podem vir como texto formatado em padrão BR ("1.234,56")
@@ -143,6 +143,7 @@ export class AtasService {
   }
 
   async create(tenantId: string, dto: CreateAtaDto) {
+    validarPeriodo(dto.vigenciaInicial, dto.vigenciaFinal);
     const dup = await this.db.select().from(atas).where(and(eq(atas.tenantId, tenantId), eq(atas.numeroArp, dto.numeroArp)));
     if (dup.length) throw new ConflictException('Já existe uma ata com este número ARP');
 
@@ -221,7 +222,8 @@ export class AtasService {
   }
 
   async update(tenantId: string, id: string, dto: UpdateAtaDto) {
-    await this.get(tenantId, id);
+    const ata = await this.get(tenantId, id);
+    if (dto.vigenciaInicial !== undefined) validarPeriodo(dto.vigenciaInicial, ata.vigenciaFinal);
     const patch: Record<string, unknown> = {};
     if (dto.numeroArp !== undefined) patch.numeroArp = dto.numeroArp;
     if (dto.vigenciaInicial !== undefined) patch.vigenciaInicial = new Date(dto.vigenciaInicial);

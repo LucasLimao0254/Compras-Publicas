@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDB } from '../db/db.module';
 import { unidadesExecutoras } from '../db/schema';
 import { UnidadeExecutoraDto } from './dto/unidade-executora.dto';
+import { normalizarDocumento } from '../common/documentos';
 
 @Injectable()
 export class UnidadesExecutorasService {
@@ -19,13 +20,13 @@ export class UnidadesExecutorasService {
   }
 
   async create(tenantId: string, dto: UnidadeExecutoraDto) {
-    const [row] = await this.db.insert(unidadesExecutoras).values({ tenantId, ...dto }).returning();
+    const [row] = await this.db.insert(unidadesExecutoras).values({ tenantId, ...dto, cnpj: normalizarDocumento(dto.cnpj, { aceitaCpf: false }) }).returning();
     return row;
   }
 
   async update(tenantId: string, id: string, dto: UnidadeExecutoraDto) {
     await this.get(tenantId, id);
-    const [row] = await this.db.update(unidadesExecutoras).set(dto).where(and(eq(unidadesExecutoras.id, id), eq(unidadesExecutoras.tenantId, tenantId))).returning();
+    const [row] = await this.db.update(unidadesExecutoras).set({ ...dto, cnpj: normalizarDocumento(dto.cnpj, { aceitaCpf: false }) }).where(and(eq(unidadesExecutoras.id, id), eq(unidadesExecutoras.tenantId, tenantId))).returning();
     return row;
   }
 

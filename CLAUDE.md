@@ -122,6 +122,18 @@ and screens show the previous day. Use `src/common/datas.ts` on the API (`vigenc
 `diasAte`, `formatarDataPura`) and `web/src/lib/datas.ts` on the frontend (`fmtDataPura`).
 Real instants (`createdAt`, `criadoEm`, `enviadoEm`) keep using normal local formatting.
 
+A contract's `vigenciaFinal` only changes through a PRAZO aditivo (and an ata's only through
+`POST /atas/:id/prorrogar`) — neither update DTO accepts it, so every extension leaves a
+record. Final before initial is rejected on create/update (`validarPeriodo`).
+
+### CNPJ/CPF
+
+`src/common/documentos.ts` validates check digits and returns the document masked
+(`normalizarDocumento`); fornecedores and unidades executoras store that canonical form, and
+duplicate checks compare digits only (`regexp_replace(..., '[^0-9]', '', 'g')`) so rows saved
+before the normalization still match. Inside a Drizzle `sql` template literal write `[^0-9]`,
+not `\D` — the template literal drops the backslash.
+
 ### Database errors
 
 `PostgresExceptionFilter` maps unique violations (23505) and foreign-key violations (23503) to
@@ -214,15 +226,19 @@ na geração pelos dados reais da entidade. Ver MODELO.md, seção 8.
   arquivo como zip (`JSZip.loadAsync`) *antes* de gravar, para rejeitar um `.docx` corrompido
   sem nunca chegar a escrever no disco — por isso `enviarModelo()` recebe `{ originalname,
   buffer }`, não um path.
-- Substituição é regex sobre `word/document.xml` dentro do `.docx` (que é um zip) — troca
-  `{{chave}}` pelo valor resolvido, com escape de XML (`&`, `<`, `>`, aspas) no valor, porque
-  o texto vem de campos livres (razão social, objeto etc.) que podem conter esses caracteres.
+- Substituição (`preencherMarcadores`) roda sobre o corpo, cabeçalhos e rodapés do `.docx`
+  (`word/document.xml`, `header*.xml`, `footer*.xml` — o `.docx` é um zip), parágrafo a
+  parágrafo: o Word costuma partir um marcador digitado de uma vez em vários trechos `<w:t>`
+  (revisão ortográfica, formatação no meio), então o texto do parágrafo é tratado concatenado
+  e o valor entra no trecho onde o marcador começa. O valor recebe escape de XML (`&`, `<`,
+  `>`, aspas), porque vem de campos livres (razão social, objeto etc.).
 - Upload restrito ao Administrador do tenant — checado dentro do `MinutasService`, não só no
   `@RequirePermission` do controller.
-- `gerar()` não exige uma permissão própria no controller: é chamado a partir de telas já
-  gated por permissões diferentes conforme o tipo (contrato/ata), e o dado exposto é o mesmo
-  que a tela de origem já mostra; o isolamento que importa (tenant) é garantido dentro do
-  service, não no controller.
+- `GET /minutas/:tipo/:entidadeId` (gerar) exige `compras.contratos` **ou** `compras.atas` — as
+  duas telas de onde os quatro tipos são gerados; passar pelo guard também aplica a trava de
+  setor habilitado. `GET /minutas/modelos` aceita, além dessas, `compras.configuracoes` (as
+  telas de contrato e ata leem a lista para habilitar o botão). O isolamento por tenant é
+  garantido dentro do service.
 
 ### Frontend
 

@@ -14,6 +14,7 @@ import {
 } from '../db/schema';
 import { ExtracaoHomologacao, ExtracaoHomologacaoService } from './extracao-homologacao.service';
 import { PatchFornecedorDto, PatchItemDto } from './dto/homologacao.dto';
+import { normalizarDocumento, somenteDigitos } from '../common/documentos';
 
 type MulterFile = { path: string; originalname: string; size: number };
 
@@ -161,13 +162,19 @@ export class LicitacoesHomologacaoService {
 
     let fornecedorId = dto.fornecedorId;
     if (dto.novoFornecedor) {
-      const dup = await this.db.select().from(fornecedores).where(and(eq(fornecedores.tenantId, tenantId), eq(fornecedores.cnpjCpf, dto.novoFornecedor.cnpjCpf)));
+      // Mesmo documento com ou sem máscara: reaproveita o fornecedor já
+      // cadastrado em vez de criar um duplicado.
+      const cnpjCpf = normalizarDocumento(dto.novoFornecedor.cnpjCpf);
+      const dup = await this.db
+        .select()
+        .from(fornecedores)
+        .where(and(eq(fornecedores.tenantId, tenantId), sql`regexp_replace(${fornecedores.cnpjCpf}, '[^0-9]', '', 'g') = ${somenteDigitos(cnpjCpf)}`));
       if (dup.length) {
         fornecedorId = dup[0].id;
       } else {
         const [novo] = await this.db
           .insert(fornecedores)
-          .values({ tenantId, cnpjCpf: dto.novoFornecedor.cnpjCpf, razaoSocial: dto.novoFornecedor.razaoSocial })
+          .values({ tenantId, cnpjCpf, razaoSocial: dto.novoFornecedor.razaoSocial })
           .returning();
         fornecedorId = novo.id;
       }

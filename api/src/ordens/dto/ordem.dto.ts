@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsNumber, IsOptional, IsPositive, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // Ordem só nasce de contrato (ver MODELO.md, seção 2) — itemContratoId é a
@@ -10,7 +10,7 @@ export class ItemOrdemInput {
 
 export class DotacaoOrdemInput {
   @IsString() dotacaoId: string;
-  @IsOptional() @IsNumber() valorRateado?: number;
+  @IsOptional() @IsNumber() @Min(0) valorRateado?: number;
 }
 
 export class CreateOrdemDto {
